@@ -21,10 +21,28 @@ Cada nivell té les cordes **justes**: ni una de sobrera.
 
 | Peça | Què fa |
 |---|---|
-| Blava | Normal. L'explosió la mata. |
-| Rosa (bomba) | Explosió molt més gran. |
-| Taronja (pesada) | Cap explosió la mata; només un xoc molt fort o una corda. |
-| Grisa (columna) | Indestructible. Només fa nosa. |
+| Normal | L'explosió la mata. |
+| Bomba | Explosió molt més gran. |
+| Pesada | Cap explosió la mata; només un xoc molt fort o una corda. |
+| Columna | Indestructible. Només fa nosa. |
+
+## Modes
+
+- **NIVELLS** — la progressió. Infinits, cada un amb el seu pressupost de cordes.
+- **REPTE DEL DIA** — un tauler generat a partir de la data: el mateix per a tothom, un
+  cada dia. Manté una ratxa de dies seguits i paga més com més llarga sigui.
+- **RÀPID** — minijocs contra el rellotge, tres vides, i cada ronda amb menys temps:
+  - *Lliga'ls* — el de sempre, amb pressa.
+  - *Un sol tret* — sense cordes: apuntes, deixes anar, i la cadena ho ha de netejar tot.
+  - *No toquis la verda* — neteja-ho tot menys una.
+  - *La cadena* — una corda i un número al qual has d'arribar.
+
+## Recompenses
+
+Jugant es guanyen monedes (nivell nou, repte del dia, cada ronda del ràpid). Serveixen per
+desbloquejar **pistes** (el terra: camp de futbol, bàsquet, tennis, muntanya, fons marí) i
+**boles** (cares, pilotes, animals). Són dues coses independents: pots posar cares sobre
+una pista de tennis.
 
 ## Com estan fets els nivells
 
@@ -38,9 +56,23 @@ Conseqüències: cap nivell és impossible, cap és regalat, i n'hi ha infinits.
 Els nivells 1–23 segueixen una corba escrita a `spec()`; a partir del 24 es genera sola.
 Als vuit primers també s'exigeix que hi hagi més d'una solució, perquè no espantin.
 
+El repte *un sol tret* es valida igual, però provant angles i forces en dues passades: una
+malla basta que descarta de seguida els taulers sense sortida, i una de fina només per als
+que la passen. Sense això la generació trigava fins a 2,7 s; ara en són ~130 ms.
+
+## Velocitat
+
+Dues decisions que hi pesen molt al mòbil:
+
+- **Els fons es pinten un sol cop.** Cada pista es dibuixa a un llenç a part
+  (`renderScene`) i després només es copia. Es refà quan canvies de pista o gira el mòbil.
+- **Les boles són sprites.** La resplendor (`shadowBlur`) és molt cara i es pagava 60 cops
+  per segon per bola; ara cada bola es dibuixa una vegada a un llenç petit (`sprite()`) i
+  la resta és copiar imatges.
+
 ## Fitxers
 
-- `index.html` — el joc sencer (física, generador, solver, render, so).
+- `index.html` — el joc sencer (física, generador, solver, escenaris, render, so).
 - `manifest.webmanifest` — el que fa que el telèfon l'ofereixi com a app.
 - `sw.js` — desa el joc al telèfon perquè funcioni sense cobertura. **Si toques
   `index.html`, puja el número de `VERSION`**, si no els telèfons seguiran amb la còpia vella.
@@ -59,4 +91,7 @@ I ja està: el workflow el desplega en un parell de minuts. Recorda pujar `VERSI
 
 Els números que canvien com se sent el joc són a `P` (física) i `BOOM` (radis d'explosió),
 al principi de l'script. Si els mous, els nivells guardats deixen de ser vàlids: canvia
-també la llavor de `generate()` o esborra `localStorage` (`nus.lvl`).
+també la llavor de `generate()` o esborra `localStorage` (`nus.save`).
+
+Per afegir una pista, una entrada més a `SKINS` amb la seva funció `paint(g)`. Per afegir
+un estil de bola, una entrada a `BALLS` amb `cols`, `body(t)` i `inner(g,t,r)`.

@@ -1,7 +1,12 @@
 # NUS
 
-Joc de puzles per a mòbil, en un sol fitxer (`index.html`). Sense dependències, sense
-compilació: obres el fitxer i funciona, també sense internet.
+**Jugar-hi:** https://enricmarin48-alt.github.io/nus/
+
+Joc de puzles per a mòbil. Al telèfon, el navegador et proposarà instal·lar-lo: queda com
+una app, amb icona pròpia, a pantalla completa i **funciona sense cobertura**.
+
+El joc és un sol fitxer (`index.html`) sense dependències ni compilació. La resta són les
+peces que el fan instal·lable.
 
 ## Com es juga
 
@@ -36,8 +41,19 @@ Als vuit primers també s'exigeix que hi hagi més d'una solució, perquè no es
 ## Fitxers
 
 - `index.html` — el joc sencer (física, generador, solver, render, so).
-- La versió publicada com a enllaç es genera treient les etiquetes `<html>/<head>/<body>`
-  d'aquest fitxer.
+- `manifest.webmanifest` — el que fa que el telèfon l'ofereixi com a app.
+- `sw.js` — desa el joc al telèfon perquè funcioni sense cobertura. **Si toques
+  `index.html`, puja el número de `VERSION`**, si no els telèfons seguiran amb la còpia vella.
+- `icons/` — la icona, generada amb GDI+ des de PowerShell.
+- `.github/workflows/pages.yml` — publica sol a cada `git push` a `main`.
+
+## Publicar un canvi
+
+```bash
+git add -A && git commit -m "..." && git push
+```
+
+I ja està: el workflow el desplega en un parell de minuts. Recorda pujar `VERSION` a `sw.js`.
 
 ## Per tocar-hi
 

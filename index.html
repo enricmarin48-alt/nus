@@ -93,6 +93,10 @@
   .item .tag{font-size:11px;font-weight:900;letter-spacing:.1em;padding:5px 9px;border-radius:8px;
     background:rgba(0,0,0,.22);white-space:nowrap}
   .item.done{opacity:.55}
+  .item.hide{display:none}
+  .item.install{background:none;border:1.5px dashed color-mix(in srgb,var(--accent) 45%,transparent)}
+  .item.install .n{color:var(--accent)}
+  .item.install .tag{background:none;font-size:17px;color:var(--accent)}
 
   .cta{margin-top:6px;border:none;border-radius:16px;padding:16px 40px;font:inherit;
     font-size:15px;font-weight:800;letter-spacing:.14em;color:#04121a;
@@ -163,7 +167,17 @@
         <span><span class="n">APARENÇA</span><span class="d" id="miSkinsD">1 de 5</span></span>
         <span class="tag">🎨</span>
       </button>
+      <button class="item install hide" id="miInstall">
+        <span><span class="n">INSTAL·LA L'APP</span><span class="d">per jugar sense internet</span></span>
+        <span class="tag">↓</span>
+      </button>
     </div>
+  </div>
+
+  <div class="screen hide" id="scInstall">
+    <div class="big">INSTAL·LAR</div>
+    <div class="sub" id="instTxt"></div>
+    <button class="cta" id="bInstBack">ENTESOS</button>
   </div>
 
   <!-- aparença -->
@@ -1350,7 +1364,7 @@ function cacheLevel(n){
 }
 
 function show(id){
-  for (const s of ['scHub','scSkins','scLoad','scEnd']) el(s).classList.add('hide');
+  for (const s of ['scHub','scSkins','scLoad','scEnd','scInstall']) el(s).classList.add('hide');
   if (id) el(id).classList.remove('hide');
 }
 function setPlayUI(on){
@@ -1377,6 +1391,7 @@ function refreshHub(){
   el('miFastD').textContent = S.fastBest > 0 ? 'rècord: ' + S.fastBest + ' reptes' : 'minijocs contra el rellotge';
   el('miSkinsD').textContent = 'pistes i boles · ' +
     (S.owned.length + S.ownedBalls.length) + ' de ' + (SKINS.length + BALLS.length);
+  refreshInstall();
 }
 
 function startLoad(txt, fn){
@@ -1749,6 +1764,8 @@ el('miDaily').onclick  = () => { audio(); playDaily(); };
 el('miFast').onclick   = () => { audio(); playFast(); };
 el('miSkins').onclick  = () => { audio(); renderSkins(); show('scSkins'); };
 el('bSkinsBack').onclick = () => { audio(); goHub(); };
+el('miInstall').onclick  = () => { ferInstallacio(); };
+el('bInstBack').onclick  = () => { audio(); goHub(); };
 el('tabScenes').onclick = () => { audio(); shopTab = 'scenes'; renderSkins(); };
 el('tabBalls').onclick  = () => { audio(); shopTab = 'balls';  renderSkins(); };
 el('bHome').onclick    = () => { audio(); goHub(); };
@@ -1760,9 +1777,48 @@ el('bNext').onclick    = () => {
   else { show(null); resetBoard(); }
 };
 
-/* ═══════════════════════════════════════════ instal·lable */
+/* ═══════════════════════════════════════════ instal·lable
+   Android deixa demanar la instal·lació des de la pàgina; iPhone no ho permet i
+   només es pot explicar on és l'opció. Per això el botó sempre hi és mentre no
+   estigui instal·lada: si el navegador ens deixa, l'instal·la; si no, t'ho diu. */
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')){
   addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+
+let instPrompt = null;
+const esIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function jaInstallada(){
+  return matchMedia('(display-mode: standalone)').matches ||
+         matchMedia('(display-mode: fullscreen)').matches ||
+         navigator.standalone === true;
+}
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); instPrompt = e; refreshInstall(); });
+addEventListener('appinstalled', () => { instPrompt = null; refreshInstall(); });
+
+function refreshInstall(){
+  el('miInstall').classList.toggle('hide', jaInstallada());
+}
+
+async function ferInstallacio(){
+  audio();
+  if (instPrompt){
+    instPrompt.prompt();
+    const r = await instPrompt.userChoice.catch(() => null);
+    instPrompt = null;
+    if (r && r.outcome === 'accepted'){ refreshInstall(); return; }
+    return;
+  }
+  el('instTxt').innerHTML = esIOS
+    ? 'Al Safari, toca el botó de <b>compartir</b> a baix (el quadrat amb la fletxa cap amunt) '
+    + 'i tria <b>Afegeix a la pantalla d\'inici</b>.<br><br>'
+    + 'Si has obert el joc des del WhatsApp o l\'Instagram, primer obre\'l al Safari: '
+    + 'al menú del navegador de dins de l\'app, tria <b>Obre al Safari</b>.'
+    : 'Al Chrome, obre el menú <b>⋮</b> de dalt a la dreta i tria <b>Instal·la l\'aplicació</b> '
+    + '(o <b>Afegeix a la pantalla d\'inici</b>).<br><br>'
+    + 'Si has obert el joc des del WhatsApp o l\'Instagram, primer obre\'l al Chrome: '
+    + 'al menú d\'aquell navegador, tria <b>Obre al navegador</b>.';
+  show('scInstall');
 }
 
 /* ═══════════════════════════════════════════ arrencada */

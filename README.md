@@ -26,6 +26,25 @@ Cada nivell té les cordes **justes**: ni una de sobrera.
 | Pesada | Cap explosió la mata; només un xoc molt fort o una corda. |
 | Columna | Indestructible. Només fa nosa. |
 
+## Lliga, missions i estrelles
+
+**Lliga setmanal.** De dilluns a diumenge. Guanyes punts amb tot el que facis i competeixes
+en una taula de deu. Els 3 primers pugen de divisió i els 3 últims baixen:
+Bronze → Plata → Or → Diamant → Llegenda.
+
+> **Els rivals no són gent real.** Es generen a partir de la setmana i la divisió, i van
+> sumant punts sols a mesura que passa la setmana. Per competir de debò caldria un servidor:
+> només s'han de substituir `genRivals()` i `taulaLliga()` per una crida a Supabase.
+
+**Missions del dia.** Tres, triades a partir de la data (iguals per a tothom). Paguen
+monedes i punts.
+
+**Estrelles.** Tres per nivell: passar-lo, passar-lo al primer intent, i fer-hi **la cadena
+més llarga que el tauler permet**. Aquest tercer llistó no és un número inventat: es calcula
+provant totes les solucions bones del nivell, perquè sempre sigui assolible — amb un llindar
+fix era impossible a la meitat dels nivells. Es calcula en segon pla mentre penses la
+jugada, perquè fer-ho abans de començar afegia fins a un segon d'espera.
+
 ## Modes
 
 - **NIVELLS** — la progressió. Infinits, cada un amb el seu pressupost de cordes.

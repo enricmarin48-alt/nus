@@ -1,6 +1,6 @@
 // Service worker de NUS: desa el joc al telèfon perquè funcioni sense cobertura.
 // Puja la versió cada cop que canviïs index.html i el telèfon es descarregarà el nou.
-const VERSION = 'nus-v3';
+const VERSION = 'nus-v4';
 const SHELL = [
   './',
   './index.html',

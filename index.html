@@ -122,6 +122,58 @@
   .skin .sb{font-size:11px;color:var(--dim)}
   .skin .px{font-size:12px;font-weight:800;color:var(--warm);white-space:nowrap}
   .skin .px.free{color:var(--dim)}
+  /* menú en dues columnes */
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .duo .item{min-height:76px}
+  .item.sm{padding:12px 13px;gap:7px}
+  .item.sm .n{font-size:13px;letter-spacing:.06em}
+  .item.sm .d{font-size:10.5px}
+  .item.sm .tag{font-size:10px;padding:4px 7px}
+
+  /* mapa de nivells */
+  .map{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;width:100%;max-width:288px;
+    max-height:46vh;overflow-y:auto;padding:2px}
+  .lv{position:relative;border:none;border-radius:13px;padding:11px 0 15px;font:inherit;
+    background:var(--panel);color:var(--text);cursor:pointer;transition:transform .1s}
+  .lv:active{transform:scale(.94)}
+  .lv .num{font-size:17px;font-weight:800}
+  .lv .st{position:absolute;left:0;right:0;bottom:5px;display:flex;gap:3px;justify-content:center}
+  .lv .st i{width:5px;height:5px;border-radius:50%;background:#2b3450}
+  .lv .st i.on{background:var(--warm);box-shadow:0 0 6px var(--warm)}
+  .lv.now{background:var(--accent);color:#04121a}
+  .lv.now .st i{background:rgba(0,0,0,.25)}
+  .lv.lock{opacity:.32;cursor:default}
+
+  /* taula de la lliga */
+  .taula{display:flex;flex-direction:column;gap:4px;width:100%;max-width:288px;
+    max-height:42vh;overflow-y:auto}
+  .fila{display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:11px;
+    background:var(--panel);font-size:13px}
+  .fila .pos{width:19px;font-weight:800;color:var(--dim);font-variant-numeric:tabular-nums}
+  .fila .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fila .pt{font-weight:800;font-variant-numeric:tabular-nums}
+  .fila.jo{background:var(--accent);color:#04121a}
+  .fila.jo .pos{color:rgba(0,0,0,.5)}
+  .fila.puja{box-shadow:inset 3px 0 0 #4dff9e}
+  .fila.baixa{box-shadow:inset 3px 0 0 #ff5f7e}
+  .sep{display:flex;align-items:center;gap:8px;font-size:9.5px;font-weight:800;
+    letter-spacing:.14em;color:var(--dim);padding:2px 0}
+  .sep::before,.sep::after{content:'';flex:1;height:1px;background:currentColor;opacity:.28}
+
+  /* missions */
+  .missions{display:flex;flex-direction:column;gap:9px;width:100%;max-width:288px}
+  .ms{display:flex;align-items:center;gap:12px;padding:13px 15px;border-radius:13px;
+    background:var(--panel)}
+  .ms.ok{background:color-mix(in srgb,var(--accent) 18%,var(--panel))}
+  .ms{text-align:left}
+  .ms .txt{flex:1;min-width:0;display:flex;flex-direction:column}
+  .ms .t,.ms .barra{display:block}
+  .ms .t{font-size:13px;font-weight:700}
+  .ms .barra{height:5px;border-radius:3px;background:#222a3f;margin-top:7px;overflow:hidden}
+  .ms .barra i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  .ms .val{font-size:11px;font-weight:800;color:var(--dim);font-variant-numeric:tabular-nums}
+  .ms.ok .val{color:var(--accent)}
+
   .tabs{display:flex;gap:8px}
   .tab{border:none;border-radius:11px;padding:10px 20px;font:inherit;font-size:12px;
     font-weight:800;letter-spacing:.13em;color:var(--dim);background:var(--panel);cursor:pointer}
@@ -155,23 +207,62 @@
         <span><span class="n">NIVELLS</span><span class="d" id="miLevelsD">nivell 1</span></span>
         <span class="tag" id="miLevelsT">JUGA</span>
       </button>
-      <button class="item" id="miDaily">
-        <span><span class="n">REPTE DEL DIA</span><span class="d" id="miDailyD">un tauler nou cada dia</span></span>
-        <span class="tag" id="miDailyT">NOU</span>
-      </button>
-      <button class="item" id="miFast">
-        <span><span class="n">RÀPID</span><span class="d" id="miFastD">minijocs contra el rellotge</span></span>
-        <span class="tag" id="miFastT">3 VIDES</span>
-      </button>
-      <button class="item" id="miSkins">
-        <span><span class="n">APARENÇA</span><span class="d" id="miSkinsD">1 de 5</span></span>
-        <span class="tag">🎨</span>
-      </button>
-      <button class="item install hide" id="miInstall">
-        <span><span class="n">INSTAL·LA L'APP</span><span class="d">per jugar sense internet</span></span>
-        <span class="tag">↓</span>
-      </button>
+      <div class="duo">
+        <button class="item sm" id="miDaily">
+          <span><span class="n">REPTE DEL DIA</span><span class="d" id="miDailyD">avui</span></span>
+          <span class="tag" id="miDailyT">NOU</span>
+        </button>
+        <button class="item sm" id="miFast">
+          <span><span class="n">RÀPID</span><span class="d" id="miFastD">minijocs</span></span>
+          <span class="tag" id="miFastT">3 ♦</span>
+        </button>
+      </div>
+      <div class="duo">
+        <button class="item sm" id="miLliga">
+          <span><span class="n" id="miLligaN">LLIGA</span><span class="d" id="miLligaD">bronze</span></span>
+          <span class="tag" id="miLligaT">—</span>
+        </button>
+        <button class="item sm" id="miMiss">
+          <span><span class="n">MISSIONS</span><span class="d" id="miMissD">del dia</span></span>
+          <span class="tag" id="miMissT">0/3</span>
+        </button>
+      </div>
+      <div class="duo">
+        <button class="item sm" id="miSkins">
+          <span><span class="n">APARENÇA</span><span class="d" id="miSkinsD">pistes i boles</span></span>
+          <span class="tag">🎨</span>
+        </button>
+        <button class="item sm install hide" id="miInstall">
+          <span><span class="n">INSTAL·LA</span><span class="d">sense internet</span></span>
+          <span class="tag">↓</span>
+        </button>
+      </div>
     </div>
+  </div>
+
+  <!-- mapa de nivells -->
+  <div class="screen hide" id="scMap">
+    <div class="big">NIVELLS</div>
+    <div class="sub" id="mapSub"></div>
+    <div class="map" id="mapList"></div>
+    <button class="cta ghost" id="bMapBack">TORNA</button>
+  </div>
+
+  <!-- lliga -->
+  <div class="screen hide" id="scLliga">
+    <div class="big" id="lligaTitol">LLIGA</div>
+    <div class="sub" id="lligaSub"></div>
+    <div class="taula" id="lligaTaula"></div>
+    <div class="sub" id="lligaPeu"></div>
+    <button class="cta ghost" id="bLligaBack">TORNA</button>
+  </div>
+
+  <!-- missions -->
+  <div class="screen hide" id="scMiss">
+    <div class="big">MISSIONS DEL DIA</div>
+    <div class="sub">Es renoven cada dia a mitjanit.</div>
+    <div class="missions" id="missList"></div>
+    <button class="cta ghost" id="bMissBack">TORNA</button>
   </div>
 
   <div class="screen hide" id="scInstall">
@@ -795,6 +886,17 @@ function countSolutions(proto, k, cap, kind, extra){
   for (const m of matchings(idx, k)) if (simulate(proto, m, kind, extra).ok && ++n >= cap) break;
   return n;
 }
+/* la cadena més llarga que permet el tauler entre les solucions bones:
+   és el llistó de la tercera estrella, perquè sigui sempre assolible */
+function millorCadena(proto, k){
+  const idx = liveIdx(proto, -1);
+  let best = 0;
+  for (const m of matchings(idx, k)){
+    const r = simulate(proto, m, 'clear', null);
+    if (r.ok && r.chain > best) best = r.chain;
+  }
+  return best;
+}
 function bestChain(proto){
   const idx = liveIdx(proto, -1);
   let best = 0;
@@ -973,13 +1075,19 @@ function genDaily(key){
 
 /* ═══════════════════════════════════════════ partida desada */
 const DEF = { lvl:1, coins:0, skin:'neo', ball:'neo', owned:['neo'], ownedBalls:['neo'],
-              daily:{ key:'', streak:0, last:'' }, fastBest:0 };
+              daily:{ key:'', streak:0, last:'' }, fastBest:0,
+              stars:{},                                   // estrelles per nivell
+              lliga:{ week:'', div:0, pts:0, rivals:[], res:'' },
+              missio:{ key:'', llista:[], prog:[0,0,0], fet:[false,false,false] } };
 let S = load();
 function load(){
-  let s = Object.assign({}, DEF);
+  // còpia profunda: si es reaprofitessin els objectes de DEF, s'anirien mutant
+  // i una partida nova arrossegaria les dades de l'anterior
+  const net = () => JSON.parse(JSON.stringify(DEF));
+  let s = net();
   try {
     const raw = localStorage.getItem('nus.save');
-    if (raw) s = Object.assign({}, DEF, JSON.parse(raw));
+    if (raw) s = Object.assign(net(), JSON.parse(raw));
     else {
       const old = parseInt(localStorage.getItem('nus.lvl') || '0', 10);
       if (old > 1) s.lvl = old;
@@ -992,10 +1100,161 @@ function load(){
   if (!s.ownedBalls.includes('neo')) s.ownedBalls.unshift('neo');
   if (!s.owned.includes(s.skin)) s.skin = 'neo';
   if (!s.ownedBalls.includes(s.ball)) s.ball = 'neo';
+  s.stars = s.stars || {};
+  s.lliga = Object.assign({ week:'', div:0, pts:0, rivals:[], res:'' }, s.lliga || {});
+  s.missio = Object.assign({ key:'', llista:[], prog:[0,0,0], fet:[false,false,false] }, s.missio || {});
   return s;
 }
 function save(){ try { localStorage.setItem('nus.save', JSON.stringify(S)); } catch(e){} }
 function pay(n){ S.coins += n; save(); }
+
+/* ═══════════════════════════════════════════ punts i lliga
+   La lliga va per setmanes (de dilluns a diumenge). Els rivals NO són gent
+   real: es generen a partir de la setmana i la divisió, i van sumant punts
+   sols a mesura que passa la setmana. Si algun dia es vol competir de debò,
+   només cal substituir genRivals() i taulaLliga() per una crida al servidor. */
+const DIVS = [
+  { nom:'BRONZE',   col:'#cd8b4a' },
+  { nom:'PLATA',    col:'#c6d0e0' },
+  { nom:'OR',       col:'#ffcf4d' },
+  { nom:'DIAMANT',  col:'#6ee7ff' },
+  { nom:'LLEGENDA', col:'#c08cff' },
+];
+const NOMS = ['Llampec','Bum','Corda Fluixa','Petarda','Rebot','Nus Cec','Xoc','Espurna',
+              'Traca','Tro','Guspira','Tirabuixó','Cimbell','Rodolí','Metxa'];
+
+function pad2(n){ return String(n).padStart(2, '0'); }
+function ordinal(n){ return n + (n === 1 ? 'r' : n === 2 ? 'n' : n === 3 ? 'r' : n === 4 ? 't' : 'è'); }
+function dilluns(){
+  const t = new Date();
+  t.setHours(0,0,0,0);
+  t.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+  return t.getFullYear() + '-' + pad2(t.getMonth()+1) + '-' + pad2(t.getDate());
+}
+function setmanaFeta(){           // quina part de la setmana ha passat, 0..1
+  const t = new Date();
+  return Math.min(1, (((t.getDay() + 6) % 7) + t.getHours()/24) / 7);
+}
+function diesQueFalten(){ return 7 - ((new Date().getDay() + 6) % 7); }
+
+function hash(str){
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function genRivals(week, div){
+  const r = rngFrom(hash(week + '|' + div));
+  const noms = NOMS.slice();
+  for (let i = noms.length - 1; i > 0; i--){
+    const j = Math.floor(r() * (i+1));
+    [noms[i], noms[j]] = [noms[j], noms[i]];
+  }
+  const base = 150 + div * 125;
+  return noms.slice(0, 9).map(n => ({ n, rate: Math.round(base * (.42 + r()*1.25)) }));
+}
+function puntsRival(rv, fet){ return Math.floor(rv.rate * fet); }
+
+function taulaLliga(fet){
+  const files = S.lliga.rivals.map(rv => ({ nom:rv.n, pts:puntsRival(rv, fet), jo:false }));
+  files.push({ nom:'TU', pts:S.lliga.pts, jo:true });
+  files.sort((a,b) => b.pts - a.pts || (a.jo ? -1 : 1));
+  return files;
+}
+function laMevaPosicio(fet){ return taulaLliga(fet).findIndex(f => f.jo) + 1; }
+
+function revisaSetmana(){
+  const w = dilluns();
+  if (S.lliga.week === w) return;
+  if (S.lliga.week && S.lliga.rivals.length){
+    const pos = laMevaPosicio(1);
+    let premi = 0;
+    if (pos <= 3){
+      S.lliga.div = Math.min(DIVS.length - 1, S.lliga.div + 1);
+      premi = [0, 220, 160, 120][pos];
+      S.lliga.res = 'Vas quedar ' + ordinal(pos) + '. PUGES a ' + DIVS[S.lliga.div].nom + '.';
+    } else if (pos >= 8){
+      S.lliga.div = Math.max(0, S.lliga.div - 1);
+      S.lliga.res = 'Vas quedar ' + ordinal(pos) + '. Baixes a ' + DIVS[S.lliga.div].nom + '.';
+    } else {
+      premi = 60;
+      S.lliga.res = 'Vas quedar ' + ordinal(pos) + '. Et quedes a ' + DIVS[S.lliga.div].nom + '.';
+    }
+    if (premi) S.coins += premi;
+    if (premi) S.lliga.res += ' +' + premi + ' monedes.';
+  }
+  S.lliga.week = w;
+  S.lliga.pts = 0;
+  S.lliga.rivals = genRivals(w, S.lliga.div);
+  save();
+}
+
+function punts(n){
+  if (!n) return;
+  revisaSetmana();
+  S.lliga.pts += n;
+  save();
+}
+
+/* ═══════════════════════════════════════════ missions del dia */
+const PLANTILLES = [
+  { id:'nivells', min:2, max:4, txt:n => 'Passa ' + n + ' nivells' },
+  { id:'cadena',  min:8, max:13, txt:n => 'Fes una cadena de ' + n },
+  { id:'rapid',   min:4, max:7, txt:n => 'Supera ' + n + ' reptes al RÀPID' },
+  { id:'dia',     min:1, max:1, txt:() => 'Fes el repte del dia' },
+  { id:'tret',    min:1, max:2, txt:n => 'Guanya ' + n + ' cop' + (n>1?'s':'') + ' a UN SOL TRET' },
+];
+function revisaMissions(){
+  const k = todayKey();
+  if (S.missio.key === k && S.missio.llista.length === 3) return;
+  const r = rngFrom(hash('m' + k));
+  const pool = PLANTILLES.slice();
+  const tria = [];
+  for (let i = 0; i < 3; i++){
+    const idx = Math.floor(r() * pool.length);
+    const p = pool.splice(idx, 1)[0];
+    tria.push({ id:p.id, obj: p.min + Math.floor(r() * (p.max - p.min + 1)) });
+  }
+  S.missio = { key:k, llista:tria, prog:[0,0,0], fet:[false,false,false] };
+  save();
+}
+function textMissio(m){
+  return PLANTILLES.find(p => p.id === m.id).txt(m.obj);
+}
+/* avança una missió; 'cadena' no s'acumula, es queda amb el màxim */
+function missio(id, valor){
+  revisaMissions();
+  let canvi = false;
+  S.missio.llista.forEach((m, i) => {
+    if (m.id !== id || S.missio.fet[i]) return;
+    S.missio.prog[i] = id === 'cadena'
+      ? Math.max(S.missio.prog[i], valor)
+      : S.missio.prog[i] + valor;
+    if (S.missio.prog[i] >= m.obj){
+      S.missio.fet[i] = true;
+      S.coins += 40;
+      punts(25);
+      canvi = true;
+    }
+  });
+  save();
+  return canvi;
+}
+
+/* ═══════════════════════════════════════════ estrelles
+   1 passar-lo · 2 al primer intent · 3 amb una cadena grossa */
+function estrelles(n){ return S.stars[n] || 0; }
+function donaEstrelles(n, quantes){
+  const abans = estrelles(n);
+  if (quantes <= abans) return 0;
+  S.stars[n] = quantes;
+  save();
+  return quantes - abans;
+}
+function totalEstrelles(){
+  let t = 0;
+  for (const k in S.stars) t += S.stars[k];
+  return t;
+}
 
 /* ═══════════════════════════════════════════ so */
 let AC = null;
@@ -1032,8 +1291,8 @@ let G = {
   mode:'build',        // build | run | end
   kind:'clear', extra:null,
   level:1, budget:0, proto:[], bodies:[], pairs:[], sel:-1, drag:null,
-  steps:0, timeScale:1, shake:0, chain:0, chainShow:0, parts:[], won:false,
-  aim:null, shotFired:false,
+  steps:0, timeScale:1, shake:0, chain:0, chainShow:0, parts:[], won:false, maxChain:0,
+  aim:null, shotFired:false, attempts:0,
   timer:0, timerMax:0, lives:3, round:0, flash:0, flashTxt:'', flashSub:'',
   earned:0,
 };
@@ -1364,7 +1623,8 @@ function cacheLevel(n){
 }
 
 function show(id){
-  for (const s of ['scHub','scSkins','scLoad','scEnd','scInstall']) el(s).classList.add('hide');
+  for (const s of ['scHub','scSkins','scLoad','scEnd','scInstall','scMap','scLliga','scMiss'])
+    el(s).classList.add('hide');
   if (id) el(id).classList.remove('hide');
 }
 function setPlayUI(on){
@@ -1378,20 +1638,110 @@ function goHub(){
 }
 
 function refreshHub(){
+  revisaSetmana(); revisaMissions();
   el('hubCoins').textContent = S.coins;
-  el('miLevelsD').textContent = 'nivell ' + S.lvl;
+  el('miLevelsD').textContent = 'nivell ' + S.lvl + ' · ' + totalEstrelles() + ' ★';
   el('miLevelsT').textContent = S.lvl > 1 ? 'CONTINUA' : 'JUGA';
+
   const t = todayKey();
   const fet = S.daily.key === t;
   el('miDaily').classList.toggle('done', fet);
   el('miDailyD').textContent = fet
     ? (S.daily.streak > 1 ? S.daily.streak + ' dies seguits' : 'fet per avui')
-    : 'un tauler nou cada dia';
-  el('miDailyT').textContent = fet ? 'FET' : (S.daily.streak > 0 ? '🔥 ' + S.daily.streak : 'NOU');
-  el('miFastD').textContent = S.fastBest > 0 ? 'rècord: ' + S.fastBest + ' reptes' : 'minijocs contra el rellotge';
-  el('miSkinsD').textContent = 'pistes i boles · ' +
-    (S.owned.length + S.ownedBalls.length) + ' de ' + (SKINS.length + BALLS.length);
+    : 'avui';
+  el('miDailyT').textContent = fet ? 'FET' : (S.daily.streak > 0 ? '🔥' + S.daily.streak : 'NOU');
+
+  el('miFastD').textContent = S.fastBest > 0 ? 'rècord ' + S.fastBest : 'minijocs';
+
+  const d = DIVS[S.lliga.div];
+  el('miLligaN').textContent = 'LLIGA';
+  el('miLligaN').style.color = d.col;
+  const pos = laMevaPosicio(setmanaFeta());
+  el('miLligaD').innerHTML = '<b style="color:' + d.col + '">' + d.nom.toLowerCase() +
+    '</b> · ' + S.lliga.pts;
+  el('miLligaT').textContent = ordinal(pos);
+
+  const fets = S.missio.fet.filter(Boolean).length;
+  el('miMissT').textContent = fets + '/3';
+  el('miMissD').textContent = fets === 3 ? 'totes fetes' : 'del dia';
+  el('miMiss').classList.toggle('done', fets === 3);
+
+  el('miSkinsD').textContent = (S.owned.length + S.ownedBalls.length) +
+    ' de ' + (SKINS.length + BALLS.length);
   refreshInstall();
+}
+
+/* ── mapa de nivells ─────────────────────── */
+function renderMap(){
+  el('mapSub').textContent = totalEstrelles() + ' estrelles de ' + (S.lvl - 1) * 3 +
+    ' · torna-hi per completar-les';
+  const box = el('mapList');
+  box.innerHTML = '';
+  const fins = S.lvl + 3;
+  for (let n = 1; n <= fins; n++){
+    const bloquejat = n > S.lvl;
+    const b = document.createElement('button');
+    b.className = 'lv' + (n === S.lvl ? ' now' : '') + (bloquejat ? ' lock' : '');
+    const st = estrelles(n);
+    b.innerHTML = '<div class="num">' + n + '</div><div class="st">' +
+      [0,1,2].map(i => '<i class="' + (i < st ? 'on' : '') + '"></i>').join('') + '</div>';
+    if (!bloquejat) b.onclick = () => { audio(); playLevel(n); };
+    box.appendChild(b);
+  }
+  setTimeout(() => {
+    const actiu = box.querySelector('.lv.now');
+    if (actiu) actiu.scrollIntoView({ block:'center' });
+  }, 20);
+}
+
+/* ── lliga ───────────────────────────────── */
+function renderLliga(){
+  revisaSetmana();
+  const d = DIVS[S.lliga.div];
+  el('lligaTitol').textContent = 'LLIGA ' + d.nom;
+  el('lligaTitol').style.color = d.col;
+  const dies = diesQueFalten();
+  el('lligaSub').textContent = S.lliga.res
+    ? S.lliga.res
+    : 'Queden ' + dies + (dies === 1 ? ' dia' : ' dies') + '. Els 3 primers pugen, els 3 últims baixen.';
+  S.lliga.res = ''; save();
+
+  const files = taulaLliga(setmanaFeta());
+  const box = el('lligaTaula');
+  box.innerHTML = '';
+  files.forEach((f, i) => {
+    if (i === 3 || i === 7){
+      const s = document.createElement('div');
+      s.className = 'sep';
+      s.textContent = i === 3 ? 'PUGEN' : 'BAIXEN';
+      box.appendChild(s);
+    }
+    const r = document.createElement('div');
+    r.className = 'fila' + (f.jo ? ' jo' : '') + (i < 3 ? ' puja' : i >= 7 ? ' baixa' : '');
+    r.innerHTML = '<span class="pos">' + (i+1) + '</span>' +
+                  '<span class="nm">' + f.nom + '</span>' +
+                  '<span class="pt">' + f.pts + '</span>';
+    box.appendChild(r);
+  });
+  el('lligaPeu').textContent = 'Guanyes punts amb tot: nivells, estrelles, el repte del dia, ' +
+    'el ràpid i les missions.';
+}
+
+/* ── missions ────────────────────────────── */
+function renderMiss(){
+  revisaMissions();
+  const box = el('missList');
+  box.innerHTML = '';
+  S.missio.llista.forEach((m, i) => {
+    const fet = S.missio.fet[i];
+    const p = Math.min(1, S.missio.prog[i] / m.obj);
+    const d = document.createElement('div');
+    d.className = 'ms' + (fet ? ' ok' : '');
+    d.innerHTML = '<span class="txt"><span class="t">' + textMissio(m) + '</span>' +
+      '<span class="barra"><i style="width:' + Math.round(p*100) + '%"></i></span></span>' +
+      '<span class="val">' + (fet ? '✓ +40' : Math.min(S.missio.prog[i], m.obj) + '/' + m.obj) + '</span>';
+    box.appendChild(d);
+  });
 }
 
 function startLoad(txt, fn){
@@ -1399,11 +1749,29 @@ function startLoad(txt, fn){
   setTimeout(() => { fn(); }, 30);
 }
 
+/* El llistó de la tercera estrella és la cadena més llarga que permet el tauler.
+   Calcular-ho és car (fins a 1 s), i no fa cap falta fins que guanyes: es fa en
+   segon pla mentre penses la jugada, i si encara no està, es calcula al moment. */
+function maxChainEnSegonPla(){
+  G.maxChain = 0;
+  if (G.kind !== 'clear') return;
+  const proto = G.proto, budget = G.budget;
+  const fer = () => { if (G.proto === proto) G.maxChain = millorCadena(proto, budget); };
+  if (window.requestIdleCallback) requestIdleCallback(fer, { timeout: 4000 });
+  else setTimeout(fer, 600);
+}
+function assegurarMaxChain(){
+  if (!G.maxChain && G.kind === 'clear' && G.proto.length)
+    G.maxChain = millorCadena(G.proto, G.budget);
+  return G.maxChain;
+}
+
 function beginBoard(lv, opts){
   G.proto = lv.bodies; G.budget = lv.budget; G.kind = lv.kind; G.extra = lv.extra || null;
   G.screen = 'play';
   setPlayUI(true);
   resetBoard();
+  if (G.session !== 'fast') maxChainEnSegonPla();
   if (opts && opts.flash){ G.flash = 1.5; G.flashTxt = opts.flash; G.flashSub = opts.flashSub || ''; }
   show(null);
 }
@@ -1454,7 +1822,7 @@ function buttons(){
 
 /* ── nivells ─────────────────────────────── */
 function playLevel(n){
-  G.session = 'levels'; G.level = n; G.lives = 3;
+  G.session = 'levels'; G.level = n; G.lives = 3; G.attempts = 0;
   startLoad('preparant el nivell…', () => {
     const lv = cacheLevel(n);
     if (!lv){ goHub(); return; }
@@ -1515,7 +1883,7 @@ function endFast(){
 function run(){
   if (G.mode !== 'build') return;
   if (G.kind !== 'shot' && !G.pairs.length) return;
-  G.mode = 'run'; G.steps = 0; G.sel = -1; G.drag = null;
+  G.mode = 'run'; G.steps = 0; G.sel = -1; G.drag = null; G.attempts++;
   buttons();
   blip(520, .09, 'square', .07);
 }
@@ -1528,6 +1896,10 @@ function finish(won){
     if (won){
       G.round++;
       pay(4);
+      punts(8);
+      missio('rapid', 1);
+      if (G.kind === 'shot') missio('tret', 1);
+      if (G.chain) missio('cadena', G.chain);
       blip(660, .1, 'sine', .1);
       setTimeout(() => blip(950, .14, 'sine', .1), 90);
       setTimeout(() => { if (G.screen === 'play') nextFast(); }, 620);
@@ -1545,15 +1917,30 @@ function finish(won){
     el('endStreak').classList.add('hide');
     el('endCoins').classList.add('hide');
     if (won){
-      let guany = 0;
+      let guany = 0, pts = 0, avis = '';
       if (G.session === 'levels'){
-        if (G.level >= S.lvl){ S.lvl = G.level + 1; guany = 12; }
-        else guany = 3;
-        if (G.pairs.length < G.budget) guany += 6;
-        el('endTitle').textContent = 'NET';
-        el('endSub').textContent = G.pairs.length < G.budget
-          ? 'I encara t\'ha sobrat una corda.' : 'Cadena de ' + Math.max(G.chain, 2) + '.';
+        const nou = G.level >= S.lvl;
+        if (nou){ S.lvl = G.level + 1; guany = 12; pts = 20; }
+        else { guany = 3; pts = 5; }
+
+        // estrelles: passar-lo · al primer intent · amb la cadena més llarga possible
+        const primer = G.attempts <= 1;
+        const sostre = assegurarMaxChain();
+        const gran = sostre > 0 && G.chain >= sostre;
+        const quantes = 1 + (primer ? 1 : 0) + (gran ? 1 : 0);
+        const noves = donaEstrelles(G.level, quantes);
+        guany += noves * 5;
+        pts += noves * 10;
+
+        el('endTitle').textContent = quantes === 3 ? 'PERFECTE' : 'NET';
+        el('endSub').textContent =
+          (quantes === 3 ? 'Les tres estrelles.'
+           : !gran && sostre ? 'Cadena de ' + G.chain + '. La millor és ' + sostre + '.'
+           : primer ? 'Al primer intent.' : 'Cadena de ' + Math.max(G.chain, 2) + '.') +
+          (noves ? '  +' + noves + ' ★' : '');
         el('bNext').textContent = 'SEGÜENT';
+        if (nou) missio('nivells', 1);
+        missio('cadena', G.chain);
       } else {
         const t = todayKey();
         if (S.daily.key !== t){
@@ -1561,7 +1948,10 @@ function finish(won){
           S.daily.streak = (S.daily.last && dayNumber(S.daily.last) === ahir) ? S.daily.streak + 1 : 1;
           S.daily.key = t; S.daily.last = t;
           guany = 50 + Math.min(S.daily.streak, 7) * 10;
+          pts = 60;
         }
+        missio('dia', 1);
+        missio('cadena', G.chain);
         el('endTitle').textContent = 'REPTE FET';
         el('endSub').textContent = S.daily.streak > 1
           ? S.daily.streak + ' dies seguits. Torna demà.' : 'Torna demà per continuar la ratxa.';
@@ -1573,19 +1963,26 @@ function finish(won){
         }
         box.classList.remove('hide');
       }
-      el('endTitle').style.color = SK.accent;
+      el('endTitle').style.color = BL.cols.normal[0];
+      punts(pts);
       if (guany > 0){
         pay(guany);
-        el('endCoinsN').textContent = '+' + guany;
+        el('endCoinsN').textContent = '+' + guany + (pts ? '   ·   +' + pts + ' punts' : '');
         el('endCoins').classList.remove('hide');
       }
+      const fets = S.missio.fet.filter(Boolean).length;
+      if (avis || fets) el('endSub').textContent += fets === 3 ? ' Missions del dia completes!' : '';
       save();
       blip(660, .12, 'sine', .12);
       setTimeout(() => blip(880, .18, 'sine', .12), 110);
     } else {
+      let queden = 0;
+      for (const b of G.bodies) if (b.alive && !b.stat && !b.shot) queden++;
       el('endTitle').textContent = G.kind === 'save' ? 'HAS TOCAT LA VERDA' : 'N\'HA QUEDAT';
       el('endTitle').style.color = '#ff6a8f';
-      el('endSub').textContent = 'Prova una altra combinació.';
+      el('endSub').textContent = G.kind === 'save' ? 'Aquella s\'havia de salvar.'
+        : queden === 1 ? 'Només una. Ho tenies.'
+        : 'En queden ' + queden + '. Prova una altra combinació.';
       el('bNext').textContent = 'UN ALTRE COP';
       blip(150, .3, 'sawtooth', .07);
     }
@@ -1759,7 +2156,12 @@ el('bReset').onclick = () => {
   if (G.session === 'fast'){ goHub(); return; }
   show(null); resetBoard();
 };
-el('miLevels').onclick = () => { audio(); playLevel(S.lvl); };
+el('miLevels').onclick = () => { audio(); renderMap(); show('scMap'); };
+el('miLliga').onclick  = () => { audio(); renderLliga(); show('scLliga'); };
+el('miMiss').onclick   = () => { audio(); renderMiss(); show('scMiss'); };
+el('bMapBack').onclick   = () => { audio(); goHub(); };
+el('bLligaBack').onclick = () => { audio(); goHub(); };
+el('bMissBack').onclick  = () => { audio(); goHub(); };
 el('miDaily').onclick  = () => { audio(); playDaily(); };
 el('miFast').onclick   = () => { audio(); playFast(); };
 el('miSkins').onclick  = () => { audio(); renderSkins(); show('scSkins'); };

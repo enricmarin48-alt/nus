@@ -353,6 +353,31 @@ await step('còpia de seguretat: es descarrega i es pot restaurar', async () => 
   await page.waitForSelector('#gymtable >> text=Laia');
 });
 
+await step('una còpia trucada no executa codi (noms, dates, ids i logo)', async () => {
+  const evil = {
+    app: 'notesgim',
+    settings: { org: '<img src=x onerror="window.__xss=1">', logoL: 'x" onerror="window.__xss=2', categories: ['Aleví'], levels: ['A'] },
+    clubs: [{ id: '"><img src=x onerror=window.__xss=3>', name: '<b onmouseover=window.__xss=4>Club</b>' }],
+    gymnasts: [{ id: 'g"><svg onload=window.__xss=5>', name: '<img src=x onerror=window.__xss=6>', surname: 'X', clubId: '"><img src=x onerror=window.__xss=3>', category: 'Aleví', level: 'A' }],
+    teams: [],
+    competitions: [{ id: 'c1" onclick="window.__xss=7', name: 'Mala', date: '<img src=x onerror=window.__xss=8>', season: '<i>', entries: [
+      { id: 'e"><img src=x onerror=window.__xss=9>', gymnastId: 'g"><svg onload=window.__xss=5>', category: 'Aleví', level: 'A', bib: '<x>', scores: { 'salt"><img src=x onerror=window.__xss=10>': [{ v: 8 }] } }], teams: [] }],
+    meta: { lastBackup: '<img src=x onerror=window.__xss=11>', updated: 5 },
+  };
+  const file = path.join(out, 'trucada.json');
+  writeFileSync(file, JSON.stringify(evil));
+  await page.goto(url + '#/configuracio');
+  await page.evaluate(() => { window.showOpenFilePicker = undefined; });
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button[data-act=restore]')]);
+  await chooser.setFiles(file);
+  await page.click('#confirm button[value=ok]');
+  for (const v of ['#/competicions', '#/gimnastes', '#/entitats', '#/configuracio', '#/ranquing']) { await page.goto(url + v); await page.waitForTimeout(150); }
+  await page.goto(url + '#/competicions');
+  await page.locator('.comp-card a.btn').first().click();
+  for (const t of ['inscripcions', 'notes', 'classificacions', 'configuracio']) { await page.click(`.tabs a[href$="/${t}"]`); await page.waitForTimeout(150); }
+  assert.equal(await page.evaluate(() => window.__xss), undefined);
+});
+
 await shot('final');
 await browser.close();
 if (errors.length) { console.error('\nErrors a la consola:\n' + errors.join('\n')); process.exit(1); }

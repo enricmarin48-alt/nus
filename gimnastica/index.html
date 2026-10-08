@@ -268,7 +268,8 @@
    (tests/engine.test.mjs) extreuen aquest bloc i el proven sol. */
 const Engine = (() => {
   const M = 1000;
-  const coll = (a, b) => String(a ?? '').localeCompare(String(b ?? ''), 'ca', { sensitivity: 'base', numeric: true });
+  const COLLATOR = new Intl.Collator('ca', { sensitivity: 'base', numeric: true });
+  const coll = (a, b) => COLLATOR.compare(String(a ?? ''), String(b ?? ''));
   const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
   // valor guardat (número en unitats) → mil·lèsimes enteres, o null
@@ -600,7 +601,7 @@ const { coll, norm, fmt } = Engine;
 const range = n => Array.from({ length: n }, (_, i) => i);
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : (s || ''); };
+const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof s === 'string' ? s : ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : h(s || ''); };
 const ordinal = n => ({ 1: '1r', 2: '2n', 3: '3r', 4: '4t' }[n] || n + 'è');
 // per a capçaleres en majúscules: «1r» i no «1R»
 const ordHtml = n => { const o = ordinal(n); return `${o.match(/^\d+/)[0]}<span class="lc">${o.replace(/^\d+/, '')}</span>`; };
@@ -684,14 +685,55 @@ function defaultDb() {
       rev: 3,
     },
     clubs: [], gymnasts: [], teams: [], competitions: [],
-    meta: { created: new Date().toISOString(), updated: null, lastBackup: null },
+    meta: { created: new Date().toISOString(), updated: null, lastBackup: null, dbId: uid() },
   };
 }
 
 // accepta dades velles o importades i hi posa tot el que falti
+// dades que venen d'un fitxer (còpia, fitxer vinculat, servidor): tot el que va a parar a l'HTML sense
+// passar per h() ha de ser segur. Els identificadors han de ser simples (si no, se'n posen de nous, igual
+// a tot arreu), les dates AAAA-MM-DD, els logos imatges incrustades, i fora els elements trencats.
+const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+function sanitize(d) {
+  const ids = new Map();
+  const fix = v => (v === null || v === undefined || v === '') ? v : (typeof v === 'string' && SAFE_ID.test(v)) ? v : (ids.has(String(v)) ? ids.get(String(v)) : (ids.set(String(v), 'x' + uid()), ids.get(String(v))));
+  const objs = a => Array.isArray(a) ? a.filter(x => x && typeof x === 'object' && !Array.isArray(x)) : [];
+  const str = v => typeof v === 'string' ? v : (v === null || v === undefined) ? '' : String(v);
+  const date = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
+  const iso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/.test(v) ? v : null;
+  d.clubs = objs(d.clubs); d.gymnasts = objs(d.gymnasts); d.teams = objs(d.teams); d.competitions = objs(d.competitions);
+  for (const c of d.clubs) { c.id = fix(c.id) || uid(); c.name = str(c.name); }
+  for (const g of d.gymnasts) { g.id = fix(g.id) || uid(); g.clubId = fix(g.clubId) || null; for (const k of ['name', 'surname', 'category', 'level', 'notes']) g[k] = str(g[k]); g.birthYear = /^\d{4}$/.test(String(g.birthYear)) ? String(g.birthYear) : ''; }
+  for (const t of d.teams) { t.id = fix(t.id) || uid(); t.clubId = fix(t.clubId) || null; t.memberIds = (Array.isArray(t.memberIds) ? t.memberIds : []).map(fix).filter(Boolean); for (const k of ['name', 'category', 'level']) t[k] = str(t[k]); }
+  for (const c of d.competitions) {
+    c.id = fix(c.id) || uid(); c.date = date(c.date); for (const k of ['name', 'place', 'season']) c[k] = str(c[k]);
+    c.apparatus = objs(c.apparatus); for (const a of c.apparatus) { a.id = fix(a.id) || uid(); a.name = str(a.name); if (!ICONS[a.icon]) a.icon = 'altre'; }
+    c.teams = objs(c.teams); for (const t of c.teams) { t.id = fix(t.id) || uid(); t.clubId = fix(t.clubId) || null; t.sourceTeamId = fix(t.sourceTeamId) || null; for (const k of ['name', 'category', 'level']) t[k] = str(t[k]); }
+    c.entries = objs(c.entries);
+    for (const e of c.entries) {
+      e.id = fix(e.id) || uid(); e.gymnastId = fix(e.gymnastId); e.clubId = fix(e.clubId) || null; e.teamId = fix(e.teamId) || null;
+      for (const k of ['category', 'level']) e[k] = str(e[k]);
+      e.bib = Number.isFinite(+e.bib) && e.bib !== '' && e.bib !== null ? Math.round(+e.bib) : null;
+      if (e.status !== 'np') e.status = '';
+      const sc = {};
+      if (e.scores && typeof e.scores === 'object') for (const [k, list] of Object.entries(e.scores)) sc[fix(k)] = objs(list);
+      e.scores = sc;
+    }
+  }
+  const s = d.settings || {};
+  for (const k of ['logoL', 'logoR']) if (s[k] && !/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(s[k])) s[k] = null;
+  for (const k of ['org', 'line2', 'compName', 'place']) if (k in s) s[k] = str(s[k]);
+  if (Array.isArray(s.levels)) s.levels = s.levels.map(str).filter(Boolean);
+  const da = s.compDefaults && s.compDefaults.apparatus;
+  if (Array.isArray(da)) { s.compDefaults.apparatus = objs(da); for (const a of s.compDefaults.apparatus) { a.id = fix(a.id) || uid(); a.name = str(a.name); if (!ICONS[a.icon]) a.icon = 'altre'; } }
+  const m = d.meta && typeof d.meta === 'object' ? d.meta : {};
+  d.meta = { created: iso(m.created), updated: iso(m.updated), lastBackup: iso(m.lastBackup), dbId: typeof m.dbId === 'string' && SAFE_ID.test(m.dbId) ? m.dbId : uid() };
+  return d;
+}
 function migrate(d) {
   const base = defaultDb();
-  if (!d || typeof d !== 'object') return base;
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return base;
+  sanitize(d);
   d.app = 'notesgim'; d.version = 1;
   d.settings = Object.assign({}, base.settings, d.settings || {});
   d.settings.compDefaults = Object.assign(COMP_DEFAULTS(), d.settings.compDefaults || {});
@@ -709,6 +751,7 @@ function migrate(d) {
   }
   for (const k of ['clubs', 'gymnasts', 'teams', 'competitions']) if (!Array.isArray(d[k])) d[k] = [];
   d.meta = Object.assign({}, base.meta, d.meta || {});
+  if (!d.meta.dbId) d.meta.dbId = uid();
   for (const g of d.gymnasts) g.gender = Engine.genderOf(g);
   for (const t of d.teams) { if (!Array.isArray(t.memberIds)) t.memberIds = []; t.gender = Engine.genderOf(t); }
   for (const c of d.competitions) normalizeComp(c, d.settings.compDefaults);
@@ -740,6 +783,7 @@ function loadDb() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     db = migrate(raw ? JSON.parse(raw) : null);
+    lastRaw = raw;
   } catch (e) {
     console.error(e);
     db = defaultDb();
@@ -754,7 +798,9 @@ function commit() {
 }
 function flush() {
   clearTimeout(saveTimer); saveTimer = null;
-  try { localStorage.setItem(LS_KEY, JSON.stringify(db)); saveError = false; }
+  // si una altra finestra ha desat entretant, no se'n perden les notes: s'hi afegeixen les més noves
+  try { const raw = localStorage.getItem(LS_KEY); if (lastRaw !== null && raw && raw !== lastRaw) { Engine.mergeScores(db, JSON.parse(raw)); remotePending = false; } } catch (_) {}
+  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; saveError = false; }
   catch (e) { console.error(e); saveError = true; toast('No s’ha pogut desar al navegador. Descarrega una còpia de seguretat ara!', 'bad'); }
   if (fileHandle) queueFileWrite();
   if (server.on && server.role === 'admin') serverPush();
@@ -826,7 +872,7 @@ const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la 
 function applyRemote(remoteDb) {
   const changed = Engine.mergeScores(db, remoteDb);
   if (!changed.length) return;
-  try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (_) {}
+  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
   const c = curComp();
   if (ui.view === 'competicio' && c && ui.tab === 'notes' && $('#scoregrid')) {
     for (const ch of changed) {
@@ -865,19 +911,31 @@ function commitTyping() {
 }
 const leaving = () => { commitTyping(); if (saveTimer) flush(); };
 addEventListener('pagehide', leaving);
-addEventListener('beforeunload', leaving);
+addEventListener('beforeunload', e => {
+  leaving();
+  // si no s'ha pogut desar, avisa abans de tancar (es perdria el que hi ha a la pantalla)
+  if (saveError || fileState === 'err') { e.preventDefault(); e.returnValue = ''; }
+});
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') leaving(); });
 // una altra finestra ha desat: carreguem el que hi ha de nou, però mai a sobre d'una nota a mig escriure
 addEventListener('storage', e => {
   if (e.key !== LS_KEY || !e.newValue) return;
   const el = document.activeElement;
   const typing = el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value;
-  if (saveTimer || typing || $('#dlg').open || $('#confirm').open) { otherWindowWarning(); return; }
-  try { db = migrate(JSON.parse(e.newValue)); render(); toast('Dades actualitzades des d’una altra finestra.'); } catch (_) {}
+  if (saveTimer || typing || $('#dlg').open || $('#confirm').open) { remotePending = true; otherWindowWarning(); return; }
+  try { db = migrate(JSON.parse(e.newValue)); lastRaw = e.newValue; render(); toast('Dades actualitzades des d’una altra finestra.'); } catch (_) {}
 });
+// el que una altra finestra ha desat mentre aquesta escrivia: es carrega al primer clic (abans de cap acció)
+let remotePending = false, lastRaw = null;
+document.addEventListener('click', () => {
+  if (!remotePending || saveTimer) return;
+  remotePending = false;
+  try { const raw = localStorage.getItem(LS_KEY); if (raw && raw !== lastRaw) { db = migrate(JSON.parse(raw)); lastRaw = raw; render(); } } catch (_) {}
+}, true);
 // avís si l'app està oberta en més d'una finestra (cada una pot trepitjar el que desa l'altra)
 let others = 0;
-const bc = typeof BroadcastChannel === 'function' ? new BroadcastChannel('notesgim') : null;
+let bc = null;
+try { if (typeof BroadcastChannel === 'function') bc = new BroadcastChannel('notesgim'); } catch (_) {}
 if (bc) {
   bc.onmessage = ev => {
     if (ev.data === 'hola') { bc.postMessage('soc-aqui'); otherWindowWarning(); }
@@ -912,11 +970,20 @@ function queueFileWrite() {
   fileDirty = true;
   fileQueue = fileQueue.then(writeFileNow).catch(() => {});
 }
+let fileChecked = false;
 async function writeFileNow() {
   if (!fileHandle || !fileDirty) return;
   try {
     const p = await fileHandle.queryPermission({ mode: 'readwrite' });
     if (p !== 'granted') { fileState = 'perm'; renderSaveState(false); return; }
+    // primer cop d'aquesta sessió: si el fitxer l'ha canviat algú altre (un altre ordinador o navegador), no s'hi escriu sense preguntar
+    if (!fileChecked) {
+      const inFile = await readHandle(fileHandle);
+      const theirs = inFile && (inFile.gymnasts.length || inFile.competitions.length);
+      const other = theirs && ((inFile.meta || {}).dbId !== db.meta.dbId || Date.parse((inFile.meta || {}).updated || 0) > Date.parse(db.meta.updated || 0));
+      if (other) { fileState = 'conflict'; renderSaveState(false); return; }
+      fileChecked = true;
+    }
     fileDirty = false;
     const w = await fileHandle.createWritable();
     await w.write(JSON.stringify(db, null, 1));
@@ -932,7 +999,7 @@ async function readHandle(handle) {
   catch (_) { return null; }
 }
 async function attachHandle(handle) {
-  fileHandle = handle; await idbSet('fileHandle', handle);
+  fileHandle = handle; fileChecked = true; await idbSet('fileHandle', handle);
   fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue;
   toast('A partir d’ara cada canvi també es desa a «' + handle.name + '».', 'ok');
   render();
@@ -950,7 +1017,8 @@ async function linkFile(mode) {
     if (inFile && (inFile.gymnasts.length || inFile.competitions.length)) {
       const load = !hasData() || await confirmBox(`El fitxer «${h(handle.name)}» ja té dades (${info(inFile)}).<br><br>Vols <b>fer servir les dades del fitxer</b>? Les d’aquest navegador (${info(db)}) se substituiran (pots desfer-ho just després).<br><br>Si cancel·les, no es toca res.`, { ok: 'Fes servir les del fitxer' });
       if (!load) return;
-      withUndo('Dades carregades de «' + handle.name + '».', () => { db = migrate(inFile); });
+      withUndo('Dades carregades de «' + handle.name + '».', () => { db = migrate(inFile); },
+        { beforeRestore: () => { fileHandle = null; fileState = 'none'; idbDel('fileHandle'); toast('El fitxer no s’ha tocat i s’ha desvinculat.'); } });
     }
     await attachHandle(handle);
   } catch (e) { if (e.name !== 'AbortError') toast('No s’ha pogut vincular el fitxer: ' + e.message, 'bad'); }
@@ -963,7 +1031,21 @@ async function regrantFile() {
   } catch (e) { toast('No s’ha pogut accedir al fitxer.', 'bad'); }
   renderSaveState(false);
 }
+// el fitxer vinculat té dades més noves o d'un altre lloc: tria què fer
+async function resolveFileConflict() {
+  const inFile = fileHandle && await readHandle(fileHandle);
+  if (!inFile) { fileChecked = true; fileState = 'ok'; queueFileWrite(); return; }
+  const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
+  const pick = await choiceBox(`El fitxer <b>${h(fileHandle.name)}</b> té dades que no són les d’aquest navegador (potser s’hi ha treballat des d’un altre ordinador).<br><br>
+    Fitxer: ${info(inFile)}${inFile.meta && inFile.meta.updated ? ` · canviat el ${h(new Date(inFile.meta.updated).toLocaleString('ca'))}` : ''}<br>Aquest navegador: ${info(db)}${db.meta.updated ? ` · canviat el ${h(new Date(db.meta.updated).toLocaleString('ca'))}` : ''}`,
+    [{ value: 'unlink', label: 'Desvincula el fitxer' }, { value: 'mine', label: 'Escriu-hi les d’aquest navegador', cls: 'danger' }, { value: 'file', label: 'Fes servir les del fitxer', cls: 'primary' }]);
+  if (pick === 'file') { db = migrate(inFile); fileChecked = true; fileState = 'ok'; flush(); render(); toast('Dades carregades del fitxer.', 'ok'); }
+  else if (pick === 'mine') { fileChecked = true; fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue; toast('Fitxer actualitzat amb les dades d’aquest navegador.', 'ok'); }
+  else if (pick === 'unlink') await unlinkFile();
+  renderSaveState(false);
+}
 async function unlinkFile() {
+  fileChecked = false;
   fileHandle = null; fileState = 'none'; await idbDel('fileHandle'); render();
 }
 function downloadBlob(blob, filename) {
@@ -990,7 +1072,9 @@ function restoreFromText(text, sourceName) {
   confirmBox(`Vols substituir totes les dades actuals per les de «${h(sourceName)}» (${info})?<br><br>Les dades que tens ara es perdran (pots desfer-ho just després).`,
     { ok: 'Substitueix', danger: true }).then(ok => {
     if (!ok) return;
-    withUndo('Dades restaurades de «' + sourceName + '».', () => { db = migrate(data); });
+    let fresh;
+    try { fresh = migrate(data); } catch (e) { console.error(e); toast('Aquest fitxer està malmès i no es pot restaurar.', 'bad'); return; }
+    withUndo('Dades restaurades de «' + sourceName + '».', () => { db = fresh; });
   });
 }
 function restorePick() {
@@ -1110,15 +1194,18 @@ function choiceBox(msg, buttons) {
     d.querySelector('button[value=""]').focus();
   });
 }
-function withUndo(label, fn) {
+function withUndo(label, fn, { beforeRestore } = {}) {
   const snap = JSON.stringify(db);
   fn();
-  commit(); render();
+  commit();
   const stamp = db.meta.updated;
-  toast(label, 'ok', { action: 'Desfés', onAction: () => {
-    if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
-    db = migrate(JSON.parse(snap)); commit(); render(); toast('Desfet.');
-  } });
+  try { render(); } finally {
+    toast(label, 'ok', { action: 'Desfés', onAction: () => {
+      if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
+      if (beforeRestore) beforeRestore();
+      db = migrate(JSON.parse(snap)); commit(); render(); toast('Desfet.');
+    } });
+  }
 }
 
 /* ═══════════════════════════════════════════ render general */
@@ -1159,7 +1246,8 @@ function renderSaveState(busy) {
   else parts.push(`<span title="Les dades es desen automàticament en aquest navegador"><span class="dot ${busy ? 'busy' : ''}"></span>${busy ? 'Desant…' : 'Desat'}</span>`);
   const fileOk = fileHandle && fileState === 'ok';
   if (fileHandle) {
-    if (fileState === 'perm') parts.push(`<button class="alert" data-act="regrantFile" title="El navegador demana permís per tornar a escriure al fitxer. Fins llavors només es desa al navegador.">⚠ Clica per tornar a desar a ${h(fileHandle.name)}</button>`);
+    if (fileState === 'conflict') parts.push(`<button class="alert" data-act="fileConflict" title="No s'hi escriu fins que triïs què fer">⚠ ${h(fileHandle.name)} té altres dades: tria què fer</button>`);
+    else if (fileState === 'perm') parts.push(`<button class="alert" data-act="regrantFile" title="El navegador demana permís per tornar a escriure al fitxer. Fins llavors només es desa al navegador.">⚠ Clica per tornar a desar a ${h(fileHandle.name)}</button>`);
     else if (fileState === 'err') parts.push(`<button class="alert" data-act="regrantFile">⚠ Error desant a ${h(fileHandle.name)}</button>`);
     else parts.push(`<span title="També es desa en aquest fitxer">+ ${h(fileHandle.name)}</span>`);
   }
@@ -1796,17 +1884,30 @@ function guessField(header) {
   if (/^(equip|equipo|team)/.test(x)) return 'team';
   return '';
 }
+// parteix en files respectant les cometes: una cel·la d'Excel amb salt de línia arriba entre cometes
+function quotedLines(text) {
+  const out = []; let cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') { if (q && text[i + 1] === '"') { cur += '""'; i++; continue; } q = !q; cur += ch; continue; }
+    if (ch === '\n' && !q) { out.push(cur); cur = ''; continue; }
+    cur += (ch === '\n') ? ' ' : ch;
+  }
+  out.push(cur);
+  return out;
+}
+const unquote = s => { const t = s.trim(); return /^".*"$/s.test(t) ? t.slice(1, -1).replace(/""/g, '"').trim() : t; };
 function splitRows(text) {
-  const lines = String(text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
+  const lines = quotedLines(String(text).replace(/\r\n?/g, '\n')).filter(l => l.trim() !== '');
   if (!lines.length) return [];
   // amb tabuladors (enganxat d'Excel) o punt i coma, es parteix per aquí; amb comes només si totes les files en tenen
   // el mateix nombre (si no, és una sola columna del tipus «COGNOMS, NOM»)
   const anyTab = lines.some(l => l.includes('\t')), anySemi = lines.some(l => l.includes(';'));
   const commas = new Set(lines.map(l => (l.match(/,/g) || []).length));
   const delim = anyTab ? '\t' : anySemi ? ';' : (commas.size === 1 && !commas.has(0) && guessField(lines[0]) !== 'full' && lines.length > 1 && !lines.slice(1).every(l => /^[^,]+,\s*[^,]+$/.test(l))) ? ',' : null;
-  if (!delim) return lines.map(l => [l.trim()]);
+  if (!delim) return lines.map(l => [unquote(l)]);
   return lines.map(l => {
-    if (delim === '\t') return l.split('\t').map(s => s.trim());
+    if (delim === '\t') return l.split('\t').map(unquote);
     const out = []; let cur = '', q = false;
     for (let i = 0; i < l.length; i++) {
       const ch = l[i];
@@ -1832,6 +1933,7 @@ function importResolve(imp) {
   const col = f => imp.map.indexOf(f);
   const get = (r, f) => { const i = col(f); return i >= 0 ? String(r[i] ?? '').trim() : ''; };
   const seen = new Set();
+  const known = new Set(db.gymnasts.map(g => norm(gymName(g)) + '|' + norm(clubName(g.clubId))));
   return data.map(r => {
     let name = get(r, 'name'), surname = get(r, 'surname');
     const full = get(r, 'full');
@@ -1851,7 +1953,7 @@ function importResolve(imp) {
     let status = 'new';
     if (!name) status = 'noname';
     else if (seen.has(key)) status = 'dupfile';
-    else if (db.gymnasts.some(g => norm(gymName(g)) === norm(name + ' ' + surname) && norm(clubName(g.clubId)) === norm(club))) status = 'exists';
+    else if (known.has(norm(name + ' ' + surname) + '|' + norm(club))) status = 'exists';
     seen.add(key);
     return { name, surname, club, gender, category, level, birthYear: by, team, status,
       newCat: category && !catNames().includes(category), newLevel: level && !S().levels.includes(level) };
@@ -2116,7 +2218,7 @@ async function tutSend() {
   } finally { tut.sending = false; tutStatusBar(); }
 }
 function tutMark(op, st) {
-  const el = $(`[data-st="${op.entryId}:${op.appId}:${op.i}"]`);
+  const el = $$('[data-st]').find(x => x.dataset.st === `${op.entryId}:${op.appId}:${op.i}`);
   if (el) { el.textContent = st === 'ok' ? '✓' : st === 'err' ? '✕' : '…'; el.className = 'st ' + st; }
 }
 function tutStatusBar() {
@@ -2161,16 +2263,16 @@ views.tutor = () => {
       const at = ((e.scores || {})[a.id] || [])[i] || {};
       const m = Engine.toM(at.v);
       return `<td class="num"><input type="text" inputmode="decimal" autocomplete="off" class="sc" value="${m === null ? '' : fmt(m)}" data-last="${m === null ? '' : fmt(m)}"
-        data-chg="tscore" data-e="${e.id}" data-a="${a.id}" data-i="${i}" data-f="v" data-col="${a.id}:${i}:v" ${np ? 'disabled' : ''} aria-label="${h(a.name)} ${h(e.name)}">
-        <span class="st" data-st="${e.id}:${a.id}:${i}"></span></td>`;
+        data-chg="tscore" data-e="${h(e.id)}" data-a="${h(a.id)}" data-i="${i}" data-f="v" data-col="${h(a.id)}:${i}:v" ${np ? 'disabled' : ''} aria-label="${h(a.name)} ${h(e.name)}">
+        <span class="st" data-st="${h(e.id)}:${h(a.id)}:${i}"></span></td>`;
     }).join('');
     return `<tr class="${np ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td>${h(e.name)}${np ? ' <span class="badge">NP</span>' : ''}<br><span class="small muted">${h(e.club)}</span></td>${cells}</tr>`;
   }).join('') : '';
   return `<section>
     <div class="page-head"><h1 style="font-size:19px">${h(c.name)}</h1><div class="actions"><span id="tutstatus"></span><button class="btn sm" data-act="tutLogout">Surt</button></div></div>
-    ${tut.comps.length > 1 ? `<div class="pills">${tut.comps.map(x => `<button class="pill ${x.id === c.id ? 'on' : ''}" data-act="tutComp" data-id="${x.id}">${h(x.name)}</button>`).join('')}</div>` : ''}
+    ${tut.comps.length > 1 ? `<div class="pills">${tut.comps.map(x => `<button class="pill ${x.id === c.id ? 'on' : ''}" data-act="tutComp" data-id="${h(x.id)}">${h(x.name)}</button>`).join('')}</div>` : ''}
     <div class="pills">${groups.map(x => `<button class="pill ${x.key === tut.group ? 'on' : ''}" data-act="tutGroup" data-g="${h(x.key)}">${h(groupLabel(x))}</button>`).join('')}</div>
-    <div class="pills">${apps.map(x => `<button class="pill ${x.id === tut.app ? 'on' : ''}" data-act="tutApp" data-a="${x.id}">${icon(x)} ${h(x.name)}</button>`).join('')}</div>
+    <div class="pills">${apps.map(x => `<button class="pill ${x.id === tut.app ? 'on' : ''}" data-act="tutApp" data-a="${h(x.id)}">${icon(x)} ${h(x.name)}</button>`).join('')}</div>
     <p class="small muted">Escriu la nota final i prem <b>Intro</b> (o «Següent» al mòbil). S’envia sola a la taula.${n > 1 ? ' Hi ha 2 salts: compta el millor.' : ''}</p>
     ${a ? `<div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead><tr><th class="num">Dors.</th><th>Gimnasta</th>${range(n).map(i => `<th class="num">${n > 1 ? ordHtml(i + 1) + ' salt' : icon(a) + ' ' + h(a.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">No hi ha cap aparell per a aquest grup.</div>'}
   </section>`;
@@ -2396,6 +2498,7 @@ const actions = {
         .then(async ([hd]) => restoreFromText(await (await hd.getFile()).text(), hd.name)).catch(e => { if (e.name !== 'AbortError') restorePick(); });
     } else restorePick();
   },
+  fileConflict: () => resolveFileConflict(),
   linkFile: () => linkFile('new'), openLinkFile: () => linkFile('open'), unlinkFile: () => unlinkFile(), regrantFile: () => regrantFile(),
   wipe: async () => {
     const ok = await confirmBox(`Segur que vols <b>esborrar totes les dades</b> (gimnastes, equips, competicions i notes)?<br>Abans es descarregarà una còpia de seguretat${fileHandle ? ` i el fitxer «${h(fileHandle.name)}» es desvincularà (no es tocarà)` : ''}.`, { ok: 'Esborra-ho tot', danger: true, typed: 'ESBORRA' });
@@ -2965,6 +3068,8 @@ const changes = {
         el.value = fmt(Engine.toM(cfg[k])); return;
       }
       v = n;
+    } else if (el.type === 'number' && (el.value.trim() === '' || !Number.isFinite(+el.value))) {
+      toast('Escriu un número.', 'bad'); el.value = cfg[k]; return;
     } else if (el.type === 'number') {
       const n = el.dataset.dec ? Math.round((+v || 0) * 1000) / 1000 : Math.round(+v || 0);
       v = Math.max(+el.min || 0, Math.min(+el.max || 100, n));

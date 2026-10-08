@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func parse(t *testing.T, s string) map[string]any {
@@ -195,5 +196,115 @@ func TestPutConflictReplaceAndBackup(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(files[0]); string(b) != sample {
 		t.Fatal("la còpia no és el fitxer d'abans")
+	}
+}
+
+// si no es pot escriure al fitxer (disc ple, USB fora…), la finestra ho sap (500 amb el dataRev nou, no un
+// conflicte) i el programa ho torna a provar sol fins que pot
+func TestPutSaveFailureKeepsRevAndRetries(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	if err := os.Mkdir(path+".tmp", 0o755); err != nil { // no s'hi podrà escriure
+		t.Fatal(err)
+	}
+	db := parse(t, sample)
+	obj(arr(db["gymnasts"])[0])["name"] = "Anna Nova"
+	b, _ := json.Marshal(map[string]any{"db": db, "base": s.dataRev})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j struct {
+		Error   string `json:"error"`
+		DataRev int64  `json:"dataRev"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&j)
+	r.Body.Close()
+	if r.StatusCode != 500 || j.DataRev != s.dataRev || j.Error == "" {
+		t.Fatalf("vull 500 amb el dataRev nou (%d): %d %+v", s.dataRev, r.StatusCode, j)
+	}
+	if !s.dirty || s.saveErr == "" {
+		t.Fatal("hauria de quedar pendent de desar")
+	}
+	// el mateix canvi un altre cop, amb el dataRev que ha rebut: no és cap conflicte
+	b, _ = json.Marshal(map[string]any{"db": db, "base": j.DataRev})
+	req, _ = http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+	if r, err = http.DefaultClient.Do(req); err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode == 409 {
+		t.Fatal("tornar-ho a enviar amb el dataRev rebut no pot ser un conflicte")
+	}
+	// el disc torna a funcionar: el reintent (el que fa el programa cada pocs segons) ho desa
+	_ = os.Remove(path + ".tmp")
+	s.mu.Lock()
+	err = s.saveLocked()
+	s.mu.Unlock()
+	if err != nil || s.dirty || s.saveErr != "" {
+		t.Fatalf("reintent: %v dirty=%v", err, s.dirty)
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Contains(got, []byte("Anna Nova")) {
+		t.Fatal("el fitxer no té el canvi")
+	}
+}
+
+// fitxer de dades malmès (p. ex. un tall de llum): es guarda apart i s'obre la còpia de seguretat més nova
+func TestCorruptDataFileOpensNewestBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	bak := filepath.Join(dir, "copies-notesgim")
+	if err := os.MkdirAll(bak, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(bak, "notesgim-2026-10-01_1000.json"), []byte(`{"gymnasts":[{"id":"old"}]}`), 0o644)
+	newest := filepath.Join(bak, "notesgim-2026-10-02_1000.json")
+	_ = os.WriteFile(newest, []byte(sample), 0o644)
+	_ = os.WriteFile(filepath.Join(bak, "notesgim-2026-10-03_1000.json"), []byte("{trencat"), 0o644) // il·legible: se salta
+	old := time.Now().Add(-2 * time.Hour)
+	_ = os.Chtimes(filepath.Join(bak, "notesgim-2026-10-01_1000.json"), old, old)
+	_ = os.Chtimes(newest, old.Add(time.Hour), old.Add(time.Hour))
+	if err := os.WriteFile(path, make([]byte, 64), 0o644); err != nil { // ple de zeros
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.recovered == "" || len(arr(s.db["gymnasts"])) != 2 {
+		t.Fatalf("hauria d'haver obert la còpia més nova: %q %v", s.recovered, s.db["gymnasts"])
+	}
+	bad, _ := filepath.Glob(path + ".malmes-*")
+	if len(bad) != 1 {
+		t.Fatalf("el fitxer malmès s'havia de guardar apart: %v", bad)
+	}
+	// i es desa al seu lloc
+	s.mu.Lock()
+	err = s.saveLocked()
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newStore(path); err != nil {
+		t.Fatal(err)
+	}
+	// sense cap còpia: s'obre buit (i ho diu)
+	dir2 := t.TempDir()
+	p2 := filepath.Join(dir2, "notesgim-dades.json")
+	_ = os.WriteFile(p2, nil, 0o644)
+	s2, err := newStore(p2)
+	if err != nil || s2.recovered == "" || len(s2.db) != 0 {
+		t.Fatalf("sense còpies: %v %q %v", err, s2.recovered, s2.db)
 	}
 }

@@ -124,6 +124,16 @@ try {
     assert.ok((await tutor.locator('.qe-who b').textContent()).includes('Berta'));
     for (const k of ['8', ',', '4', '5']) await tutor.click(`.qe-keys button[data-k="${k}"]`);
     await tutor.click('#qesave');
+    // «Desfés» amb connexió (quan ja ha arribat a la taula i el mòbil ha rebut les dades del programa)
+    await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e2][data-a=barra]').value === '8,45', null, { timeout: 8000 });
+    await new Promise(r => setTimeout(r, 1200));
+    await tutor.locator('.toast', { hasText: 'Desada 8,45' }).locator('button', { hasText: 'Desfés' }).click();
+    await tutor.waitForSelector('.toast:has-text("Desfet.")');
+    await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e2][data-a=barra]').value === '', null, { timeout: 8000 });
+    assert.ok((await tutor.locator('.qe-who b').textContent()).includes('Berta'));
+    for (const k of ['8', ',', '4', '5']) await tutor.click(`.qe-keys button[data-k="${k}"]`);
+    await tutor.click('#qesave');
+    await tutor.waitForSelector('.toast:has-text("Desada 8,45")');
     await tutor.click('button[data-act=tutToggleList]');
     await tutor.waitForSelector('#scoregrid');
     await tutor.waitForFunction(() => document.querySelectorAll('#scoregrid input.sc')[1].value === '8,45', null, { timeout: 8000 });
@@ -255,6 +265,26 @@ try {
     await new Promise(r => setTimeout(r, 1500));
     const d = JSON.parse(readFileSync(dataFile, 'utf8'));
     assert.equal(d.competitions[0].entries.find(e => e.id === 'e1').scores.salt[0].v, before);
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+    await admin.waitForSelector('#scoregrid');
+  });
+
+  await step('si el programa no pot escriure al fitxer, la taula ho diu (sense bucles) i es torna a desar sol', async () => {
+    mkdirSync(dataFile + '.tmp');   // ara no s'hi pot escriure
+    let puts = 0;
+    const count = r => { if (r.url().includes('/api/db') && r.method() === 'PUT') puts++; };
+    admin.on('request', count);
+    await admin.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
+    await admin.fill('input[data-k=org]', 'ORG SENSE DISC'); await admin.press('input[data-k=org]', 'Tab');
+    await admin.waitForSelector('#savestate >> text=No es pot desar al fitxer', { timeout: 8000 });
+    await admin.waitForSelector('.toast:has-text("no s\'ha pogut desar al fitxer")');
+    await new Promise(r => setTimeout(r, 5000));
+    assert.ok(puts <= 4, `massa intents de desar: ${puts}`);
+    assert.equal(await admin.locator('.toast', { hasText: 'altra finestra' }).count(), 0);
+    rmSync(dataFile + '.tmp', { recursive: true, force: true });
+    await admin.waitForSelector('.toast:has-text("Ja es torna a desar al fitxer")', { timeout: 12000 });
+    admin.off('request', count);
+    assert.equal(JSON.parse(readFileSync(dataFile, 'utf8')).settings.org, 'ORG SENSE DISC');
     await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
     await admin.waitForSelector('#scoregrid');
   });

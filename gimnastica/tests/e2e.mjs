@@ -355,7 +355,13 @@ await step('rànquing de jornades: suma les competicions del curs', async () => 
   // dues jornades al curs 2026-2027: J1 amb notes i J2 encara sense
   assert.equal(await page.locator('input[data-chg=rkComp]').count(), 2);
   await shot('ranquing');
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button[data-act=exportRanking]')]);
+  // a J2 encara falten notes: es veu a la llista i s'avisa abans d'exportar (i es pot continuar igualment)
+  assert.ok(await page.locator('label.chk', { hasText: 'J2' }).locator('.badge', { hasText: 'falten' }).count());
+  await page.click('button[data-act=exportRanking]');
+  await page.waitForSelector('#confirm[open]');
+  const warn = await page.locator('#confirm').textContent();
+  assert.ok(warn.includes('Encara falten notes') && warn.includes('J2'), warn);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#confirm button[value=go]')]);
   await dl.saveAs(path.join(out, 'ranquing.xlsx'));
   await page.goto(url + '#/competicions');
   await page.locator('.comp-card', { hasText: '22/01/2027' }).locator('a.btn').click();

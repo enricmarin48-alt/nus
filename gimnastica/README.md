@@ -11,8 +11,11 @@ en una finestra pròpia, com qualsevol programa, i funciona sense internet. Les 
 *Documents\NotesGim\notesgim-dades.json* (amb còpies automàtiques) i les tutores hi poden entrar
 les notes des del mòbil. Si ja hi ha un `notesgim-dades.json` al costat del programa (per exemple en
 un USB), fa servir aquell. Si el tornes a obrir mentre ja està obert (encara que sigui fent doble
-clic dues vegades seguides), només en torna a mostrar la finestra; quan tanques la finestra, el
-programa es tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»).
+clic dues vegades seguides), no s'engega un altre programa: s'obre una altra finestra del mateix, amb
+les mateixes dades (pots tancar la que no facis servir). Quan tanques la finestra, el programa es
+tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»). Si un dia no pot escriure al fitxer
+(disc ple, un USB que s'ha tret), ho diu a dalt de la finestra i ho torna a provar sol; si el fitxer
+s'hagués malmès (p. ex. per un tall de llum), obre sol la còpia de seguretat més nova.
 
 **Al mòbil o la tauleta: l'app instal·lada.** Obre l'adreça de l'opció B amb Chrome (Android) o
 Safari (iPhone/iPad) i instal·la-la (*Configuració → Instal·la NotesGim* explica els passos de cada
@@ -143,6 +146,9 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi
   escriu sense preguntar.
+- `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
+  l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
+  següent» i la mida de pantalla de les tauletes.
 - `tests/e2e-pwa.mjs` — l'app instal·lable com a GitHub Pages (https): sense internet, posar-se al
   dia sola i que el joc NUS del mateix lloc no li desi versions velles (cal openssl).
 - `servidor/` — el programa per a l'ordinador i les tutores (Go, sense dependències). `go test` dins

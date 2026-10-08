@@ -37,7 +37,7 @@ try {
 
   await step('es vincula un fitxer nou i s’hi desa cada canvi', async () => {
     await page.click('button[data-act=newGym]');
-    await page.fill('#dlg input[name=name]', 'Anna'); await page.click('#dlg button.primary');
+    await page.fill('#dlg input[name=name]', 'Anna'); await page.selectOption('#dlg select[name=category]', { index: 1 }); await page.selectOption('#dlg select[name=level]', { index: 1 }); await page.click('#dlg button.primary');
     await page.goto(url + '#/configuracio');
     await page.click('button[data-act=linkFile]');
     await page.waitForSelector('text=+ d.json');
@@ -51,7 +51,7 @@ try {
     await page.waitForSelector('text=+ d.json');
     await page.goto(url + '#/gimnastes');
     await page.click('button[data-act=newGym]');
-    await page.fill('#dlg input[name=name]', 'Berta'); await page.click('#dlg button.primary');
+    await page.fill('#dlg input[name=name]', 'Berta'); await page.selectOption('#dlg select[name=category]', { index: 1 }); await page.selectOption('#dlg select[name=level]', { index: 1 }); await page.click('#dlg button.primary');
     await page.waitForTimeout(600);
     assert.deepEqual((await readFile()).gymnasts.map(g => g.name).sort(), ['Anna', 'Berta']);
   });
@@ -71,7 +71,7 @@ try {
     // encara que es facin canvis, el fitxer de l'altre ordinador es manté
     await page.goto(url + '#/gimnastes');
     await page.click('button[data-act=newGym]');
-    await page.fill('#dlg input[name=name]', 'Dana'); await page.click('#dlg button.primary');
+    await page.fill('#dlg input[name=name]', 'Dana'); await page.selectOption('#dlg select[name=category]', { index: 1 }); await page.selectOption('#dlg select[name=level]', { index: 1 }); await page.click('#dlg button.primary');
     await page.waitForTimeout(600);
     const d = await readFile();
     assert.ok(d.gymnasts.some(g => g.name === 'Carla de B'));

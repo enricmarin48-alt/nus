@@ -429,3 +429,31 @@ test('notes que falten: amb 2 intents i «la suma» o «la mitjana» calen tots 
     assert.equal(E.individualRanking(c, g).rows[0].complete, !missing, rule);
   }
 });
+
+test('fusió amb «since»: només s’agafen els intents desats després d’aquell moment', () => {
+  const mk = scores => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores }] }] });
+  // desfer una restauració: la còpia d'abans (base) i el que hi ha ara (other), restaurat a les 1000
+  const base = mk({ salt: [{ v: 5, at: 900 }], barra: [] });
+  const other = mk({ salt: [{ v: 7.9, at: 500 }], barra: [{ v: 8.75, at: 1500, by: 'tutor' }] });
+  const ch = E.mergeScores(base, other, { since: 1000 });
+  const sc = base.competitions[0].entries[0].scores;
+  assert.equal(sc.salt[0].v, 5);          // la de la còpia restaurada no torna
+  assert.equal(sc.barra[0].v, 8.75);      // la de la tutora, arribada després, es queda
+  assert.deepEqual(plain(ch.map(x => x.appId)), ['barra']);
+});
+
+test('rànquing de jornades: un equip esborrat i tornat a fer igual (mateix nom i entitat) és el mateix', () => {
+  const mk = (id, tid, src) => {
+    const c = comp({ id });
+    c.teams.push({ id: tid, name: 'Club X', clubId: 'cx', category: 'Aleví', level: 'A', sourceTeamId: src });
+    for (let k = 0; k < 3; k++) c.entries.push(entry('G' + k, { salt: 8, barra: 8, terra: 8 }, { gymnastId: 'g' + k, teamId: tid }));
+    return c;
+  };
+  const j1 = mk('j1', 'a', 'T1'), j2 = mk('j2', 'b', 'T9');
+  const S = { categories: CATS, levels: ['A'] };
+  // sense saber-ho, dos equips diferents amb el mateix nom no es barregen
+  assert.deepEqual(plain(E.seasonRanking([j1, j2], S, { nameOf })[0].teams.map(t => t.n)), [1, 1]);
+  // si l'equip de J1 ja no existeix, és el mateix que el nou
+  const [g] = E.seasonRanking([j1, j2], S, { nameOf, teamGone: id => id === 'T1' });
+  assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X', 2]]);
+});

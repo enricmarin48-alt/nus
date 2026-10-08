@@ -52,6 +52,9 @@ type store struct {
 	holdUntil atomic.Int64 // fins quan no s'ha de tancar sol (p. ex. mentre la finestra imprimeix)
 	failMu    sync.Mutex   // els codis de tutora equivocats s'atenen d'un en un (que no es puguin provar tots de pressa)
 	backedUp  bool         // ja s'ha guardat una còpia del fitxer tal com era en obrir NotesGim
+	dirty     bool         // l'últim intent de desar al fitxer ha fallat: es torna a provar sol
+	saveErr   string       // per què no s'ha pogut desar (es mostra a la finestra de la taula)
+	recovered string       // el fitxer de dades estava malmès i s'ha obert una còpia (què se n'ha de dir)
 	dataRev   int64        // canvia cada vegada que la taula desa (no amb les notes de les tutores); < 2^53 perquè JavaScript el llegeixi exacte
 	quit      chan struct{}
 	mu        sync.Mutex
@@ -73,13 +76,75 @@ func newStore(path string) (*store, error) {
 		return nil, err
 	default:
 		if err := json.Unmarshal(b, &s.db); err != nil {
-			return nil, fmt.Errorf("el fitxer %s no és un fitxer de dades de NotesGim: %w", path, err)
+			// malmès (p. ex. s'ha apagat l'ordinador mentre es desava): es guarda apart, tal com és, i
+			// s'obre la còpia de seguretat més nova
+			bad := path + ".malmes-" + time.Now().Format("2006-01-02_150405")
+			if rerr := os.Rename(path, bad); rerr != nil {
+				return nil, fmt.Errorf("el fitxer %s no és un fitxer de dades de NotesGim (%v).\n\nLes còpies de seguretat són a la carpeta %s", path, err, s.backups)
+			}
+			s.db = map[string]any{}
+			if name, db := newestBackup(s.backups); db != nil {
+				s.db = db
+				s.dirty = true
+				s.recovered = fmt.Sprintf("El fitxer de dades estava malmès (s'ha guardat apart com a %s).\n\nS'ha obert la còpia de seguretat més nova: %s. Si la finestra de NotesGim tenia dades més noves, s'hi tornen a posar soles.", filepath.Base(bad), name)
+			} else {
+				s.recovered = fmt.Sprintf("El fitxer de dades estava malmès (s'ha guardat apart com a %s) i no hi ha cap còpia de seguretat. Si la finestra de NotesGim tenia les dades, s'hi tornen a posar soles; si no, restaura una còpia des de Configuració.", filepath.Base(bad))
+			}
 		}
 		if s.db == nil {
 			s.db = map[string]any{}
 		}
 	}
 	return s, nil
+}
+
+// la còpia de seguretat més nova que es pugui llegir (nom del fitxer i dades)
+func newestBackup(dir string) (string, map[string]any) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", nil
+	}
+	type cand struct {
+		name string
+		mod  time.Time
+	}
+	var list []cand
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "notesgim-") && strings.HasSuffix(e.Name(), ".json") {
+			if fi, err := e.Info(); err == nil {
+				list = append(list, cand{e.Name(), fi.ModTime()})
+			}
+		}
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].mod.After(list[j].mod) })
+	for _, c := range list {
+		b, err := os.ReadFile(filepath.Join(dir, c.name))
+		if err != nil {
+			continue
+		}
+		var db map[string]any
+		if json.Unmarshal(b, &db) == nil && db != nil {
+			return c.name, db
+		}
+	}
+	return "", nil
+}
+
+// escriu un fitxer i espera que sigui al disc (si s'apaga l'ordinador just després, no queda buit)
+func writeFileSync(name string, b []byte) error {
+	f, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // abans de la primera vegada que la taula sobreescriu el fitxer, se'n guarda una còpia tal com era
@@ -99,14 +164,24 @@ func (s *store) backupOriginalLocked() {
 	}
 }
 
-// desa de manera segura: primer a un fitxer temporal i després el reanomena (mai queda a mitges)
+// desa de manera segura: primer a un fitxer temporal i després el reanomena (mai queda a mitges).
+// Si no es pot (disc ple, OneDrive, USB fora), es torna a provar sol cada pocs segons.
 func (s *store) saveLocked() error {
+	err := s.writeLocked()
+	s.dirty, s.saveErr = err != nil, ""
+	if err != nil {
+		s.saveErr = "no s'ha pogut desar al fitxer " + s.path + ": " + err.Error()
+	}
+	return err
+}
+
+func (s *store) writeLocked() error {
 	b, err := json.MarshalIndent(s.db, "", " ")
 	if err != nil {
 		return err
 	}
 	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := writeFileSync(tmp, b); err != nil {
 		return err
 	}
 	// a Windows, un antivirus o OneDrive poden tenir el fitxer obert un moment: es torna a provar
@@ -125,7 +200,7 @@ func (s *store) saveLocked() error {
 		s.lastBak = time.Now()
 		if err := os.MkdirAll(s.backups, 0o755); err == nil {
 			name := filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_1504")+".json")
-			_ = os.WriteFile(name, b, 0o644)
+			_ = writeFileSync(name, b)
 			s.pruneBackups(60)
 		}
 	}
@@ -589,7 +664,7 @@ func (s *store) routes(port int) http.Handler {
 		case http.MethodGet:
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db})
+			writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db, "saveErr": s.saveErr})
 		case http.MethodPut:
 			// base: la versió de les dades de la taula que tenia la finestra. Si no és l'actual, una altra finestra
 			// (o un NotesGim d'abans) les ha canviat i no s'hi escriu a sobre: es torna el que hi ha (409).
@@ -618,8 +693,14 @@ func (s *store) routes(port int) http.Handler {
 			s.dataRev++
 			s.bumpLocked()
 			if err := s.saveLocked(); err != nil {
+				// les dades ja són al programa (i es tornaran a provar de desar soles): la finestra ho ha de saber
+				// per no tornar-les a enviar com si fossin d'una altra finestra
 				log.Printf("ERROR desant: %v", err)
-				fail(w, 500, "no s'ha pogut desar al fitxer: "+err.Error())
+				resp := map[string]any{"error": s.saveErr, "version": s.version, "dataRev": s.dataRev, "taken": taken}
+				if taken > 0 {
+					resp["db"] = s.db
+				}
+				writeJSON(w, 500, resp)
 				return
 			}
 			resp := map[string]any{"version": s.version, "dataRev": s.dataRev, "taken": taken}
@@ -647,7 +728,7 @@ func (s *store) routes(port int) http.Handler {
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db})
+		writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db, "saveErr": s.saveErr})
 	})
 
 	// la finestra avisa que imprimeix (mentre la finestra d'impressió és oberta, la pàgina no pot parlar amb el
@@ -742,10 +823,10 @@ func (s *store) routes(port int) http.Handler {
 		}
 		s.lastTutor.Store(time.Now().UnixMilli())
 		s.bumpLocked()
+		// si ara no es pot escriure al fitxer, la nota ja és al programa i a la finestra de la taula (que
+		// en veu l'avís): es tornarà a provar de desar sola, i la tutora no l'ha de tornar a enviar
 		if err := s.saveLocked(); err != nil {
 			log.Printf("ERROR desant: %v", err)
-			fail(w, 500, "no s'ha pogut desar")
-			return
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "version": s.version})
 	})
@@ -1002,6 +1083,10 @@ func main() {
 			appExited.Store(true)
 		}()
 	}
+	if s.recovered != "" {
+		log.Print(s.recovered)
+		go alert("NotesGim", s.recovered)
+	}
 	srv := &http.Server{Handler: s.routes(port), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -1026,6 +1111,14 @@ func main() {
 			s.mu.Unlock()
 			return
 		case now := <-tick.C:
+			s.mu.Lock()
+			if s.dirty {
+				if err := s.saveLocked(); err == nil {
+					log.Print("ara sí que s'ha pogut desar al fitxer")
+					s.bumpLocked() // la finestra de la taula treu l'avís
+				}
+			}
+			s.mu.Unlock()
 			// s'ha despertat d'una suspensió (es mira el rellotge de la paret: el monotònic, a Mac i Linux, s'atura
 			// mentre l'ordinador dorm)
 			if now.Round(0).Sub(last.Round(0)) > 40*time.Second {

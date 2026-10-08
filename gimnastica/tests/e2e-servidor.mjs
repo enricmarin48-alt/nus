@@ -195,6 +195,70 @@ try {
     assert.equal(e1.scores.terra[0].v, 8.8);
   });
 
+  await step('si la taula canvia el codi mentre la tutora no té connexió, les seves notes no es perden', async () => {
+    await tutor.context().setOffline(true);
+    const inp = tutor.locator('#scoregrid input.sc').nth(1);
+    await inp.click(); await tutor.keyboard.type('7,4'); await tutor.keyboard.press('Enter');
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/configuracio`);
+    await admin.click('button[data-act=newPin]');
+    await admin.waitForTimeout(800);
+    const pin = await admin.evaluate(() => curComp().tutorPin);
+    await tutor.context().setOffline(false);
+    await tutor.waitForSelector('text=sense enviar', { timeout: 20000 });
+    assert.ok((await tutor.textContent('main')).includes('7,40'));
+    await tutor.fill('input[name=pin]', pin);
+    await tutor.click('button:has-text("Entra")');
+    await tutor.waitForFunction(() => JSON.parse(localStorage.getItem('notesgim.tutor')).queue.length === 0, null, { timeout: 15000 });
+    await new Promise(r => setTimeout(r, 800));
+    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.equal(d.competitions[0].entries.find(e => e.id === 'e2').scores.terra[0].v, 7.4);
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+    await admin.waitForSelector('#scoregrid');
+  });
+
+  await step('una segona finestra de la taula amb dades velles no trepitja les noves', async () => {
+    const other = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage();
+    watch(other, 'altra finestra');
+    await other.goto(`http://127.0.0.1:${PORT}/#/gimnastes`);
+    await other.waitForSelector('#gymtable');
+    // la primera finestra reanomena una gimnasta
+    await admin.goto(`http://127.0.0.1:${PORT}/#/gimnastes`);
+    await admin.click('#gymtable a[data-act=editGym]:has-text("Anna")');
+    await admin.fill('#dlg input[name=name]', 'Anna Maria');
+    await admin.click('#dlg button.primary');
+    await new Promise(r => setTimeout(r, 1200));
+    // l'altra la veu sola, i el que hi canviï després no desfà el nom
+    await other.waitForSelector('#gymtable >> text=Anna Maria', { timeout: 10000 });
+    await other.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
+    await other.fill('input[data-k=org]', 'ORG DE PROVA'); await other.press('input[data-k=org]', 'Tab');
+    await new Promise(r => setTimeout(r, 1500));
+    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.equal(d.gymnasts.find(g => g.id === 'g1').name, 'Anna Maria');
+    assert.equal(d.settings.org, 'ORG DE PROVA');
+    await other.close();
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+    await admin.waitForSelector('#scoregrid');
+  });
+
+  await step('restaurar una còpia amb el programa: tornen les notes de la còpia', async () => {
+    const backup = JSON.parse(readFileSync(dataFile, 'utf8'));
+    const before = backup.competitions[0].entries.find(e => e.id === 'e1').scores.salt[0].v;
+    const inp = admin.locator('#scoregrid input.sc[data-e=e1][data-a=salt]');
+    await inp.click(); await admin.keyboard.type('5'); await admin.keyboard.press('Enter');
+    await new Promise(r => setTimeout(r, 800));
+    const f = path.join(out, 'copia.json'); writeFileSync(f, JSON.stringify(backup));
+    await admin.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
+    await admin.evaluate(() => { window.showOpenFilePicker = undefined; });
+    const [chooser] = await Promise.all([admin.waitForEvent('filechooser'), admin.click('button[data-act=restore]')]);
+    await chooser.setFiles(f);
+    await admin.click('#confirm button[value=ok]');
+    await new Promise(r => setTimeout(r, 1500));
+    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.equal(d.competitions[0].entries.find(e => e.id === 'e1').scores.salt[0].v, before);
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+    await admin.waitForSelector('#scoregrid');
+  });
+
   await step('competició tancada: la tutora ja no pot entrar notes', async () => {
     await admin.click('button[data-act=toggleLock]');
     await new Promise(r => setTimeout(r, 1000));

@@ -15,4 +15,8 @@ GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui $V" -
 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "-s -w $V" -o dist/NotesGim-mac-applesilicon .
 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags "-s -w $V" -o dist/NotesGim-mac-intel .
 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w $V" -o dist/NotesGim-linux .
+# Mac i Linux: comprimits (un fitxer descarregat tal qual perd el permís per obrir-se)
+(cd dist && rm -f NotesGim-mac-*.zip NotesGim-linux.tar.gz \
+  && for m in NotesGim-mac-applesilicon NotesGim-mac-intel; do mkdir -p "z-$m" && cp "$m" "z-$m/NotesGim" && (cd "z-$m" && zip -q "../$m.zip" NotesGim) && rm -rf "z-$m"; done \
+  && tar -czf NotesGim-linux.tar.gz NotesGim-linux)
 ls -la dist

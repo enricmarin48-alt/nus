@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
@@ -29,7 +31,7 @@ jobs:
         run: node --test gimnastica/tests/engine.test.mjs
       - name: Versió (data i commit)
         run: |
-          v="$(date -u +%Y-%m-%d) · ${GITHUB_SHA::7}"
+          v="$(git log -1 --format=%cs -- gimnastica) · $(git log -1 --format=%h -- gimnastica)"
           sed -i "s/^const APP_BUILD = 'dev';/const APP_BUILD = '$v';/" gimnastica/index.html
           grep -q "APP_BUILD = '$v'" gimnastica/index.html
           echo "NOTESGIM_VERSION=$v" >> "$GITHUB_ENV"

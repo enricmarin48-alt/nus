@@ -48,6 +48,11 @@ var appVersion = "1.1"
 
 type store struct {
 	lastAdmin atomic.Int64 // última vegada que la finestra de l'app (a aquest ordinador) ha dit alguna cosa
+	lastTutor atomic.Int64 // última vegada que una tutora ha entrat o enviat notes
+	holdUntil atomic.Int64 // fins quan no s'ha de tancar sol (p. ex. mentre la finestra imprimeix)
+	failMu    sync.Mutex   // els codis de tutora equivocats s'atenen d'un en un (que no es puguin provar tots de pressa)
+	backedUp  bool         // ja s'ha guardat una còpia del fitxer tal com era en obrir NotesGim
+	dataRev   int64        // canvia cada vegada que la taula desa (no amb les notes de les tutores); < 2^53 perquè JavaScript el llegeixi exacte
 	quit      chan struct{}
 	mu        sync.Mutex
 	db        map[string]any
@@ -59,7 +64,7 @@ type store struct {
 }
 
 func newStore(path string) (*store, error) {
-	s := &store{path: path, backups: filepath.Join(filepath.Dir(path), "copies-notesgim"), version: time.Now().UnixMilli(), quit: make(chan struct{})}
+	s := &store{path: path, backups: filepath.Join(filepath.Dir(path), "copies-notesgim"), version: time.Now().UnixMilli(), dataRev: time.Now().UnixMilli() * 1000, quit: make(chan struct{})}
 	b, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -75,6 +80,23 @@ func newStore(path string) (*store, error) {
 		}
 	}
 	return s, nil
+}
+
+// abans de la primera vegada que la taula sobreescriu el fitxer, se'n guarda una còpia tal com era
+// (per si era d'un altre ordinador o una còpia restaurada a mà)
+func (s *store) backupOriginalLocked() {
+	if s.backedUp {
+		return
+	}
+	s.backedUp = true
+	b, err := os.ReadFile(s.path)
+	if err != nil || len(b) == 0 {
+		return
+	}
+	if err := os.MkdirAll(s.backups, 0o755); err == nil {
+		_ = os.WriteFile(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-en-obrir.json"), b, 0o644)
+		s.pruneBackups(60)
+	}
 }
 
 // desa de manera segura: primer a un fitxer temporal i després el reanomena (mai queda a mitges)
@@ -126,6 +148,13 @@ func (s *store) pruneBackups(keep int) {
 		_ = os.Remove(filepath.Join(s.backups, names[0]))
 		names = names[1:]
 	}
+}
+
+// un codi equivocat: espera 400 ms, però d'un en un per a tothom (si algú prova molts codis alhora, triga hores)
+func (s *store) slowFail() {
+	s.failMu.Lock()
+	time.Sleep(400 * time.Millisecond)
+	s.failMu.Unlock()
 }
 
 // avisa tothom qui espera canvis (long polling)
@@ -356,6 +385,10 @@ type scoreReq struct {
 // la taula ja ha posat (o revisat) aquesta nota: la tutora no la pot canviar (resposta 409)
 var errLocked = errors.New("Aquesta nota ja l'ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.")
 
+// el codi ja no val (l'han canviat, han tancat la competició o han tret les tutores): resposta 401, i la tutora
+// es guarda les notes per enviar-les quan torni a entrar
+var errAuth = errors.New("El codi ja no val: potser l'han canviat o han tancat la competició. Demana el codi a la taula.")
+
 // nota màxima de la competició (per defecte 20)
 func maxScoreOf(comp map[string]any) float64 {
 	if m := num(comp["maxScore"]); m > 0 {
@@ -373,7 +406,7 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 		}
 	}
 	if comp == nil {
-		return errors.New("codi incorrecte, o la competició està tancada")
+		return errAuth
 	}
 	entry := findByID(arr(comp["entries"]), r.EntryID)
 	if entry == nil {
@@ -556,10 +589,15 @@ func (s *store) routes(port int) http.Handler {
 		case http.MethodGet:
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{"version": s.version, "db": s.db})
+			writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db})
 		case http.MethodPut:
+			// base: la versió de les dades de la taula que tenia la finestra. Si no és l'actual, una altra finestra
+			// (o un NotesGim d'abans) les ha canviat i no s'hi escriu a sobre: es torna el que hi ha (409).
+			// replace: la finestra substitueix totes les dades (restaurar una còpia): no s'hi barregen notes.
 			var body struct {
-				DB map[string]any `json:"db"`
+				DB      map[string]any `json:"db"`
+				Base    int64          `json:"base"`
+				Replace bool           `json:"replace"`
 			}
 			if err := json.NewDecoder(io.LimitReader(r.Body, 50<<20)).Decode(&body); err != nil || body.DB == nil {
 				fail(w, 400, "dades incorrectes")
@@ -567,15 +605,24 @@ func (s *store) routes(port int) http.Handler {
 			}
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			taken := mergeScores(body.DB, s.db) // notes de tutores més noves que les que té l'ordinador
+			if body.Base != s.dataRev {
+				writeJSON(w, 409, map[string]any{"error": "les dades han canviat des d'una altra finestra", "version": s.version, "dataRev": s.dataRev, "db": s.db})
+				return
+			}
+			taken := 0
+			if !body.Replace {
+				taken = mergeScores(body.DB, s.db) // notes de tutores més noves que les que té l'ordinador
+			}
+			s.backupOriginalLocked()
 			s.db = body.DB
+			s.dataRev++
 			s.bumpLocked()
 			if err := s.saveLocked(); err != nil {
 				log.Printf("ERROR desant: %v", err)
 				fail(w, 500, "no s'ha pogut desar al fitxer: "+err.Error())
 				return
 			}
-			resp := map[string]any{"version": s.version, "taken": taken}
+			resp := map[string]any{"version": s.version, "dataRev": s.dataRev, "taken": taken}
 			if taken > 0 {
 				resp["db"] = s.db
 			}
@@ -600,7 +647,24 @@ func (s *store) routes(port int) http.Handler {
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		writeJSON(w, 200, map[string]any{"version": s.version, "db": s.db})
+		writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "db": s.db})
+	})
+
+	// la finestra avisa que imprimeix (mentre la finestra d'impressió és oberta, la pàgina no pot parlar amb el
+	// programa): no s'ha de tancar sol. ms=0 ho torna a deixar com sempre.
+	mux.HandleFunc("/api/keepalive", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || r.Method != http.MethodPost {
+			fail(w, 403, "no permès")
+			return
+		}
+		var body struct {
+			Ms int64 `json:"ms"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+		now := time.Now().UnixMilli()
+		s.lastAdmin.Store(now)
+		s.holdUntil.Store(now + min(max(body.Ms, 0), 3*3600*1000))
+		writeJSON(w, 200, map[string]any{"ok": true})
 	})
 
 	// botó «Obre la carpeta de les dades» (Configuració)
@@ -641,10 +705,11 @@ func (s *store) routes(port int) http.Handler {
 		data, version := tutorData(s.db, pin), s.version
 		s.mu.Unlock()
 		if len(data) == 0 {
-			time.Sleep(400 * time.Millisecond) // per no deixar provar codis a tota velocitat
+			s.slowFail()
 			fail(w, 403, "Codi incorrecte, o no hi ha cap competició oberta a les tutores.")
 			return
 		}
+		s.lastTutor.Store(time.Now().UnixMilli())
 		writeJSON(w, 200, map[string]any{"version": version, "comps": data})
 	})
 
@@ -659,8 +724,15 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		s.mu.Lock()
+		err := applyScore(s.db, req, time.Now().UnixMilli())
+		if errors.Is(err, errAuth) {
+			s.mu.Unlock()
+			s.slowFail()
+			fail(w, 401, err.Error())
+			return
+		}
 		defer s.mu.Unlock()
-		if err := applyScore(s.db, req, time.Now().UnixMilli()); err != nil {
+		if err != nil {
 			code := 403
 			if errors.Is(err, errLocked) {
 				code = 409
@@ -668,6 +740,7 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, code, err.Error())
 			return
 		}
+		s.lastTutor.Store(time.Now().UnixMilli())
 		s.bumpLocked()
 		if err := s.saveLocked(); err != nil {
 			log.Printf("ERROR desant: %v", err)
@@ -681,7 +754,10 @@ func (s *store) routes(port int) http.Handler {
 
 // obre l'app en una finestra pròpia (sense barres de navegador), com un programa: Edge o Chrome en mode
 // «app» amb un perfil separat. Si no n'hi ha cap, s'obre al navegador de sempre.
-func openApp(url string) {
+func openApp(url string) { openAppProc(url) }
+
+// com openApp, però torna el procés de la finestra (nil si s'ha fet servir el navegador de sempre)
+func openAppProc(url string) *exec.Cmd {
 	profile := filepath.Join(os.TempDir(), "NotesGim-finestra")
 	if d, err := os.UserCacheDir(); err == nil {
 		profile = filepath.Join(d, "NotesGim", "finestra")
@@ -710,12 +786,14 @@ func openApp(url string) {
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
-			if exec.Command(c, args...).Start() == nil {
-				return
+			cmd := exec.Command(c, args...)
+			if cmd.Start() == nil {
+				return cmd
 			}
 		}
 	}
 	openDefault(url)
+	return nil
 }
 
 // el navegador de sempre
@@ -826,6 +904,15 @@ func defaultDataPath(dir string) string {
 	return filepath.Join(dir, name)
 }
 
+// el registre va sempre al fitxer; a la consola només si n'hi ha (a Windows, sense consola, falla i no passa res)
+type fileFirst struct{ f *os.File }
+
+func (w fileFirst) Write(p []byte) (int, error) {
+	n, err := w.f.Write(p)
+	_, _ = os.Stderr.Write(p)
+	return n, err
+}
+
 func main() {
 	exe, _ := os.Executable()
 	dir := filepath.Dir(exe)
@@ -847,7 +934,7 @@ func main() {
 		if st, _ := lf.Stat(); st != nil && st.Size() > 1<<20 {
 			_ = lf.Truncate(0)
 		}
-		log.SetOutput(io.MultiWriter(os.Stderr, lf))
+		log.SetOutput(fileFirst{lf})
 	}
 
 	if url := runningInstance(*portFlag, *dataPath); url != "" {
@@ -905,8 +992,15 @@ func main() {
 	fmt.Println("════════════════════════════════════════════════════════════")
 	log.Printf("engegat al port %d, dades a %s", port, s.path)
 
+	var appExited atomic.Bool
 	if !*noBrowser {
-		go func() { time.Sleep(400 * time.Millisecond); openApp(fmt.Sprintf("http://localhost:%d", port)) }()
+		go func() {
+			time.Sleep(400 * time.Millisecond)
+			if cmd := openAppProc(fmt.Sprintf("http://localhost:%d", port)); cmd != nil {
+				_ = cmd.Wait()
+			}
+			appExited.Store(true)
+		}()
 	}
 	srv := &http.Server{Handler: s.routes(port), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
@@ -932,15 +1026,19 @@ func main() {
 			s.mu.Unlock()
 			return
 		case now := <-tick.C:
-			if now.Sub(last) > 40*time.Second { // s'ha despertat d'una suspensió
+			// s'ha despertat d'una suspensió (es mira el rellotge de la paret: el monotònic, a Mac i Linux, s'atura
+			// mentre l'ordinador dorm)
+			if now.Round(0).Sub(last.Round(0)) > 40*time.Second {
 				s.lastAdmin.Store(now.UnixMilli())
 			}
 			last = now
 			seen := s.lastAdmin.Load()
 			// la finestra no ha arribat a obrir-se (navegador bloquejat o sense Edge/Chrome): el navegador de
 			// sempre i, si al cap de 10 minuts encara res, s'avisa i es tanca (no es queda amagat)
+			// (si la finestra d'Edge/Chrome encara s'està obrint, s'hi espera més: una segona finestra en un altre
+			// navegador tindria les seves pròpies dades)
 			if !*noBrowser && seen == 0 {
-				if !fallback && now.Sub(started) > 20*time.Second {
+				if !fallback && ((appExited.Load() && now.Sub(started) > 20*time.Second) || now.Sub(started) > 90*time.Second) {
 					fallback = true
 					log.Print("la finestra no s'ha obert: es prova amb el navegador de sempre")
 					openDefault(appURL)
@@ -951,7 +1049,9 @@ func main() {
 					return
 				}
 			}
-			if !*keepAlive && !*noBrowser && seen > 0 && now.UnixMilli()-seen > int64(*grace)*1000 {
+			gone := func(t int64) bool { return now.UnixMilli()-t > int64(*grace)*1000 }
+			// no es tanca mentre la finestra imprimeix ni mentre hi ha tutores enviant notes
+			if !*keepAlive && !*noBrowser && seen > 0 && gone(seen) && gone(s.lastTutor.Load()) && now.UnixMilli() > s.holdUntil.Load() {
 				log.Print("fa estona que la finestra de l'app no hi és: es tanca")
 				s.mu.Lock()
 				_ = s.saveLocked()

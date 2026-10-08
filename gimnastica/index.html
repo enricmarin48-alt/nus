@@ -235,12 +235,13 @@
   .qe-strip button.np{opacity:.45;text-decoration:line-through}
   .qe-strip button.lock{background:#eef1f5}
   .qe-strip button.cur{outline:3px solid var(--pri2);outline-offset:1px}
-  .banner{position:sticky;top:var(--top,0px);z-index:6;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-weight:700;font-size:14px}
+  .banner{border-radius:10px;padding:10px 12px;margin-bottom:10px;font-weight:700;font-size:14px}
+  #tutbanner{position:sticky;top:var(--top,0px);z-index:6}
   .banner.bad{background:#fde3c8;color:#6b3300}
   .banner.ok{background:var(--ok-soft);color:var(--ok)}
 
-  /* ═══ mòbil (només a la pantalla: als fulls impresos no s'amaga res) */
-  @media screen and (max-width:700px){
+  /* ═══ mòbil, també girat (només a la pantalla: als fulls impresos no s'amaga res) */
+  @media screen and (max-width:700px), screen and (max-height:500px) and (orientation:landscape){
     header.top{gap:8px;padding:6px 12px;padding-top:max(6px,env(safe-area-inset-top));min-height:48px;flex-wrap:nowrap}
     header.top nav{display:none}
     .brand{font-size:16px}
@@ -284,7 +285,6 @@
     #scoregrid{font-size:15px}
     #scoregrid td.who{max-width:52vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #scoregrid .sub-ph{overflow:hidden;text-overflow:ellipsis}
-    #toasts{inset:calc(52px + env(safe-area-inset-top)) 8px auto 8px;max-width:none}
     .toast{font-size:14px}
     /* llistes en forma de fitxa: inscripcions, configuració dels aparells */
     table.cardify thead{display:none}
@@ -292,7 +292,7 @@
     table.cardify tr{display:grid;gap:6px 10px;padding:10px 4px;border-bottom:1px solid var(--line2);align-items:center}
     table.cardify td{display:block;padding:0;border:0}
     table.cardify select,table.cardify input[type=text]{width:100%;max-width:none}
-    table.ins tr{grid-template-columns:60px minmax(0,1.4fr) minmax(0,1fr) 44px;grid-template-areas:"bib name name del" "bib team st st"}
+    table.ins tr{grid-template-columns:60px minmax(0,1fr) 44px;grid-template-areas:"bib name del" "bib team team" "bib st st"}
     table.ins .c-bib{grid-area:bib}.ins .c-name{grid-area:name}.ins .c-del{grid-area:del}.ins .c-team{grid-area:team}.ins .c-st{grid-area:st}
     table.ins .c-bib input{width:100%}
     table.apps tr{grid-template-columns:1fr 1fr;grid-template-areas:"name name" "f m" "att rule" "act act"}
@@ -310,6 +310,12 @@
     dialog#dlg .dlg-actions{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#fff;padding:10px 0 calc(10px + env(safe-area-inset-bottom));margin-bottom:calc(-14px - env(safe-area-inset-bottom));border-top:1px solid var(--line2)}
     dialog#dlg .dlg-actions .btn{flex:1;justify-content:center}
     .pick-list{max-height:none}
+    table.clubs tr{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"name name del" "ng nt merge"}
+    table.clubs .c-name{grid-area:name}.clubs .c-ng{grid-area:ng}.clubs .c-nt{grid-area:nt}.clubs .c-merge{grid-area:merge}.clubs .c-del{grid-area:del}
+    /* amb el teclat gran, o mentre s'escriu, la barra de baix no hi és (no tapa res) */
+    body.has-qe nav.bottom,body.kb nav.bottom{display:none}
+    body.has-qe main{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+    html{scroll-padding-bottom:calc(70px + env(safe-area-inset-bottom))}
     /* entrada ràpida: que el teclat i «Desa» hi càpiguen sense haver de baixar */
     .qe-on .comp-head{display:none}
     .qe-keys{gap:6px}
@@ -320,6 +326,20 @@
     .qe-who b{font-size:19px}
     .qe-bar .btn{min-height:54px}
     .tutor-mode .page-head{margin-bottom:6px}
+  }
+  /* els avisos: al mòbil a dalt, i amb el teclat gran sempre a dalt (mai a sobre de «Desa») */
+  @media screen and (max-width:700px), screen and (max-height:500px) and (orientation:landscape){ html #toasts{inset:calc(52px + env(safe-area-inset-top)) 8px auto 8px;max-width:none} }
+  html body.has-qe #toasts{inset:calc(var(--top,0px) + 8px) 8px auto auto}
+  .qe{scroll-margin-top:calc(var(--top,0px) + 6px)}
+  /* mòbil girat: el teclat al costat de la gimnasta */
+  @media screen and (max-height:500px) and (orientation:landscape){
+    .qe{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start;
+      grid-template-areas:"app app" "card keys" "disp keys" "hint keys" "next bar" "strip strip"}
+    .qe-app{grid-area:app;position:static}.qe-card{grid-area:card}.qe-display{grid-area:disp}.qe-hint{grid-area:hint}
+    .qe-keys{grid-area:keys;margin:0}.qe-bar{grid-area:bar;margin-top:6px}.qe-next{grid-area:next}.qe-strip{grid-area:strip}
+    .qe-keys button{min-height:42px;font-size:22px}
+    .qe-bar .btn{min-height:46px}
+    .qe-display{font-size:32px;min-height:48px}
   }
   /* aparells tàctils: tot prou gran per tocar-ho amb el dit (i sense que l'iPhone faci zoom) */
   @media (pointer:coarse){
@@ -515,6 +535,9 @@ const Engine = (() => {
     return { value, attempts, complete: got.length === n };
   }
   const appScore = (entry, app, cfg) => appResult(entry, app, cfg).value;
+  // l'aparell té la nota completa: amb 2 intents i «la suma» o «la mitjana», calen tots dos (amb «la millor», n'hi ha prou amb un)
+  const needsAll = app => (app.attempts || 1) > 1 && (app.rule === 'sum' || app.rule === 'avg');
+  const appComplete = (entry, app, cfg) => { const r = appResult(entry, app, cfg); return r.value !== null && (!needsAll(app) || r.complete); };
 
   // D i E de la nota que compta (per desempatar com la FIG: primer E, després D). Només en mode detallat.
   function appDE(entry, app, cfg) {
@@ -627,7 +650,7 @@ const Engine = (() => {
       for (const a of apps) {
         const r = appResult(e, a, comp), v = r.value;
         scores[a.id] = v;
-        if (v !== null) full++;
+        if (v !== null && (!needsAll(a) || r.complete)) full++;
         if (v !== null) { total += v; n++; const de = appDE(e, a, comp); eSum += de.e || 0; dSum += de.d || 0; }
       }
       return { entry: e, name: nameOf(e), scores, total: (n && !np) ? total : null,
@@ -784,7 +807,7 @@ const Engine = (() => {
   function missingScores(comp, group) {
     const perApp = {}; let total = 0;
     for (const a of enabledApps(comp, group.gender)) {
-      const n = group.entries.filter(e => e.status !== 'np' && appScore(e, a, comp) === null).length;
+      const n = group.entries.filter(e => e.status !== 'np' && !appComplete(e, a, comp)).length;
       if (n) { perApp[a.id] = n; total += n; }
     }
     return { total, perApp };
@@ -798,7 +821,7 @@ const Engine = (() => {
     return mo >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
   }
 
-  return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appDE, genderOf, appMode, enabledApps,
+  return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appComplete, appDE, genderOf, appMode, enabledApps,
     totalApps, teamApps, entryTotal, groupKey, groupsOf, categoryForYear, cmpDesc, assignRanks, individualRanking,
     apparatusRanking, teamRanking, seasonRanking, mergeScores, guarded, suggestScore, missingScores, seasonFor };
 })();
@@ -818,7 +841,8 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const { coll, norm, fmt } = Engine;
 const range = n => Array.from({ length: n }, (_, i) => i);
 // pantalla de mòbil (la mateixa mida que fan servir els estils)
-const isPhone = () => !!(window.matchMedia && matchMedia('(max-width: 700px)').matches);
+const PHONE_MQ = 'screen and (max-width:700px), screen and (max-height:500px) and (orientation:landscape)';
+const isPhone = () => !!(window.matchMedia && matchMedia(PHONE_MQ).matches);
 const isTouch = () => !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 // preferències d'aquest aparell (què es va triar l'últim cop); si el navegador no deixa desar, no passa res
 const prefGet = k => { try { return localStorage.getItem('notesgim.pref.' + k); } catch (_) { return null; } };
@@ -987,11 +1011,14 @@ function migrate(d) {
 function linkCompTeams(d) {
   const seasonOf = c => c.season || Engine.seasonFor(c.date);
   const last = d.competitions.map(seasonOf).filter(Boolean).sort().pop();
-  for (const c of d.competitions) {
-    if (c.locked || !Array.isArray(c.teams) || (last && seasonOf(c) && seasonOf(c) !== last)) continue;
+  // de la més nova a la més antiga: l'equip de la fitxa és el de l'última jornada (la primera que el diu, mana)
+  const comps = d.competitions.filter(c => Array.isArray(c.teams) && !(last && seasonOf(c) && seasonOf(c) !== last))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const find = ct => d.teams.find(t => (t.clubId || null) === (ct.clubId || null) && sameGroup(t, ct) && norm(t.name) === norm(ct.name));
+  for (const c of comps.filter(c => !c.locked)) {
     for (const ct of c.teams) {
       if (ct.sourceTeamId && d.teams.some(t => t.id === ct.sourceTeamId)) continue;
-      let t = d.teams.find(t => (t.clubId || null) === (ct.clubId || null) && sameGroup(t, ct) && norm(t.name) === norm(ct.name));
+      let t = find(ct);
       if (!t) { t = { id: uid(), name: ct.name || 'Equip', clubId: ct.clubId || null, gender: genderOf(ct), category: ct.category || '', level: ct.level || '', memberIds: [] }; d.teams.push(t); }
       for (const e of c.entries || []) {
         if (e.teamId !== ct.id || !e.gymnastId || t.memberIds.includes(e.gymnastId)) continue;
@@ -999,6 +1026,11 @@ function linkCompTeams(d) {
       }
       ct.sourceTeamId = t.id; ct.auto = true;
     }
+  }
+  // les jornades bloquejades del curs només s'enllacen (perquè el rànquing segueixi l'equip si es reanomena)
+  for (const c of comps.filter(c => c.locked)) for (const ct of c.teams) {
+    if (ct.sourceTeamId && d.teams.some(t => t.id === ct.sourceTeamId)) continue;
+    const t = find(ct); if (t) ct.sourceTeamId = t.id;
   }
 }
 function normalizeComp(c, defs) {
@@ -1058,7 +1090,8 @@ function flush() {
    Quan l'app s'obre des del programa NotesGim-servidor, les dades viuen al fitxer del servidor:
    l'ordinador de la taula (role admin) hi envia cada canvi i en rep les notes de les tutores al moment;
    des d'un altre aparell (role tutor) s'obre el mode tutora. */
-const server = { on: false, role: null, version: null, urls: [], pushing: false, again: false, online: true, deferred: false };
+const server = { on: false, role: null, version: null, dataRev: null, sentStamp: null, urls: [], urlsAt: 0, pushing: false, again: false,
+  online: true, deferred: false, replaceNext: false, closed: false, conflicts: 0 };
 async function api(path, opts = {}, timeout = 0) {
   const ctl = timeout ? new AbortController() : null;
   const t = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
@@ -1066,7 +1099,7 @@ async function api(path, opts = {}, timeout = 0) {
     const r = await fetch(path, Object.assign({ cache: 'no-store', headers: { 'Content-Type': 'application/json' }, signal: ctl && ctl.signal }, opts));
     if (r.status === 204) return null;
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { const err = new Error(j.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    if (!r.ok) { const err = new Error(j.error || ('HTTP ' + r.status)); err.status = r.status; err.body = j; throw err; }
     return j;
   } finally { if (t) clearTimeout(t); }
 }
@@ -1077,50 +1110,107 @@ async function serverInit() {
   let info;
   try { info = await api('api/info', {}, 2500); } catch (_) { return false; }
   if (!info || info.app !== 'notesgim') return false;
-  server.on = true; server.role = info.role; server.urls = info.urls || []; server.dataFile = info.dataFile || '';
+  server.on = true; server.role = info.role; server.urls = info.urls || []; server.urlsAt = Date.now(); server.dataFile = info.dataFile || '';
   addManifest();
   if (info.role === 'tutor') { await tutorStart(); return true; }
   const remote = await api('api/db');
   const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
+  const rm = (remote.db && remote.db.meta) || {};
+  let note = '';
   if (has(remote.db) && has(db)) {
     try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(db)); } catch (_) {}
-    // es queda la còpia més nova sencera, i de l'altra només s'hi afegeixen les notes més noves
-    if (Date.parse(db.meta.updated || 0) > Date.parse(((remote.db.meta) || {}).updated || 0)) Engine.mergeScores(db, remote.db);
-    else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }
+    if (rm.dbId && db.meta.dbId && rm.dbId !== db.meta.dbId) {
+      // el fitxer és d'unes altres dades (un altre ordinador, un USB, una còpia posada a mà): manen les del fitxer
+      db = migrate(remote.db);
+      note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han esborrat: es poden recuperar amb una còpia de seguretat.';
+    } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);   // la més nova sencera,
+    else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }                                   // i de l'altra, les notes més noves
   } else if (has(remote.db)) db = migrate(remote.db);
-  server.version = remote.version;
+  server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = rm.updated || null;
   flush();
   render();
+  if (note) toast(note, 'bad');
   serverWaitLoop();
   return true;
 }
 function serverPush() {
-  if (!server.on || server.role !== 'admin') return;
+  if (!server.on || server.role !== 'admin' || server.closed) return;
   if (server.pushing) { server.again = true; return; }
   server.pushing = true;
-  api('api/db', { method: 'PUT', body: JSON.stringify({ db }) })
-    .then(resp => { server.online = true; server.version = resp.version; if (resp.taken && resp.db) applyRemote(resp.db); })
-    .catch(() => { server.online = false; })
+  const replace = server.replaceNext, stamp = db.meta.updated;
+  api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, replace }) })
+    .then(resp => {
+      server.online = true; server.conflicts = 0;
+      server.version = resp.version; server.dataRev = resp.dataRev; server.sentStamp = stamp;
+      if (replace) server.replaceNext = false;
+      if (resp.taken && resp.db) applyRemote(resp.db, resp.dataRev);
+    })
+    .catch(err => {
+      if (err && err.status === 409 && err.body && err.body.db) serverConflict(err.body);
+      else server.online = false;
+    })
     .finally(() => {
       server.pushing = false; renderSaveState(false);
       if (server.again) { server.again = false; serverPush(); } else if (!server.online) setTimeout(serverPush, 4000);
     });
 }
+// les dades del fitxer no són les que aquesta finestra coneixia (una altra finestra hi ha desat, o NotesGim s'ha
+// tornat a obrir amb un altre fitxer): no s'hi escriu a sobre sense mirar-ho
+function serverConflict(r) {
+  const theirs = r.db || {}, tm = theirs.meta || {};
+  server.version = r.version; server.dataRev = r.dataRev;
+  if (++server.conflicts > 3) { server.online = false; toast('No es pot desar al fitxer de NotesGim: tanca aquesta finestra i torna a obrir NotesGim.', 'bad'); return; }
+  // ningú més les ha canviat (p. ex. NotesGim s'ha tornat a obrir): es tornen a enviar les d'aquí, amb el que s'hagi fet mentrestant
+  if (tm.dbId === db.meta.dbId && server.sentStamp && tm.updated === server.sentStamp) { server.again = true; return; }
+  const mine = db;
+  try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(mine)); } catch (_) {}
+  db = migrate(theirs);
+  if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
+  server.replaceNext = false; server.sentStamp = tm.updated || null;
+  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+  server.again = true;
+  renderKeepFocus();
+  toast('Les dades s’havien canviat des d’una altra finestra (o un altre NotesGim): ara es veuen les del fitxer. Si el teu darrer canvi no hi és, torna’l a fer.', 'bad');
+}
 async function serverWaitLoop() {
-  for (;;) {
+  while (!server.closed) {
     try {
       const resp = await api('api/wait?since=' + server.version);
+      if (server.closed) return;
       if (!server.online) { server.online = true; renderSaveState(false); serverPush(); }
-      if (resp) { server.version = resp.version; applyRemote(resp.db); }
+      if (resp) { server.version = resp.version; applyRemote(resp.db, resp.dataRev); }
     } catch (_) {
       if (server.online) { server.online = false; renderSaveState(false); }
       await new Promise(r => setTimeout(r, 3000));
     }
   }
 }
+// les adreces de la Wi-Fi poden canviar (l'ordinador s'hi connecta després, o es canvia de xarxa)
+async function refreshUrls() {
+  if (!server.on || server.role !== 'admin' || Date.now() - server.urlsAt < 15000) return;
+  server.urlsAt = Date.now();
+  try {
+    const info = await api('api/info', {}, 2500);
+    const urls = (info && info.urls) || [];
+    if (JSON.stringify(urls) !== JSON.stringify(server.urls)) { server.urls = urls; if (ui.view === 'competicio' && !typingScore()) renderKeepFocus(); }
+  } catch (_) {}
+}
+// mentre la finestra d'impressió és oberta la pàgina no pot parlar amb el programa: que no es tanqui sol
+const keepAlive = ms => { if (server.on && server.role === 'admin' && !server.closed) try { navigator.sendBeacon('api/keepalive', new Blob([JSON.stringify({ ms })], { type: 'application/json' })); } catch (_) {} };
+addEventListener('beforeprint', () => keepAlive(3 * 3600 * 1000));
+addEventListener('afterprint', () => keepAlive(0));
+const typingScore = () => { const el = document.activeElement; return !!(el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value); };
 const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la tutora ' + a.who : 'una tutora'}${a.at ? ' a les ' + new Date(a.at).toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' }) : ''}. Si la canvies, compta com a revisada.` : '';
-// arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint
-function applyRemote(remoteDb) {
+// arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint.
+// Si una altra finestra de la taula ha desat dades (rev diferent) i aquí no hi ha res per desar, es carreguen.
+function applyRemote(remoteDb, rev) {
+  if (rev != null && server.dataRev != null && rev !== server.dataRev && remoteDb && !saveTimer && !server.pushing && !server.again
+    && !$('#dlg').open && !$('#confirm').open && !typingScore() && (remoteDb.meta || {}).updated !== server.sentStamp) {
+    db = migrate(remoteDb); server.dataRev = rev; server.sentStamp = (remoteDb.meta || {}).updated || null;
+    try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+    renderKeepFocus(); toast('Dades actualitzades des d’una altra finestra.');
+    return;
+  }
   const changed = Engine.mergeScores(db, remoteDb);
   if (!changed.length) return;
   try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
@@ -1231,6 +1321,7 @@ async function writeFileNow() {
     if (p !== 'granted') { fileState = 'perm'; renderSaveState(false); return; }
     // primer cop d'aquesta sessió: si el fitxer l'ha canviat algú altre (un altre ordinador o navegador), no s'hi escriu sense preguntar
     if (!fileChecked) {
+      if (await unreadable(fileHandle)) { fileState = 'conflict'; renderSaveState(false); return; }
       const inFile = await readHandle(fileHandle);
       const theirs = inFile && (inFile.gymnasts.length || inFile.competitions.length);
       const fm = (inFile && inFile.meta) || {};
@@ -1252,6 +1343,11 @@ async function readHandle(handle) {
   try { const f = await handle.getFile(); if (!f.size) return null; const d = JSON.parse(await f.text()); return isNotesGim(d) ? d : null; }
   catch (_) { return null; }
 }
+// el fitxer té alguna cosa però no són dades de NotesGim que es puguin llegir (malmès, o un altre fitxer)
+async function unreadable(handle) {
+  try { const f = await handle.getFile(); if (!f.size) return false; return !isNotesGim(JSON.parse(await f.text())); }
+  catch (_) { return true; }
+}
 async function attachHandle(handle) {
   fileHandle = handle; fileChecked = true; await idbSet('fileHandle', handle);
   fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue;
@@ -1266,6 +1362,7 @@ async function linkFile(mode) {
       ? (await window.showOpenFilePicker({ types: FILE_TYPES }))[0]
       : await window.showSaveFilePicker({ suggestedName: 'notesgim-dades.json', types: FILE_TYPES });
     if ((await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') { toast('Sense permís per escriure al fitxer.', 'bad'); return; }
+    if (await unreadable(handle) && !(await confirmBox(`El fitxer «${h(handle.name)}» no és un fitxer de dades de NotesGim que es pugui llegir (potser està malmès o és un altre fitxer).<br><br>Si hi escric les dades, <b>el que hi ha ara es perdrà</b>. Si no n’estàs segur, cancel·la i tria un altre fitxer o crea’n un de nou.`, { ok: 'Escriu-hi igualment', danger: true }))) return;
     const inFile = await readHandle(handle);
     const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
     if (inFile && (inFile.gymnasts.length || inFile.competitions.length)) {
@@ -1292,7 +1389,17 @@ async function regrantFile() {
 // el fitxer vinculat té dades més noves o d'un altre lloc: tria què fer
 async function resolveFileConflict() {
   const inFile = fileHandle && await readHandle(fileHandle);
-  if (!inFile) { fileChecked = true; fileState = 'ok'; queueFileWrite(); return; }
+  if (!inFile) {
+    if (fileHandle && await unreadable(fileHandle)) {
+      const pick = await choiceBox(`El fitxer <b>${h(fileHandle.name)}</b> ja no és un fitxer de dades de NotesGim que es pugui llegir (potser s’ha malmès o s’hi ha copiat un altre fitxer). No s’hi ha escrit res.`,
+        [{ value: 'unlink', label: 'Desvincula’l', cls: 'primary' }, { value: 'mine', label: 'Escriu-hi les d’aquest navegador (es perdrà el que hi ha)', cls: 'danger' }]);
+      if (pick === 'unlink') await unlinkFile();
+      else if (pick === 'mine') { fileChecked = true; fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue; }
+      renderSaveState(false);
+      return;
+    }
+    fileChecked = true; fileState = 'ok'; queueFileWrite(); return;
+  }
   const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
   const pick = await choiceBox(`El fitxer <b>${h(fileHandle.name)}</b> té dades que no són les d’aquest navegador (potser s’hi ha treballat des d’un altre ordinador).<br><br>
     Fitxer: ${info(inFile)}${inFile.meta && inFile.meta.updated ? ` · canviat el ${h(new Date(inFile.meta.updated).toLocaleString('ca'))}` : ''}<br>Aquest navegador: ${info(db)}${db.meta.updated ? ` · canviat el ${h(new Date(db.meta.updated).toLocaleString('ca'))}` : ''}`,
@@ -1343,7 +1450,7 @@ function restoreFromText(text, sourceName) {
     if (!ok) return;
     let fresh;
     try { fresh = migrate(data); } catch (e) { console.error(e); toast('Aquest fitxer està malmès i no es pot restaurar.', 'bad'); return; }
-    withUndo('Dades restaurades de «' + sourceName + '».', () => { db = fresh; });
+    withUndo('Dades restaurades de «' + sourceName + '».', () => { db = fresh; }, { replace: true });
   });
 }
 function restorePick() {
@@ -1445,6 +1552,7 @@ function openDialog(html, { wide = false } = {}) {
   d.className = wide ? 'wide' : '';
   d.innerHTML = `<div class="dlg">${html}</div>`;
   d.showModal();
+  toastsShown();
   const first = d.querySelector('[autofocus]') || d.querySelector('input:not([type=checkbox]):not([type=hidden]),select,textarea');
   if (first) first.focus();
 }
@@ -1460,7 +1568,7 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
       const typedOk = !typed || norm(d.querySelector('input[name=typed]').value) === norm(typed);
       res(d.returnValue === 'ok' && typedOk);
     };
-    d.showModal();
+    d.showModal(); toastsShown();
     const inp = d.querySelector('input');
     if (inp) inp.focus(); else if (danger) d.querySelector('button[value=no]').focus();
   });
@@ -1474,7 +1582,7 @@ function promptBox(msg, value = '') {
       <div class="dlg-actions"><button value="ok" class="btn primary">D’acord</button><button value="no" class="btn">Cancel·la</button></div></form>`;
     d.returnValue = '';
     d.onclose = () => res(d.returnValue === 'ok' ? d.querySelector('input[name=v]').value.trim() : null);
-    d.showModal();
+    d.showModal(); toastsShown();
     const i = d.querySelector('input'); i.focus(); i.select();
   });
 }
@@ -1485,14 +1593,17 @@ function choiceBox(msg, buttons) {
     d.innerHTML = `<form method="dialog" class="dlg"><div>${msg}</div><div class="dlg-actions">${buttons.map(b => `<button value="${b.value}" class="btn ${b.cls || ''}">${h(b.label)}</button>`).join('')}<button value="" class="btn">Cancel·la</button></div></form>`;
     d.returnValue = '';
     d.onclose = () => res(d.returnValue || null);
-    d.showModal();
+    d.showModal(); toastsShown();
     d.querySelector('button[value=""]').focus();
   });
 }
 // label: text, o una funció que es crida després del canvi i torna el text o { msg, type, actions }
-function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [] } = {}) {
+// replace: el canvi substitueix totes les dades (restaurar una còpia, esborrar-ho tot): al programa NotesGim no s'hi
+// han de barrejar les notes que hi havia (i el Desfés tampoc)
+function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace = false } = {}) {
   const snap = JSON.stringify(db);
   fn();
+  if (replace && server.on) server.replaceNext = true;
   commit();
   const stamp = db.meta.updated;
   let L = typeof label === 'function' ? label() : label;
@@ -1501,7 +1612,9 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [] } = {}) 
     toast(L, type, { actions: [{ label: 'Desfés', fn: () => {
       if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
       if (beforeRestore) beforeRestore();
-      db = migrate(JSON.parse(snap)); commit(); render(); toast('Desfet.');
+      db = migrate(JSON.parse(snap));
+      if (replace && server.on) server.replaceNext = true;
+      commit(); render(); toast('Desfet.');
     } }, ...actions] });
   }
 }
@@ -1524,9 +1637,11 @@ function render() {
   const v = views[ui.view] || views.competicions;
   hideFixTip();
   $('#main').innerHTML = iosNote() + v();
-  if (ui.view === 'tutor') tutStatusBar();
+  if (ui.view === 'tutor') { tutStatusBar(); tutShape(); }
+  document.body.classList.toggle('has-qe', !!$('#qe'));
   if ($('#qe')) qeRefresh();
   if (ui.view === 'configuracio') offlineStatus();
+  if (ui.view === 'competicio' && server.on) refreshUrls();
   const section = { competicio: 'competicions', equips: 'gimnastes', entitats: 'configuracio' }[ui.view] || ui.view;
   $$('header.top nav a, nav.bottom a').forEach(a => a.classList.toggle('on', a.dataset.nav === section));
   document.documentElement.style.setProperty('--top', (getComputedStyle($('header.top')).position === 'sticky' ? $('header.top').offsetHeight : 0) + 'px');
@@ -1534,13 +1649,21 @@ function render() {
 }
 function renderSaveState(busy) {
   const el = $('#savestate'); if (!el || !db) return;
+  const set = html => {
+    // només es canvia el que ha canviat: si es tornessin a fer els botons, un clic just després d'escriure es perdria
+    const tmp = document.createElement('div'); tmp.innerHTML = html;
+    const now = [...el.children], next = [...tmp.children];
+    if (now.length === next.length && now.every((x, i) => x.tagName === next[i].tagName && (x.tagName !== 'BUTTON' || x.outerHTML === next[i].outerHTML))) {
+      now.forEach((x, i) => { if (x.outerHTML !== next[i].outerHTML) x.replaceWith(next[i]); });
+    } else el.innerHTML = html;
+  };
   const parts = [];
   if (server.on && server.role === 'admin') {
     parts.push(server.online
       ? `<span title="Les dades es desen al fitxer ${h(server.dataFile || '')} i es reben les notes de les tutores"><span class="dot ${busy || server.pushing ? 'busy' : ''}"></span><span class="lbl">Desat al fitxer · ${busy || server.pushing ? 'desant…' : 'desat'}</span></span>`
       : `<span title="Es continua desant en aquesta finestra i es passarà al fitxer quan torni la connexió"><span class="dot err"></span>Sense connexió amb el programa</span>`);
     parts.push(`<button data-act="quitApp" title="Desa i tanca el programa NotesGim">Tanca NotesGim</button>`);
-    el.innerHTML = parts.join('');
+    set(parts.join(''));
     return;
   }
   if (updateReady) parts.push(`<button class="alert" data-act="applyUpdate" title="S’ha descarregat una versió nova de NotesGim">Versió nova · Actualitza</button>`);
@@ -1557,7 +1680,7 @@ function renderSaveState(busy) {
   if (!fileOk && hasData() && backupDue()) {
     parts.push(`<button class="alert" data-act="backup" title="No hi ha cap còpia recent de les dades fora del navegador">Fes una còpia</button>`);
   }
-  el.innerHTML = parts.join('');
+  set(parts.join(''));
 }
 const hasData = () => db.gymnasts.length > 0 || db.competitions.length > 0;
 function backupDue() {
@@ -1708,10 +1831,10 @@ function tabInscripcions(c) {
   return tools + groups.map(g => {
     const teams = compTeamsOf(c, g);
     const teamChips = teams.map(t => {
-      const n = c.entries.filter(e => e.teamId === t.id).length;
+      const n = teamSize(c, t), np = teamNP(c, t);
       const cls = n < c.teamMin ? 'bad' : n > c.teamMax ? 'warn' : 'ok';
-      const tip = n < c.teamMin ? `Li falten gimnastes: com a mínim ${c.teamMin}` : n > c.teamMax ? `Massa gimnastes: com a màxim ${c.teamMax}` : '';
-      return `<span class="chip" title="${tip}"><b>${h(t.name)}</b>${t.clubId && t.name !== clubName(t.clubId) ? `<span class="muted small">${h(clubName(t.clubId))}</span>` : ''}<span class="badge ${cls}">${n}</span>
+      const tip = n < c.teamMin ? `Li falten gimnastes que competeixin: com a mínim ${c.teamMin}` : n > c.teamMax ? `Massa gimnastes: com a màxim ${c.teamMax}` : '';
+      return `<span class="chip" title="${tip}"><b>${h(t.name)}</b>${t.clubId && t.name !== clubName(t.clubId) ? `<span class="muted small">${h(clubName(t.clubId))}</span>` : ''}<span class="badge ${cls}">${n}${np ? ` + ${np} NP` : ''}</span>
         <button class="icon-btn" data-act="editCompTeam" data-id="${t.id}" title="Canvia el nom o les gimnastes" aria-label="Edita l’equip ${h(t.name)}" ${dis}>✎</button></span>`;
     }).join('');
     const rows = sortEntries(g.entries).map(e => {
@@ -1722,7 +1845,7 @@ function tabInscripcions(c) {
         <td class="c-name"><a href="#" data-act="editEntry" data-id="${e.id}">${h(gymName(gym))}</a>${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}<span class="sub-ph">${h(club)}</span></td>
         <td class="c-club hide-ph">${h(club)}</td>
         <td class="c-team"><select data-chg="entryTeam" data-id="${e.id}" ${dis} aria-label="Equip de ${h(gymName(gym))}">${entryTeamOptions(c, e, g)}</select></td>
-        <td class="c-st"><select data-chg="entryStatus" data-id="${e.id}" ${dis} aria-label="Es presenta?"><option value="">Participa</option><option value="np" ${e.status === 'np' ? 'selected' : ''}>No es presenta (NP)</option></select></td>
+        <td class="c-st"><select data-chg="entryStatus" data-id="${e.id}" ${dis} aria-label="Es presenta?"><option value="">Participa</option><option value="np" ${e.status === 'np' ? 'selected' : ''}>${isPhone() ? 'NP (no es presenta)' : 'No es presenta (NP)'}</option></select></td>
         <td class="c-del num"><button class="icon-btn" data-act="delEntry" data-id="${e.id}" title="Treu-la de la competició" aria-label="Treu ${h(gymName(gym))} de la competició" ${dis}>✕</button></td></tr>`;
     }).join('');
     const anyHit = !q || sortEntries(g.entries).some(e => { const gym = gymById(e.gymnastId); return norm(`${gymName(gym)} ${clubName(e.clubId)} ${e.bib}`).includes(q) || String(e.bib) === q; });
@@ -1768,9 +1891,10 @@ function putInTeam(gymId, team) {
   for (const t of db.teams) if (t !== team && t.memberIds.includes(gymId)) t.memberIds = t.memberIds.filter(id => id !== gymId);
   if (team && !team.memberIds.includes(gymId)) team.memberIds.push(gymId);
 }
-// la còpia d'un equip en una competició (es crea quan cal; si es queda buida, desapareix sola)
+// la còpia d'un equip en una competició (es crea quan cal; si es queda buida, desapareix sola). Si l'equip ha
+// canviat de grup, la còpia del grup d'abans no serveix: se'n fa una de nova
 function compTeamFor(c, team) {
-  let ct = c.teams.find(x => x.sourceTeamId === team.id);
+  let ct = c.teams.find(x => x.sourceTeamId === team.id && sameGroup(x, team));
   if (!ct) {
     ct = { id: uid(), name: team.name, clubId: team.clubId || null, category: team.category, gender: genderOf(team), level: team.level, sourceTeamId: team.id, auto: true };
     c.teams.push(ct);
@@ -1783,6 +1907,22 @@ function pruneAutoTeams(c) {
 }
 // competicions que segueixen la fitxa: les no tancades d'avui o de més endavant (i la que tens oberta)
 const followsRecords = c => !c.locked && (!c.date || c.date >= today() || (ui.view === 'competicio' && c.id === ui.compId));
+// el que passa en una competició només pot canviar la fitxa si és d'avui o de més endavant (no una de passada)
+const isUpcoming = c => !c.date || c.date >= today();
+// una gimnasta d'aquesta inscripció competeix en el grup de la seva fitxa (si no, aquell dia va en un altre grup)
+const inRecordGroup = e => { const g = gymById(e.gymnastId); return !!g && sameGroup(e, g); };
+// el mateix equip (entitat, grup i nom) a la llista general
+const findTeam = (clubId, grp, name) => db.teams.find(t => (t.clubId || null) === (clubId || null) && sameGroup(t, grp) && norm(t.name) === norm(name));
+// gimnastes d'un equip a la competició que hi compten (les NP no)
+const teamSize = (c, ct) => c.entries.filter(e => e.teamId === ct.id && e.status !== 'np').length;
+const teamNP = (c, ct) => c.entries.filter(e => e.teamId === ct.id && e.status === 'np').length;
+// avís si una NP deixa el seu equip sense el mínim
+function npTeamWarn(c, e) {
+  const ct = e.teamId && c.teams.find(t => t.id === e.teamId);
+  if (!ct || e.status !== 'np') return '';
+  const n = teamSize(c, ct);
+  return n < (c.teamMin || 3) ? ` «${ct.name}» es queda amb ${n}: no arriba al mínim i quedarà anul·lat.` : '';
+}
 // les inscripcions sense equip van a l'equip de la seva fitxa (si en té un del mateix grup). Torna quantes.
 function autoAssignTeams(c, entries) {
   let n = 0;
@@ -1818,9 +1958,21 @@ function autoCompTeams(c, only) {
       const total = teams.reduce((n, t) => n + size(t), 0) + free.length;
       // equips nous que calen (com si es fessin tots de cop), però només si les noves els poden omplir fins al mínim
       const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - teams.length, Math.floor(free.length / min)));
-      const fresh = range(kNew).map(() => compTeamFor(c, makeTeam(clubId, g)));
+      // en una competició passada (o si aquell dia competeixen en un altre grup) els equips nous són només d'aquell
+      // dia: no es toca cap fitxa
+      const toRecords = isUpcoming(c) && free.some(inRecordGroup);
+      const fresh = range(kNew).map(() => {
+        if (toRecords) return compTeamFor(c, makeTeam(clubId, g));
+        const ct = { id: uid(), name: newTeamName(clubId, g, c.teams), clubId, category: g.category, gender: genderOf(g), level: g.level, sourceTeamId: null, auto: true };
+        c.teams.push(ct);
+        return ct;
+      });
       made += fresh.length;
-      const put = (e, ct) => { e.teamId = ct.id; const t = ct.sourceTeamId && teamById(ct.sourceTeamId); if (t) putInTeam(e.gymnastId, t); placed++; };
+      const put = (e, ct) => {
+        e.teamId = ct.id; placed++;
+        const t = ct.sourceTeamId && teamById(ct.sourceTeamId);
+        if (t && isUpcoming(c) && inRecordGroup(e)) putInTeam(e.gymnastId, t);
+      };
       for (const ct of fresh) while (size(ct) < min && free.length) put(free.shift(), ct);
       const all = teams.concat(fresh);
       while (free.length) {
@@ -1836,7 +1988,7 @@ function autoCompTeams(c, only) {
 // individual) o '' (automàtic: amb les de la seva entitat). Les competicions que segueixen la fitxa també canvien.
 function setGymTeam(g, value, newName) {
   let team = null;
-  if (value === '__new') team = makeTeam(g.clubId, g, newName);
+  if (value === '__new') team = (String(newName || '').trim() && findTeam(g.clubId, g, newName)) || makeTeam(g.clubId, g, newName);
   else if (value && value !== '__none') team = teamById(value) || null;
   putInTeam(g.id, team);
   if (value === '__none') g.noTeam = true; else delete g.noTeam;
@@ -1858,13 +2010,14 @@ function propagateTeam(team, removed = []) {
   const touched = [];
   for (const c of db.competitions.filter(followsRecords)) {
     let changed = false;
-    const ct0 = c.teams.find(x => x.sourceTeamId === team.id);
-    if (ct0) { ct0.name = team.name; ct0.clubId = team.clubId || null; }
+    // les còpies d'aquest equip a la competició (n'hi pot haver una del grup d'abans, si l'equip ha canviat de grup)
+    const copies = c.teams.filter(x => x.sourceTeamId === team.id);
+    for (const ct of copies) if (sameGroup(ct, team)) { ct.name = team.name; ct.clubId = team.clubId || null; }
     for (const e of c.entries) {
       if (team.memberIds.includes(e.gymnastId) && sameGroup(e, team)) {
         const ct = compTeamFor(c, team);
         if (e.teamId !== ct.id) { e.teamId = ct.id; delete e.noAuto; changed = true; }
-      } else if (ct0 && e.teamId === ct0.id && (removed.includes(e.gymnastId) || !team.memberIds.includes(e.gymnastId))) {
+      } else if (copies.some(x => x.id === e.teamId) && (removed.includes(e.gymnastId) || !team.memberIds.includes(e.gymnastId) || !sameGroup(e, team))) {
         e.teamId = null; e.noAuto = true; changed = true;
       }
     }
@@ -1876,9 +2029,10 @@ function propagateTeam(team, removed = []) {
 // un equip d'una competició, tal com és aquell dia, passa a les fitxes (i a les competicions que les segueixen)
 function syncTeamToRecords(c, ct) {
   let team = ct.sourceTeamId && teamById(ct.sourceTeamId);
-  if (!team) { team = makeTeam(ct.clubId, ct, ct.name); ct.sourceTeamId = team.id; ct.auto = true; }
+  if (team && !sameGroup(team, ct)) team = null;
+  if (!team) { team = findTeam(ct.clubId, ct, ct.name) || makeTeam(ct.clubId, ct, ct.name); ct.sourceTeamId = team.id; ct.auto = true; }
   team.name = ct.name; team.clubId = ct.clubId || null;
-  const inComp = c.entries.filter(e => e.teamId === ct.id).map(e => e.gymnastId);
+  const inComp = c.entries.filter(e => e.teamId === ct.id && inRecordGroup(e)).map(e => e.gymnastId);
   const enrolled = new Set(c.entries.filter(e => sameGroup(e, ct)).map(e => e.gymnastId));
   const removed = team.memberIds.filter(id => enrolled.has(id) && !inComp.includes(id));
   team.memberIds = team.memberIds.filter(id => !removed.includes(id));
@@ -1889,7 +2043,7 @@ function syncTeamToRecords(c, ct) {
 // equips del grup de la llista general (encara no hi són perquè cap de les seves gimnastes no hi està inscrita)
 function entryTeamOptions(c, e, g) {
   const teams = compTeamsOf(c, g);
-  const size = t => c.entries.filter(x => x.teamId === t.id).length;
+  const size = t => teamSize(c, t) + (teamNP(c, t) ? ` + ${teamNP(c, t)} NP` : '');
   const others = db.teams.filter(t => sameGroup(t, g) && !teams.some(ct => ct.sourceTeamId === t.id)).sort((a, b) => coll(a.name, b.name));
   return `<option value="">— Individual —</option>
     ${teams.map(t => `<option value="${t.id}" ${e.teamId === t.id ? 'selected' : ''}>${h(t.name)} (${size(t)})</option>`).join('')}
@@ -1902,7 +2056,7 @@ function notesApp(c, g) {
   const apps = Engine.enabledApps(c, g.gender);
   if (ui.app !== 'all' && !apps.find(a => a.id === ui.app)) ui.app = 'all';
   const a = ui.app === 'all' ? null : apps.find(x => x.id === ui.app);
-  return { apps, app: a || ((isPhone() || ui.qe) ? apps[0] : null) };
+  return { apps, app: a || ((isPhone() || (ui.qe && c.scoring !== 'detailed')) ? apps[0] : null) };
 }
 function tabNotes(c) {
   const groups = groupsOf(c).filter(g => g.entries.length);
@@ -2106,7 +2260,9 @@ function qeHtml(ctx) {
   const word = a.icon === 'salt' || a.icon === 'mini' ? 'salt' : 'intent';
   const atts = n > 1 ? `<div class="seg" style="--n:${n}">${range(n).map(i => { const v = Engine.toM(ctx.get(e, i).v);
     return `<button type="button" class="pill ${i === qe.i ? 'on' : ''}" data-act="qeAtt" data-i="${i}">${ordinal(i + 1)} ${word} · ${v === null ? '—' : fmt(v)}</button>`; }).join('')}</div>` : '';
-  const saved = np ? 'No presentada (NP)' : locked ? `🔒 Ja la té la taula: <b>${fmt(m)}</b>` : m !== null ? `Nota desada: <b>${fmt(m)}</b>${at.by === 'tutor' && !ctx.tutor ? ` <span class="badge warn">de la tutora${at.who ? ' ' + h(at.who) : ''}</span>` : ''}` : 'Encara sense nota';
+  const tableLocked = !ctx.tutor && ctx.c.locked;
+  const saved = np ? 'No presentada (NP)' : (locked && !tableLocked) ? `🔒 Ja la té la taula: <b>${fmt(m)}</b>`
+    : (m !== null ? `Nota desada: <b>${fmt(m)}</b>${at.by === 'tutor' && !ctx.tutor ? ` <span class="badge warn">de la tutora${at.who ? ' ' + h(at.who) : ''}</span>` : ''}` : 'Encara sense nota') + (tableLocked ? ' · 🔒 notes bloquejades' : '');
   const blocked = np || locked || (!ctx.tutor && ctx.c.locked);
   const key = k => `<button type="button" data-act="qeKey" data-k="${k}" aria-label="${k === 'del' ? 'Esborra' : k}">${k === 'del' ? '⌫' : k}</button>`;
   return `<div class="qe" id="qe">
@@ -2120,7 +2276,7 @@ function qeHtml(ctx) {
     <div class="qe-bar"><button type="button" class="btn" data-act="qeMove" data-d="-1" aria-label="Gimnasta anterior">◀</button>
       ${ctx.tutor ? `<button type="button" class="btn" data-act="qeMove" data-d="1">Salta</button>` : `<button type="button" class="btn" data-act="qeNP" ${ctx.c.locked ? 'disabled' : ''} title="No presentada">${np ? 'Treu NP' : 'NP'}</button>`}
       <button type="button" class="btn primary" id="qesave" data-act="qeSave" data-blocked="${blocked ? 1 : ''}"></button></div>
-    <div class="qe-next">${next ? `Següent sense nota: <b>${h(next.e.bib)}</b> · ${h(ctx.name(next.e))}${n > 1 ? ` (${ordinal(next.i + 1)} ${word})` : ''}`
+    <div class="qe-next">${tableLocked ? `Notes bloquejades${ctx.g && Engine.missingScores(ctx.c, ctx.g).total ? `: en aquest grup falten ${plural(Engine.missingScores(ctx.c, ctx.g).total, 'nota', 'notes')}` : ''}.` : next ? `Següent sense nota: <b>${h(next.e.bib)}</b> · ${h(ctx.name(next.e))}${n > 1 ? ` (${ordinal(next.i + 1)} ${word})` : ''}`
       : (m === null && !np && !locked) ? `És l’última que falta de ${h(a.name)} en aquest grup.` : `✓ Totes les notes de ${h(a.name)} d’aquest grup estan entrades.`}</div>
     <div class="qe-strip" role="list">${list.map(x => { const ok = range(n).some(i => qeHas(ctx, x, i)), lk = range(n).every(i => ctx.locked(x, i));
       return `<button type="button" role="listitem" class="${x === e ? 'cur' : ''} ${x.status === 'np' ? 'np' : ok ? 'done' : ''} ${lk && ctx.tutor ? 'lock' : ''}" data-act="qeGo" data-id="${h(x.id)}" title="${h(ctx.name(x))}">${h(x.bib)}</button>`; }).join('')}</div>
@@ -2149,6 +2305,7 @@ function qeMoveTo(ctx, e, i) {
   qe.i = i !== undefined ? i : Math.max(0, range(ctx.n).findIndex(k => !qeHas(ctx, e, k)));
   render();
 }
+const qeIntoView = () => setTimeout(() => { const q = $('#qe'); if (q) q.scrollIntoView({ block: 'start' }); }, 0);
 const qeActions = {
   qeKey: el => {
     const k = el.dataset.k;
@@ -2174,24 +2331,41 @@ const qeActions = {
     const e = qeCurrent(ctx);
     if (!qe.buf) { qeActions.qeMove({ dataset: { d: '1' } }); return; }
     const val = Engine.parseScore(qe.buf);
-    if (Number.isNaN(val) || val > ctx.max || e.status === 'np' || ctx.locked(e, qe.i)) { qeRefresh(); return; }
-    const i = qe.i, prev = JSON.parse(JSON.stringify(ctx.get(e, i) || {})), a = ctx.a;
+    if (Number.isNaN(val) || val > ctx.max) { qeRefresh(); return; }
+    // mentrestant la taula l'ha posada, revisada, o ha bloquejat les notes: es diu per què no es desa
+    if (e.status === 'np' || ctx.locked(e, qe.i)) {
+      render();
+      toast(e.status === 'np' ? `${ctx.name(e)} consta com a no presentada.` : !ctx.tutor ? 'Les notes d’aquesta competició estan bloquejades.' : 'Aquesta nota ja l’ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.', 'bad');
+      return;
+    }
+    const i = qe.i, prev = JSON.parse(JSON.stringify(ctx.get(e, i) || {})), a = ctx.a, comp = ctx.c, eid = e.id;
     ctx.save(e, i, val);
+    const savedAt = (ctx.get(e, i) || {}).at;
     const nx = (i + 1 < ctx.n && !qeHas(ctx, e, i + 1)) ? { e, i: i + 1 } : qeNextMissing(ctx, ctx.list.indexOf(e));
     qe.buf = '';
     if (nx) { qe.entryId = nx.e.id; qe.i = nx.i; }
     render();
-    toast(`Desada ${fmt(Engine.toM(val))} · ${a.name}${ctx.n > 1 ? ' ' + ordinal(i + 1) : ''} · ${e.bib} ${ctx.name(e)}`, 'ok', { actions: [{ label: 'Desfés', fn: () => {
-      const c2 = qeCtx(); if (!c2) return;
+    const offline = ctx.tutor && !tut.online;
+    toast(`${offline ? 'Guardada al mòbil (sense connexió: s’enviarà sola)' : 'Desada'} ${fmt(Engine.toM(val))} · ${a.name}${ctx.n > 1 ? ' ' + ordinal(i + 1) : ''} · ${e.bib} ${ctx.name(e)}`, offline ? 'bad' : 'ok', { actions: [{ label: 'Desfés', fn: () => {
+      // sempre a l'aparell i la competició on s'ha desat, i només si ningú no l'ha tornada a canviar
       const v0 = prev.v === undefined || prev.v === null ? null : +prev.v;
-      if (c2.tutor) c2.save(e, i, v0); else { setAttemptField(e, a.id, i, 'v', v0); commit(); }
-      qe.entryId = e.id; qe.i = i; qe.buf = ''; render(); toast('Desfet.');
+      if (ctx.tutor) {
+        const c2 = tut.comps.find(x => x.id === comp.id), e2 = c2 && c2.entries.find(x => x.id === eid);
+        const now = e2 && (((e2.scores || {})[a.id] || [])[i] || {});
+        if (!e2 || now.at !== savedAt) { toast('Ja no es pot desfer: s’ha tornat a canviar.', 'bad'); return; }
+        tutQueue(c2, e2, a, i, v0);
+      } else {
+        const c2 = compById(comp.id), e2 = c2 && c2.entries.find(x => x.id === eid);
+        if (!e2 || att(e2, a, i).at !== savedAt || c2.locked) { toast('Ja no es pot desfer: s’ha tornat a canviar.', 'bad'); return; }
+        setAttemptField(e2, a.id, i, 'v', v0); commit();
+      }
+      qe.entryId = eid; qe.i = i; qe.buf = ''; render(); toast('Desfet.');
     } }] });
   },
   qeNP: () => {
     const ctx = qeCtx(); if (!ctx || ctx.tutor || ctx.c.locked) return;
     const e = qeCurrent(ctx), was = e.status === 'np';
-    withUndo(`${entryName(e)}: ${was ? 'torna a participar' : 'no presentada (NP)'}.`, () => { e.status = was ? '' : 'np'; });
+    withUndo(() => { const w = was ? '' : npTeamWarn(ctx.c, e); return { msg: `${entryName(e)}: ${was ? 'torna a participar' : 'no presentada (NP)'}.${w}`, type: w ? 'bad' : 'ok' }; }, () => { e.status = was ? '' : 'np'; });
     if (!was) { const nx = qeNextMissing(qeCtx(), ctx.list.indexOf(e)); if (nx) { qe.entryId = nx.e.id; qe.i = nx.i; render(); } }
   },
 };
@@ -2201,6 +2375,8 @@ document.addEventListener('keydown', e => {
   const t = e.target;
   if (t && t.matches && t.matches('input, select, textarea')) return;
   const k = e.key;
+  // Intro sobre un botó o enllaç de fora del teclat (p. ex. «Desfés» d'un avís): fa el que diu el botó
+  if ((k === 'Enter' || k === ' ') && t && t.closest && t.closest('a, button, summary, [role=button]') && !t.closest('#qe')) return;
   let act = null;
   if (/^[0-9]$/.test(k)) act = ['qeKey', { k }];
   else if (k === ',' || k === '.' || k === "'") act = ['qeKey', { k: ',' }];
@@ -2545,7 +2721,7 @@ function gymForm(g, keep = {}, opts = {}) {
     <datalist id="clublist">${clubs.map(c => `<option value="${h(c.name)}">`).join('')}</datalist>
     ${g ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="archived" ${g.archived ? 'checked' : ''}> Arxivada (ja no competeix; no surt a les llistes per inscriure)</label>` : ''}
     ${ec ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="enroll" checked ${ec.locked ? 'disabled' : ''}> Inscriu-la també a <b>${h(ec.name)}</b></label>` : ''}
-    <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
+    <div class="dlg-actions">${g ? `<button type="button" class="btn danger left" data-act="delGym" data-id="${g.id}">Esborra la fitxa</button>` : ''}<button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       ${g ? '' : `<button class="btn" name="again" value="1">Desa i afegeix-ne una altra</button>`}<button class="btn primary">Desa</button></div></form>`;
 }
 
@@ -2783,11 +2959,11 @@ views.entitats = () => {
   return `<section><div class="page-head"><h1>Entitats</h1><span class="muted">${plural(clubs.length, 'entitat', 'entitats')}</span>
     <div class="actions"><button class="btn primary" data-act="newClub">＋ Nova entitat</button></div></div>
     <p class="muted small">Les entitats es creen soles quan les escrius a la fitxa d’una gimnasta. Aquí les pots reanomenar o, si n’hi ha dues que són la mateixa (p. ex. «CG Lleida» i «C.G. Lleida»), fusionar-les.</p>
-    ${clubs.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th class="num">Gimnastes</th><th class="num">Equips</th><th>Fusiona amb…</th><th></th></tr></thead><tbody>
-    ${clubs.map(c => `<tr><td><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat"></td>
-      <td class="num">${nG(c.id)}</td><td class="num">${nT(c.id)}</td>
-      <td><select data-chg="clubMerge" data-id="${c.id}" aria-label="Fusiona"><option value="">—</option>${clubs.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">${h(o.name)}</option>`).join('')}</select></td>
-      <td class="num"><button class="icon-btn" data-act="delClub" data-id="${c.id}" title="Esborra">✕</button></td></tr>`).join('')}
+    ${clubs.length ? `<div class="tbl-wrap"><table class="tbl cardify clubs"><thead><tr><th>Nom</th><th class="num">Gimnastes</th><th class="num">Equips</th><th>Fusiona amb…</th><th></th></tr></thead><tbody>
+    ${clubs.map(c => `<tr><td class="c-name"><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat"></td>
+      <td class="num c-ng"><span class="ph-lbl">Gimnastes</span>${nG(c.id)}</td><td class="num c-nt"><span class="ph-lbl">Equips</span>${nT(c.id)}</td>
+      <td class="c-merge"><span class="ph-lbl">Fusiona amb…</span><select data-chg="clubMerge" data-id="${c.id}" aria-label="Fusiona ${h(c.name)} amb"><option value="">—</option>${clubs.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">${h(o.name)}</option>`).join('')}</select></td>
+      <td class="num c-del"><button class="icon-btn" data-act="delClub" data-id="${c.id}" title="Esborra" aria-label="Esborra ${h(c.name)}">✕</button></td></tr>`).join('')}
     </tbody></table></div>` : `<div class="empty">Encara no hi ha cap entitat.</div>`}</section>`;
 };
 
@@ -2896,18 +3072,21 @@ async function tutorStart() {
   ui.view = 'tutor';
   if (tut.pin) {
     try { await tutFetch(); } catch (_) { tut.online = false; }
-    if (!tut.comps.length && tut.online) tut.pin = '';
+    // el codi ja no val: es torna a demanar (però les notes que hi hagi per enviar es guarden)
+    if (!tut.comps.length && tut.online && !tut.queue.length) tut.pin = '';
   }
   render();
   tutWaitLoop();
-  tutSend();
+  if (tut.comps.length) tutSend();
 }
 async function tutFetch(since) {
   try {
     const j = await api(`api/tutor?pin=${encodeURIComponent(tut.pin)}${since != null ? '&since=' + since : ''}`);
     if (!j) return false;
+    const wasOut = !tut.comps.length;
     tut.error = ''; tut.comps = j.comps || []; tut.version = j.version; tut.online = true;
     for (const op of tut.queue) tutApplyLocal(op);   // el que encara no s'ha enviat, es continua veient
+    if (wasOut && tut.comps.length && tut.queue.length) setTimeout(tutSend, 0);   // ha tornat a entrar: s'envia el que quedava
     return true;
   } catch (e) {
     if (e.status === 403) { tut.error = e.message; tut.comps = []; return true; }
@@ -2916,10 +3095,12 @@ async function tutFetch(since) {
 }
 async function tutWaitLoop() {
   for (;;) {
-    if (!tut.pin || (!tut.comps.length && tut.error)) { await new Promise(r => setTimeout(r, 3000)); continue; }
+    if (!tut.pin) { await new Promise(r => setTimeout(r, 3000)); continue; }
     if (!tut.comps.length) {
-      // encara no s'ha pogut entrar (sense connexió en obrir): es torna a provar sol
-      try { await tutFetch(); tut.online = true; render(); } catch (_) { tut.online = false; await new Promise(r => setTimeout(r, 3000)); }
+      // encara no s'ha pogut entrar (sense connexió en obrir, o la competició està tancada o sense tutores):
+      // es torna a provar sol, i quan la taula la torna a obrir s'hi entra sense fer res
+      try { await tutFetch(); tut.online = true; if (tut.comps.length) render(); } catch (_) { tut.online = false; }
+      await new Promise(r => setTimeout(r, tut.comps.length ? 0 : 5000));
       continue;
     }
     try {
@@ -2941,26 +3122,33 @@ function tutApplyLocal(op) {
 }
 // una nota de la tutora: a la cua (es guarda al mòbil) i s'envia a la taula
 function tutQueue(c, e, a, i, value) {
-  const op = { compId: c.id, entryId: e.id, appId: a.id, i, value, at: Date.now() };
+  const op = { compId: c.id, entryId: e.id, appId: a.id, i, value, at: Date.now(),
+    label: `${e.bib ?? ''} ${e.name || ''} · ${a.name}${(a.attempts || 1) > 1 ? ' ' + ordinal(i + 1) : ''}` };
   tut.queue = tut.queue.filter(q => !(q.compId === op.compId && q.entryId === op.entryId && q.appId === op.appId && q.i === op.i));
   tut.queue.push(op); tutSave(); tutApplyLocal(op); tutMark(op, 'wait'); tutStatusBar();
   tutSend();
 }
-// envia la cua de notes, d'una en una i en ordre
+// envia la cua de notes, d'una en una i en ordre (només les de les competicions on es pot entrar ara)
 async function tutSend() {
   if (tut.sending) return;
   tut.sending = true;
   try {
-    while (tut.queue.length) {
-      const op = tut.queue[0];
+    for (;;) {
+      const op = tut.queue.find(q => tut.comps.some(c => c.id === q.compId));
+      if (!op) break;
       try {
         await api('api/score', { method: 'POST', body: JSON.stringify({ pin: tut.pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value }) }, 15000);
         tut.online = true;
-        tut.queue.shift(); tutSave(); tutMark(op, 'ok');
+        tut.queue = tut.queue.filter(q => q !== op); tutSave(); tutMark(op, 'ok');
       } catch (e) {
+        if (e.status === 401) {
+          // el codi ja no val (l'han canviat o han tancat la competició): les notes es queden al mòbil
+          tut.error = e.message; tut.comps = []; tutSave(); render();
+          break;
+        }
         if (e.status && e.status !== 500) {
-          // la taula no l'accepta (ja l'ha posada o revisada, competició tancada…): fora de la cua i es torna a carregar
-          tut.queue.shift(); tutSave(); tutMark(op, e.status === 409 ? 'lock' : 'err');
+          // la taula no l'accepta (ja l'ha posada o revisada, no presentada…): fora de la cua i es torna a carregar
+          tut.queue = tut.queue.filter(q => q !== op); tutSave(); tutMark(op, e.status === 409 ? 'lock' : 'err');
           toast(e.message, 'bad');
           try { await tutFetch(); render(); } catch (_) {}
           continue;
@@ -2985,9 +3173,19 @@ function tutStatusBar() {
 }
 // dades noves del servidor: s'actualitza el que no s'està escrivint
 function tutRefresh() {
-  if ($('#qe')) { if (!qe.buf) render(); return; }
+  // amb el teclat gran no hi ha cap casella amb el focus: es torna a pintar (el que s'està escrivint es manté)
+  if ($('#qe') || !tut.comps.length) { render(); return; }
   if (!$('#scoregrid')) { render(); return; }
   const c = tutComp(); if (!c) { render(); return; }
+  // a la llista: si hi ha gimnastes o intents nous, es torna a pintar (quan no s'està escrivint en una casella)
+  const g = Engine.groupsOf(c, S()).find(x => x.key === tut.group), a = g && Engine.enabledApps(c, g.gender).find(x => x.id === tut.app);
+  const shape = g && a ? g.entries.map(e => e.id).sort().join(',') + '|' + Math.max(1, a.attempts || 1) : '';
+  const shown = $$('#scoregrid tbody tr').length + '|' + $$('#scoregrid thead th').length;
+  if (shape !== tut.shape || shown !== tut.shown) {
+    tut.shape = shape;
+    if (!isSc(document.activeElement)) { renderKeepFocus(); return; }
+    tut.pendingRender = true;
+  }
   $$('#scoregrid input.sc').forEach(inp => {
     if (inp === document.activeElement) return;
     const e = c.entries.find(x => x.id === inp.dataset.e); if (!e) return;
@@ -3006,6 +3204,7 @@ views.tutor = () => {
         <label class="f"><span>Codi</span><input type="text" name="pin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" required value="${h(tut.pin)}" autofocus style="font-size:22px;letter-spacing:.15em"></label>
         <label class="f"><span>El teu nom (opcional)</span><input type="text" name="who" value="${h(tut.who)}" autocomplete="off" autocapitalize="words"></label></div>
         ${tut.error ? `<div class="note bad" style="margin-top:10px">${h(tut.error)}</div>` : ''}
+        ${tut.queue.length ? `<div class="note warn" style="margin-top:10px"><b>${plural(tut.queue.length, 'nota guardada', 'notes guardades')} al mòbil sense enviar</b> (s’enviaran quan tornis a entrar):<br>${tut.queue.map(q => `${h(q.label || '')}: <b>${q.value === null ? 'esborrar' : fmt(Engine.toM(q.value))}</b>`).join('<br>')}</div>` : ''}
         <div class="dlg-actions"><button class="btn primary">Entra</button></div></form></div></section>`;
   if (tut.compId !== c.id) tut.compId = c.id;
   const groups = Engine.groupsOf(c, S()).filter(g => g.entries.length);
@@ -3041,6 +3240,17 @@ views.tutor = () => {
     <div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead><tr><th class="num">Dors.</th><th>Gimnasta</th>${range(n).map(i => `<th class="num">${n > 1 ? ordHtml(i + 1) + ' salt' : icon(a) + ' ' + h(a.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
   </section>`;
 };
+// com és ara la llista de la tutora (per saber si cal tornar-la a pintar quan arriben dades noves)
+function tutShape() {
+  const c = tutComp(), g = c && Engine.groupsOf(c, S()).find(x => x.key === tut.group), a = g && Engine.enabledApps(c, g.gender).find(x => x.id === tut.app);
+  tut.shape = g && a ? g.entries.map(e => e.id).sort().join(',') + '|' + Math.max(1, a.attempts || 1) : '';
+  tut.shown = $$('#scoregrid tbody tr').length + '|' + $$('#scoregrid thead th').length;
+  tut.pendingRender = false;
+}
+document.addEventListener('focusout', () => {
+  if (ui.view !== 'tutor' || !tut.pendingRender) return;
+  setTimeout(() => { if (tut.pendingRender && !isSc(document.activeElement)) renderKeepFocus(); }, 60);
+});
 // tancar la pàgina amb notes per enviar: avís
 addEventListener('beforeunload', e => { if (ui.view === 'tutor' && tut.queue.length) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -3205,7 +3415,7 @@ function installHelp() {
     ${installEvt ? '<p><button class="btn primary" data-act="installPrompt">Instal·la-la ara</button></p>' : ''}
     <ol class="steps"><li>Obre aquesta pàgina amb <b>Chrome</b> (si l’has obert des de WhatsApp: menú ⋮ → «Obre a Chrome»).</li>
     <li>Toca el menú <b>⋮</b> → <b>«Instal·la l’aplicació»</b> (o «Afegeix a la pantalla d’inici») → <b>Instal·la</b>.</li>
-    <li>Ja la tens amb les altres apps, amb la seva icona.</li></ol>${moveData}${once}`;
+    <li>Ja la tens amb les altres apps, amb la seva icona. Les dades que ja hi has entrat a Chrome hi són.</li></ol>${once}`;
   const web = location.protocol === 'https:';
   return `<h2>Instal·la NotesGim</h2>
     <div class="card"><h3 style="margin-bottom:6px">A l’ordinador de la taula (recomanat): el programa NotesGim</h3>
@@ -3213,7 +3423,8 @@ function installHelp() {
       <ol class="steps small"><li>Si el navegador avisa que no és un fitxer habitual: «⋯» → «Conserva» → «Mostra’n més» → «Conserva igualment».</li>
         <li>Obre’l. Si surt «Windows ha protegit l’ordinador»: «Més informació» → «Executa igualment».</li>
         <li>Posa’l en una carpeta fixa (per exemple, l’escriptori) i obre’l sempre des d’allà. S’obre en una finestra pròpia i funciona sense internet. Les dades es guarden a <b>Documents\NotesGim</b>, i les tutores hi poden entrar les notes des del mòbil.</li></ol>
-      <p class="small muted">Mac: <a href="${RELEASE}NotesGim-mac-applesilicon">Apple Silicon (M1…)</a> · <a href="${RELEASE}NotesGim-mac-intel">Intel</a> · Linux: <a href="${RELEASE}NotesGim-linux">NotesGim-linux</a></p></div>
+      <p class="small muted">Mac: <a href="${RELEASE}NotesGim-mac-applesilicon.zip">Apple Silicon (M1…)</a> · <a href="${RELEASE}NotesGim-mac-intel.zip">Intel</a>: descomprimeix-lo i, el primer cop, clic dret a NotesGim → «Obre» → «Obre» (el Mac avisa perquè no és de l’App Store).
+        Linux: <a href="${RELEASE}NotesGim-linux.tar.gz">NotesGim-linux.tar.gz</a> (descomprimeix-lo i obre NotesGim-linux).</p></div>
     <div class="card"><h3 style="margin-bottom:6px">O bé instal·la-la al navegador (Chrome o Edge)</h3>
       ${web ? (installEvt ? '<p><button class="btn primary" data-act="installPrompt">Instal·la-la ara</button></p>' : '<p>Clica la icona <b>«Instal·la»</b> de la barra d’adreces (o el menú ⋮ → «Aplicacions» / «Desa i comparteix» → «Instal·la NotesGim»).</p>')
         : `<p>Obre <a href="${APP_URL}" target="_blank" rel="noopener">${APP_URL}</a> amb Chrome o Edge i clica la icona «Instal·la» de la barra d’adreces.</p>`}
@@ -3456,7 +3667,7 @@ const actions = {
     db.meta.lastBackup = new Date().toISOString(); flush();
     downloadBlob(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }), `notesgim-copia-${stamp()}.json`);
     if (fileHandle) await unlinkFile();
-    withUndo('S’han esborrat totes les dades (s’ha descarregat una còpia abans).', () => { const s = db.settings; db = defaultDb(); db.settings = s; });
+    withUndo('S’han esborrat totes les dades (s’ha descarregat una còpia abans).', () => { const s = db.settings; db = defaultDb(); db.settings = s; }, { replace: true });
   },
 
   // competicions
@@ -3473,7 +3684,13 @@ const actions = {
   },
   openCls: el => { ui.clsType = el.dataset.t || 'general'; ui.clsGroup = null; go(`#/competicio/${el.dataset.id}/classificacions`); },
   goRanking: el => { if (el.dataset.season) ui.rkSeason = el.dataset.season; ui.rkGroup = ui.clsGroup && ui.clsGroup !== 'all' ? ui.clsGroup : ui.group; go('#/ranquing'); },
-  menuToggle: el => { const m = el.closest('.menu'); const open = !m.classList.contains('open'); closeMenus(); m.classList.toggle('open', open); },
+  menuToggle: el => {
+    const m = el.closest('.menu'); const open = !m.classList.contains('open'); closeMenus(); m.classList.toggle('open', open);
+    const l = m.querySelector('.menu-list'); if (!open || !l) return;
+    l.style.left = ''; l.style.right = '';
+    const r = l.getBoundingClientRect();
+    if (r.left < 8) { l.style.left = '0'; l.style.right = 'auto'; }   // que no surti per l'esquerra de la pantalla
+  },
   delComp: async el => {
     const c = compById(el.dataset.id);
     const ok = await confirmBox(`Esborrar la competició <b>${h(c.name)}</b> (${fmtDate(c.date)}) i totes les seves notes?`, { ok: 'Esborra', danger: true });
@@ -3552,6 +3769,7 @@ const actions = {
     if (!(await confirmBox('Tancar NotesGim? Tot queda desat al fitxer de dades. Les tutores ja no podran entrar notes fins que el tornis a obrir.', { ok: 'Tanca' }))) return;
     commitTyping(); flush();
     for (let i = 0; i < 40 && (server.pushing || server.again); i++) await new Promise(r => setTimeout(r, 100));
+    server.closed = true;   // aquesta finestra ja no parla més amb cap NotesGim (si se n'obre un altre, no hi escriu)
     try { await api('api/quit', { method: 'POST', body: '{}' }); } catch (_) {}
     document.body.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;font:16px system-ui"><h2>NotesGim s’ha tancat</h2><p>Les dades estan desades. Ja pots tancar aquesta finestra.</p></div>';
   },
@@ -3561,8 +3779,8 @@ const actions = {
   dismissIos: () => { prefSet('iosnote', '1'); const n = $('#iosnote'); if (n) n.remove(); },
   applyUpdate: () => { commitTyping(); flush(); location.reload(); },
   tutComp: el => { tut.compId = el.dataset.id; render(); },
-  tutGroup: el => { if (el.dataset.g) { tut.group = el.dataset.g; qe.buf = ''; render(); } },
-  tutApp: el => { tut.app = el.dataset.a; qe.buf = ''; tutSave(); render(); },
+  tutGroup: el => { if (el.dataset.g) { tut.group = el.dataset.g; qe.buf = ''; render(); qeIntoView(); } },
+  tutApp: el => { tut.app = el.dataset.a; qe.buf = ''; tutSave(); render(); qeIntoView(); },
   tutChangeApp: async () => {
     const c = tutComp(), a = c && c.apparatus.find(x => x.id === tut.app);
     if (!(await confirmBox(`Ara estàs puntuant <b>${h(a ? a.name : '')}</b>. Segur que vols canviar d’aparell?`, { ok: 'Canvia d’aparell' }))) return;
@@ -3614,7 +3832,7 @@ const actions = {
   delEntry: async el => {
     const c = curComp(), e = c.entries.find(x => x.id === el.dataset.id);
     if (hasScores(e) && !(await confirmBox(`<b>${h(entryName(e))}</b> ja té notes. Segur que la vols treure de la competició?`, { ok: 'Treu de la competició', danger: true }))) return;
-    withUndo(`${entryName(e)}: fora de la competició.`, () => { const cc = compById(c.id); cc.entries = cc.entries.filter(x => x.id !== e.id); });
+    withUndo(`${entryName(e)}: fora de la competició.`, () => { const cc = compById(c.id); cc.entries = cc.entries.filter(x => x.id !== e.id); pruneAutoTeams(cc); });
   },
   newCompTeam: el => { const c = curComp(); const g = groupsOf(c).find(x => x.key === el.dataset.g); if (g) openCompTeamForm(c, null, g); },
   editCompTeam: el => { const c = curComp(); const t = c.teams.find(x => x.id === el.dataset.id); openCompTeamForm(c, t, t); },
@@ -3630,11 +3848,11 @@ const actions = {
   },
 
   // notes
-  pickGroup: el => { if (!el.dataset.g) return; ui.group = el.dataset.g; qe.buf = ''; render(); },
-  pickApp: el => { ui.app = el.dataset.a; qe.buf = ''; render(); const f = !isTouch() && $('#scoregrid input.sc:not(:disabled)'); if (f) f.focus(); },
+  pickGroup: el => { if (!el.dataset.g) return; ui.group = el.dataset.g; qe.buf = ''; render(); if ($('#qe') && isPhone()) qeIntoView(); },
+  pickApp: el => { ui.app = el.dataset.a; qe.buf = ''; render(); if ($('#qe') && isPhone()) qeIntoView(); const f = !isTouch() && $('#scoregrid input.sc:not(:disabled)'); if (f) f.focus(); },
   pickClsGroup: el => { if (!el.dataset.g) return; ui.clsGroup = el.dataset.g; render(); },
   pickClsType: el => { ui.clsType = el.dataset.t; render(); },
-  toggleQe: () => { ui.qe = !ui.qe; prefSet('qe', ui.qe ? '1' : ''); qe.key = ''; qe.buf = ''; render(); window.scrollTo(0, 0); },
+  toggleQe: () => { ui.qe = !ui.qe; prefSet('qe', ui.qe ? '1' : ''); qe.key = ''; qe.buf = ''; render(); if (ui.qe) qeIntoView(); else window.scrollTo(0, 0); },
   // busca una gimnasta per dorsal o nom: va al seu grup i a la seva primera casella sense nota
   notesFind: () => {
     const inp = $('#nfind'), q = inp ? inp.value.trim() : '', c = curComp();
@@ -3693,6 +3911,8 @@ const actions = {
   editGym: el => openDialog(gymForm(gymById(el.dataset.id))),
   delGym: async el => {
     const g = gymById(el.dataset.id);
+    if (!g) return;
+    closeDialog();
     const used = db.competitions.filter(c => c.entries.some(e => e.gymnastId === g.id));
     if (used.length) {
       const pick = await choiceBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}).<br><br>
@@ -3703,7 +3923,7 @@ const actions = {
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
           db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => id !== g.id); });
-          db.competitions.forEach(c => { c.entries = c.entries.filter(e => e.gymnastId !== g.id); });
+          db.competitions.forEach(c => { c.entries = c.entries.filter(e => e.gymnastId !== g.id); pruneAutoTeams(c); });
         });
       return;
     }
@@ -3808,19 +4028,32 @@ const actions = {
       for (const c of S().categories) { if (c.from !== null) c.from += d; if (c.to !== null) c.to += d; }
     });
     const n = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
-    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">Les competicions ja fetes no canvien.</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
+    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi tenen notes).</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
   },
   recalcCats: async (el, already) => {
     const list = db.gymnasts.filter(g => !g.archived && catMismatch(g));
     if (!list.length) { toast('Totes les gimnastes ja tenen la categoria que els toca.'); return; }
-    if (!already && !(await confirmBox(`Canviar la categoria de ${plural(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien. Les que canvien de categoria surten del seu equip (els equips nous es faran sols en inscriure-les).`, { ok: 'Canvia-les' }))) return;
-    withUndo(`${plural(list.length, 'gimnasta ha', 'gimnastes han')} canviat de categoria.`, () => {
+    if (!already && !(await confirmBox(`Canviar la categoria de ${plural(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; a les que vénen, també es canvien (si encara no hi tenen notes). Les que canvien de categoria surten del seu equip i se’n fan d’equips nous per entitat.`, { ok: 'Canvia-les' }))) return;
+    let upd = 0, kept = 0;
+    withUndo(() => `${plural(list.length, 'gimnasta ha', 'gimnastes han')} canviat de categoria.${upd ? ` A les competicions que vénen: ${plural(upd, 'inscripció posada', 'inscripcions posades')} al dia.` : ''}${kept ? ` ${plural(kept, 'inscripció ja tenia', 'inscripcions ja tenien')} notes i no s’ha tocat.` : ''}`, () => {
       for (const g of list) g.category = catMismatch(g);
       // surten dels equips del grup d'abans (els que es queden buits s'esborren): quan s'inscriguin, es faran equips nous
       const ids = new Set(list.map(g => g.id));
       const emptied = db.teams.filter(t => t.memberIds.length && t.memberIds.every(id => ids.has(id) && !sameGroup(t, gymById(id))));
       for (const t of db.teams) t.memberIds = t.memberIds.filter(id => !ids.has(id) || sameGroup(t, gymById(id)));
       db.teams = db.teams.filter(t => !emptied.includes(t));
+      // les competicions que vénen també: cadascuna al grup nou i al seu equip (si encara no hi té notes)
+      for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
+        const moved = [];
+        for (const g of list) {
+          const e = c.entries.find(x => x.gymnastId === g.id);
+          if (!e || sameGroup(e, g)) continue;
+          if (hasScores(e)) { kept++; continue; }
+          e.category = g.category; e.gender = genderOf(g); e.level = g.level; e.teamId = null; delete e.noAuto;
+          moved.push(e);
+        }
+        if (moved.length) { if (c.autoTeams) autoCompTeams(c, moved); else autoAssignTeams(c, moved); pruneAutoTeams(c); upd += moved.length; }
+      }
     });
   },
   toggleWrong: () => { ui.gWrong = !ui.gWrong; render(); },
@@ -3908,6 +4141,7 @@ const forms = {
     try { await tutFetch(); } catch (_) { tut.error = 'No es pot connectar amb l’ordinador de la taula. Comprova que estàs a la mateixa Wi-Fi.'; tut.comps = []; }
     if (!tut.comps.length) tut.pin = tut.error ? tut.pin : '';
     tutSave(); render(); tutStatusBar();
+    if (tut.comps.length && tut.queue.length) tutSend();
   },
   comp: f => {
     const fd = new FormData(f), id = f.dataset.id;
@@ -3976,6 +4210,7 @@ const forms = {
     const vals = { name: fd.get('name').trim(), clubId: fd.get('clubId') || null, gender: fd.get('gender') === 'M' ? 'M' : 'F', category: fd.get('category'), level: fd.get('level') };
     const members = fd.getAll('m');
     if (!vals.name || !vals.category || !vals.level) { toast('Cal el nom, la categoria i el nivell.', 'bad'); return; }
+    if (db.teams.some(x => x.id !== id && sameGroup(x, vals) && norm(x.name) === norm(vals.name))) { toast(`Ja hi ha un equip «${vals.name}» en aquest grup. Posa-li un altre nom (per exemple «${vals.name} 2»).`, 'bad'); return; }
     let t = id && teamById(id), touched = [];
     closeDialog();
     withUndo(() => {
@@ -4038,13 +4273,24 @@ const forms = {
     withUndo(() => {
       const n = c.entries.filter(e => e.teamId === t.id).length, alive = c.teams.includes(t);
       const msg = !alive ? `Equip «${name}» tret de la competició (s’ha quedat sense gimnastes).` : `Equip «${name}» desat${isNew ? '' : ' en aquesta competició'} (${plural(n, 'gimnasta', 'gimnastes')}).${n < c.teamMin ? ` No arriba al mínim (${c.teamMin}).` : n > c.teamMax ? ` Passa del màxim (${c.teamMax}).` : ''}`;
-      const acts = alive && !isNew ? [{ label: 'També a les fitxes', fn: () => withUndo(() => `Fitxes de les gimnastes de «${t.name}» actualitzades.`, () => { syncTeamToRecords(c, t); }) }] : [];
+      const acts = alive && !isNew ? [{ label: 'També a les fitxes', fn: () => {
+        // (després d'un Desfés les dades són unes altres: es busquen de nou)
+        const cc = compById(c.id), tt = cc && cc.teams.find(x => x.id === t.id);
+        if (!tt) { toast('Aquest equip ja no hi és.', 'bad'); return; }
+        withUndo(() => `Fitxes de les gimnastes de «${tt.name}» actualitzades.`, () => { syncTeamToRecords(cc, tt); });
+      } }] : [];
       return { msg, type: alive && (n < c.teamMin || n > c.teamMax) ? 'bad' : 'ok', actions: acts };
     }, () => {
-      if (!t) t = compTeamFor(c, makeTeam(clubId, grp, name));
+      if (!t) {
+        // si ja hi ha un equip amb aquest nom (de la mateixa entitat i grup), és aquest
+        const ex = findTeam(clubId, grp, name);
+        if (ex) t = compTeamFor(c, ex);
+        else if (isUpcoming(c)) t = compTeamFor(c, makeTeam(clubId, grp, name));
+        else { t = { id: uid(), name, clubId, category: grp.category, gender: grp.gender, level: grp.level, sourceTeamId: null, auto: true }; c.teams.push(t); }
+      }
       t.name = name; t.clubId = clubId;
       c.entries.forEach(e => { if (members.has(e.id)) { e.teamId = t.id; delete e.noAuto; } else if (e.teamId === t.id) { e.teamId = null; e.noAuto = true; } });
-      if (isNew) syncTeamToRecords(c, t);
+      if (isNew && isUpcoming(c)) syncTeamToRecords(c, t);
       pruneAutoTeams(c);
     });
   },
@@ -4079,15 +4325,28 @@ const changes = {
   score: el => {
     const c = curComp(); if (!c || c.locked) return;
     const e = c.entries.find(x => x.id === el.dataset.e); if (!e) return;
-    if (el.dataset.last === el.value) return !el.classList.contains('invalid');   // ja processat (Intro i després blur)
+    const max = +c.maxScore || 20;
+    if (el.dataset.last === el.value) {   // ja processat (Intro i després blur)
+      if (el.classList.contains('invalid') && document.activeElement === el && !$('#fixtip')) badScore(el, Engine.parseScore(el.value), max, () => changes.score(el));
+      return !el.classList.contains('invalid');
+    }
     el.dataset.last = el.value;
     // «NP» escrit a la casella: no presentada
     if (/^\s*n\.?\s*p\.?\s*$/i.test(el.value)) {
       hideFixTip();
-      withUndo(`${entryName(e)}: no presentada (NP).`, () => { e.status = 'np'; });
+      const apply = () => withUndo(() => { const w = npTeamWarn(c, e); return { msg: `${entryName(e)}: no presentada (NP).${w}`, type: w ? 'bad' : 'ok' }; }, () => { e.status = 'np'; });
+      if (navKey) { apply(); return 'np'; }
+      // en sortir de la casella (Tab o clic): primer deixem que el focus arribi on ha d'anar i després es torna a pintar
+      setTimeout(() => {
+        const a = document.activeElement, to = isSc(a) && a.dataset.e !== e.id ? { col: a.dataset.col, e: a.dataset.e } : null;
+        const away = a && a !== document.body && !isSc(a);
+        apply();
+        const n = to && $(`#scoregrid input.sc[data-col="${to.col}"][data-e="${to.e}"]`);
+        if (n && !n.disabled) focusSc(n); else if (!away) advanceFrom(el);
+      }, 0);
       return 'np';
     }
-    const val = Engine.parseScore(el.value), max = +c.maxScore || 20;
+    const val = Engine.parseScore(el.value);
     if (Number.isNaN(val) || (val !== null && val > max)) { badScore(el, val, max, () => changes.score(el)); return false; }
     el.classList.remove('invalid'); hideFixTip();
     setAttemptField(e, el.dataset.a, +el.dataset.i, el.dataset.f, val);
@@ -4120,12 +4379,14 @@ const changes = {
     const gym = gymById(e.gymnastId), value = el.value;
     let ct = null, left = null;
     withUndo(() => {
-      const n = ct ? c.entries.filter(x => x.teamId === ct.id).length : 0;
-      const nl = left ? c.entries.filter(x => x.teamId === left.id).length : 0;
+      const n = ct ? teamSize(c, ct) : 0;
+      const nl = left ? teamSize(c, left) : 0;
       const master = ct && ct.sourceTeamId && teamById(ct.sourceTeamId);
       const want = master ? master.id : '__none';
       const acts = gym && !ct === !master && want !== gymTeamValue(gym) ? [{ label: 'També a la fitxa', fn: () => {
-        let r; withUndo(() => teamSetMsg(gym, r), () => { r = setGymTeam(gym, want); });
+        const g2 = gymById(gym.id);   // (després d'un Desfés les dades són unes altres)
+        if (!g2 || (want !== '__none' && !teamById(want))) { toast('Ja no es pot: les dades han canviat.', 'bad'); return; }
+        let r; withUndo(() => teamSetMsg(g2, r), () => { r = setGymTeam(g2, want); });
       } }] : [];
       const warn = n > c.teamMax ? ` Ara en té ${n} i el màxim és ${c.teamMax}: no classificarà fins que en tregueu.`
         : left && nl < c.teamMin && nl > 0 ? ` «${left.name}» es queda amb ${nl}: no arriba al mínim i quedarà anul·lat.` : '';
@@ -4141,7 +4402,11 @@ const changes = {
       if (left && left === ct) left = null;
     });
   },
-  entryStatus: el => { const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.status = el.value; commit(); render(); },
+  entryStatus: el => {
+    const c = curComp(), e = c && c.entries.find(x => x.id === el.dataset.id); if (!e || c.locked) return;
+    e.status = el.value === 'np' ? 'np' : ''; commit(); render();
+    const w = npTeamWarn(c, e); if (w) toast(`${entryName(e)}: no presentada.${w}`, 'bad');
+  },
   cfg: el => {
     const cfg = cfgTarget(el), k = el.dataset.k;
     let v = el.type === 'checkbox' ? el.checked : el.value;
@@ -4311,6 +4576,8 @@ function badScore(el, val, max, retry) {
   const tip = document.createElement('div');
   tip.id = 'fixtip'; tip.className = 'fixtip'; tip.setAttribute('role', 'alert'); tip._for = el;
   tip.innerHTML = `<span>${h(msg)}</span>${sug !== null ? `<button type="button">Volies dir ${h(fmt(Engine.toM(sug)))}?</button>` : ''}`;
+  tip._msg = msg;
+  tip._fix = sug === null ? null : { label: `Posa ${fmt(Engine.toM(sug))}`, fn: () => { el.value = fmt(Engine.toM(sug)); retry(); if (!document.contains(el)) renderKeepFocus(); } };
   (el.closest('dialog') || document.body).appendChild(tip);
   const r = el.getBoundingClientRect(), vh = window.visualViewport ? visualViewport.height : innerHeight;
   const w = tip.offsetWidth, ht = tip.offsetHeight;
@@ -4324,20 +4591,27 @@ function badScore(el, val, max, retry) {
   }
   el.addEventListener('input', hideFixTip, { once: true });
 }
-document.addEventListener('focusin', e => { const t = $('#fixtip'); if (t && t._for !== e.target) t.remove(); });
+document.addEventListener('focusin', e => {
+  const t = $('#fixtip'); if (!t || t._for === e.target) return;
+  t.remove();
+  // s'ha sortit de la casella amb la nota malament: no s'ha desat, i es diu (amb la proposta, si n'hi ha)
+  const el = t._for;
+  if (el && document.contains(el) && el.classList.contains('invalid')) toast(`${t._msg} No s’ha desat.`, 'bad', t._fix ? { actions: [t._fix] } : {});
+});
 function focusSc(n) { n.focus(); n.select(); n.scrollIntoView({ block: 'nearest', inline: 'nearest' }); keepClear(n); }
 // passa a la casella de sota (o de dalt). Al final de la columna, a la primera de la columna següent
 // (l'aparell o l'intent següent) i, al final del tot, avisa i proposa el grup següent amb notes per posar.
 function advanceFrom(el, up = false) {
-  const col = $$(`#scoregrid input.sc[data-col="${el.dataset.col}"]:not(:disabled)`);
-  const i = col.indexOf(el), next = col[i + (up ? -1 : 1)];
-  if (next) { focusSc(next); return; }
-  if (up) { el.blur(); return; }
+  const colKey = el.dataset.col, eid = el.dataset.e;
+  const all = $$(`#scoregrid input.sc[data-col="${colKey}"]`);   // amb les desactivades, en l'ordre de les files
+  const i = all.findIndex(x => x.dataset.e === eid);
+  for (let j = i + (up ? -1 : 1); i >= 0 && j >= 0 && j < all.length; j += up ? -1 : 1) if (!all[j].disabled) { focusSc(all[j]); return; }
+  if (up) { const cur = all[i]; if (cur && !cur.disabled) focusSc(cur); return; }   // a dalt de tot: s'hi queda
   const cols = [...new Set($$('#scoregrid input.sc:not(:disabled)').map(x => x.dataset.col))];
-  const nc = cols[cols.indexOf(el.dataset.col) + 1];
+  const nc = cols[cols.indexOf(colKey) + 1];
   const first = nc && $(`#scoregrid input.sc[data-col="${nc}"]:not(:disabled)`);
   if (first) { focusSc(first); return; }
-  el.blur();
+  if (document.contains(el)) el.blur();
   if (el.dataset.chg !== 'score') return;
   const c = curComp(); if (!c) return;
   const groups = groupsOf(c).filter(g => g.entries.length), k = groups.findIndex(g => g.key === ui.group);
@@ -4380,6 +4654,9 @@ document.addEventListener('keydown', e => {
   } else if (ui.view === 'ranquing') { e.preventDefault(); actions.printRanking(); }
 });
 const closeMenus = () => $$('.menu.open').forEach(m => m.classList.remove('open'));
+document.addEventListener('focusin', e => { if (isPhone() && e.target.matches && e.target.matches('input:not([type=checkbox]), textarea, select')) document.body.classList.add('kb'); });
+document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('input:not([type=checkbox]), textarea, select'))) document.body.classList.remove('kb'); }, 80));
+try { matchMedia(PHONE_MQ).addEventListener('change', () => { if (!typingScore() && !$('#dlg').open && !$('#confirm').open) renderKeepFocus(); }); } catch (_) {}
 document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('.menu')) closeMenus(); }, true);
 
 /* ═══════════════════════════════════════════ esdeveniments */
@@ -4407,13 +4684,17 @@ document.addEventListener('submit', e => {
   e.preventDefault();
   forms[f.dataset.form](f, e.submitter);
 });
+let navKey = false;   // el canvi de nota ve d'Intro o d'una fletxa (no de sortir de la casella)
 document.addEventListener('keydown', e => {
   const el = e.target;
   // el desplegable d'equip de la graella: les fletxes no canvien l'equip sense voler, passen a la fila del costat
-  if (el.matches && el.matches('#scoregrid select.teamsel') && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+  if (el.matches && el.matches('#scoregrid select.teamsel') && !['Tab', 'Enter', ' ', 'Escape'].includes(e.key)) {
+    // (cap tecla canvia l'equip sense obrir el desplegable; amunt i avall passen a la fila del costat)
     e.preventDefault();
-    const tr = el.closest('tr'), sib = e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling;
-    const f = sib && sib.querySelector('input.sc:not(:disabled)'); if (f) focusSc(f);
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const tr = el.closest('tr'), sib = e.key === 'ArrowDown' ? tr.nextElementSibling : tr.previousElementSibling;
+      const f = sib && sib.querySelector('input.sc:not(:disabled)'); if (f) focusSc(f);
+    }
     return;
   }
   // a la graella de notes, Intro / fletxes baixen i pugen per la mateixa columna
@@ -4422,9 +4703,11 @@ document.addEventListener('keydown', e => {
     const up = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey);
     const col = $$(`#scoregrid input.sc[data-col="${el.dataset.col}"]:not(:disabled)`);
     const nx = col[col.indexOf(el) + (up ? -1 : 1)], nextId = nx && nx.dataset.e, colKey = el.dataset.col;
-    const r = changes[el.dataset.chg](el);
+    navKey = true;
+    let r;
+    try { r = changes[el.dataset.chg](el); } finally { navKey = false; }
     if (r === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
-    if (r === 'np') { const n = nextId && $(`#scoregrid input.sc[data-col="${colKey}"][data-e="${nextId}"]`); if (n) focusSc(n); return; }
+    if (r === 'np') { const n = nextId && $(`#scoregrid input.sc[data-col="${colKey}"][data-e="${nextId}"]`); if (n && !n.disabled) focusSc(n); else advanceFrom(el, up); return; }
     advanceFrom(el, up);
     return;
   }
@@ -4434,12 +4717,14 @@ document.addEventListener('keydown', e => {
 function keepClear(el) {
   const wrap = el.closest('.grid-wrap'); if (!wrap) return;
   const hd = $('header.top'), bar = getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().bottom : 0;
+  const nav = $('nav.bottom'), navTop = nav && getComputedStyle(nav).display !== 'none' ? nav.getBoundingClientRect().top : innerHeight;
   const w = wrap.getBoundingClientRect(), r = el.getBoundingClientRect(), th = wrap.querySelector('thead');
-  const top = Math.max(w.top, bar) + (th ? th.getBoundingClientRect().height : 0), bottom = Math.min(w.bottom, innerHeight);
+  const top = Math.max(w.top, bar) + (th ? th.getBoundingClientRect().height : 0), bottom = Math.min(w.bottom, innerHeight, navTop);
   if (r.top < top) wrap.scrollTop -= top - r.top + 4;
   else if (r.bottom > bottom) wrap.scrollTop += r.bottom - bottom + 4;
   const r2 = el.getBoundingClientRect();
   if (r2.top < bar + 4) window.scrollBy(0, r2.top - bar - 8);
+  else if (r2.bottom > Math.min(innerHeight, navTop) - 4) window.scrollBy(0, r2.bottom - Math.min(innerHeight, navTop) + 8);
 }
 // en entrar en una casella de nota, es selecciona tota perquè es pugui sobreescriure.
 // Ha de ser immediat: si s'espera, el que s'escriu de pressa després d'Intro quedaria seleccionat i se sobreescriuria.
@@ -4485,10 +4770,11 @@ if (location.protocol === 'https:') {
   if ('serviceWorker' in navigator) {
     addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
     // quan arriba una versió nova, s'avisa amb un botó a dalt (no es recarrega sola: es podria estar entrant notes)
-    let had = !!navigator.serviceWorker.controller;
+    const ownSW = w => !!w && w.scriptURL === new URL('sw.js', location.href).href;
+    let had = ownSW(navigator.serviceWorker.controller);
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (had && !updateReady) { updateReady = true; renderSaveState(false); }
-      had = true;
+      had = ownSW(navigator.serviceWorker.controller);
     });
   }
 }

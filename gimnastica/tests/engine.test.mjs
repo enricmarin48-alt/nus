@@ -419,3 +419,13 @@ test('rànquing de jornades: el mateix equip encara que canviï de nom; equips d
   const [g] = E.seasonRanking([j1, j2, j3], { categories: CATS, levels: ['A'] }, { nameOf });
   assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X A', 3], ['Club X', 2]]);
 });
+
+test('notes que falten: amb 2 intents i «la suma» o «la mitjana» calen tots dos; amb «la millor», un', () => {
+  for (const [rule, missing] of [['sum', 1], ['avg', 1], ['best', 0]]) {
+    const c = comp({ apparatus: [{ id: 'mini', name: 'Minitramp', enabled: true, inTotal: true, attempts: 2, rule }] });
+    c.entries.push(Object.assign(entry('Pau', {}), { scores: { mini: [{ v: 8 }] } }));
+    const g = group(c);
+    assert.equal(E.missingScores(c, g).total, missing, rule);
+    assert.equal(E.individualRanking(c, g).rows[0].complete, !missing, rule);
+  }
+});

@@ -30,7 +30,10 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   // NotesGim (gimnastica/) té el seu propi service worker i la seva memòria: no la toquem
-  if (new URL(e.request.url).pathname.includes('/gimnastica/')) return;
+  const path = new URL(e.request.url).pathname;
+  if (path.includes('/gimnastica/')) return;
+  // l'adreça de NotesGim escrita sense la barra final: cap a la bona (també sense internet)
+  if (e.request.mode === 'navigate' && path.endsWith('/gimnastica')) { e.respondWith(Response.redirect(new URL('gimnastica/', self.registration.scope).href, 302)); return; }
   e.respondWith(
     caches.open(VERSION).then(c => c.match(e.request)).then(hit => {
       if (hit) {

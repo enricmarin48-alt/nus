@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -128,5 +133,67 @@ func TestApplyScoreMaxAndLocked(t *testing.T) {
 	obj(arr(obj(e2["scores"])["salt"])[0])["ok"] = true
 	if err := applyScore(db, scoreReq{Pin: "1234", CompID: "k1", EntryID: "e2", AppID: "salt", Value: &v}, 4); !errors.Is(err, errLocked) {
 		t.Fatalf("revisada: vull errLocked, tinc %v", err)
+	}
+}
+
+// PUT /api/db: una finestra amb una versió vella de les dades no les trepitja (409); «replace» no hi barreja notes;
+// i abans de la primera escriptura es guarda una còpia del fitxer tal com era
+func TestPutConflictReplaceAndBackup(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	get := func() (rev int64, db map[string]any) {
+		r, err := http.Get(srv.URL + "/api/db")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var j struct {
+			DataRev int64          `json:"dataRev"`
+			DB      map[string]any `json:"db"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&j)
+		return j.DataRev, j.DB
+	}
+	put := func(body map[string]any) int {
+		b, _ := json.Marshal(body)
+		req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	rev, db := get()
+	if code := put(map[string]any{"db": db, "base": rev - 1}); code != 409 {
+		t.Fatalf("base vell: vull 409, tinc %d", code)
+	}
+	// una tutora ha posat una nota més nova al servidor; la finestra restaura una còpia sense aquesta nota
+	e := obj(arr(obj(arr(s.db["competitions"])[0])["entries"])[1])
+	obj(e["scores"])["salt"] = []any{map[string]any{"v": 9.0, "at": float64(999), "by": "tutor"}}
+	restored := parse(t, sample)
+	if code := put(map[string]any{"db": restored, "base": rev, "replace": true}); code != 200 {
+		t.Fatalf("replace: %d", code)
+	}
+	_, now := get()
+	e2 := obj(arr(obj(arr(now["competitions"])[0])["entries"])[1])
+	if len(obj(e2["scores"])) != 0 {
+		t.Fatalf("amb replace no s'hi havien de barrejar notes: %v", e2["scores"])
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-en-obrir.json"))
+	if len(files) != 1 {
+		t.Fatalf("vull 1 còpia del fitxer d'abans, n'hi ha %d", len(files))
+	}
+	if b, _ := os.ReadFile(files[0]); string(b) != sample {
+		t.Fatal("la còpia no és el fitxer d'abans")
 	}
 }

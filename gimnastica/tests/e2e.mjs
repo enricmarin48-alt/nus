@@ -173,6 +173,34 @@ await step('«NP» escrit a la casella: no presentada (i es pot desfer)', async 
   await page.waitForSelector(`#scoregrid tr[data-row="${id}"]:not(.np)`);
 });
 
+await step('nota impossible i Tab: no es desa, i l’avís (amb «Posa 8,35») no desapareix sense dir res', async () => {
+  const col = page.locator('#scoregrid input.sc[data-col="barra:0:v"]');
+  const before = await col.nth(1).inputValue();
+  await col.nth(1).click(); await page.keyboard.type('835'); await page.keyboard.press('Tab');
+  await page.waitForSelector('.toast.bad:has-text("No s’ha desat") button:has-text("Posa 8,35")');
+  await page.click('.toast.bad button:has-text("Posa 8,35")');
+  assert.equal(await col.nth(1).inputValue(), '8,35');
+  await col.nth(1).click(); await page.keyboard.type(before); await page.keyboard.press('Enter');
+});
+
+await step('«NP» i Tab: la nota següent que s’escriu no es perd', async () => {
+  const col = page.locator('#scoregrid input.sc[data-col="salt:0:v"]');
+  const id = await col.nth(4).getAttribute('data-e');
+  await col.nth(4).click(); await page.keyboard.type('np'); await page.keyboard.press('Tab');
+  await page.waitForSelector(`#scoregrid tr[data-row="${id}"].np`);
+  assert.ok(await page.evaluate(() => document.activeElement && document.activeElement.matches('input.sc')), 'el focus és a una casella de nota');
+  await page.click('.toast:has-text("no presentada") button:has-text("Desfés")');
+  await page.waitForSelector(`#scoregrid tr[data-row="${id}"]:not(.np)`);
+});
+
+await step('les tecles sobre el desplegable d’equip de la graella no canvien l’equip', async () => {
+  const sel = page.locator('#scoregrid select.teamsel').nth(1);
+  const before = await sel.inputValue();
+  await sel.focus();
+  for (const k of ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'c']) await page.keyboard.press(k);
+  assert.equal(await page.locator('#scoregrid select.teamsel').nth(1).inputValue(), before);
+});
+
 await step('nota no vàlida queda marcada i no es desa', async () => {
   const inp = page.locator('#scoregrid input.sc[data-a=salt]').first();
   const before = await inp.inputValue();

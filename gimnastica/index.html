@@ -1152,6 +1152,8 @@ async function serverInit() {
     } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);   // la més nova sencera,
     else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }                                   // i de l'altra, les notes més noves
   } else if (has(remote.db)) db = migrate(remote.db);
+  // el fitxer només té configuració (organització, nivells, entitats) i aquesta finestra no té res: mana el fitxer
+  else if (!has(db) && rm.dbId && Date.parse(rm.updated || 0) > Date.parse(db.meta.updated || 0)) db = migrate(remote.db);
   server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
   flush();
   render();
@@ -1211,7 +1213,7 @@ function serverConflict(r) {
   // el programa s'ha tornat a obrir amb un fitxer buit (o que no hi era): no passa per sobre de les d'aquí
   const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   // (només si el fitxer no té dades de NotesGim: si una altra finestra ho ha esborrat tot, té un dbId nou i mana)
-  if (!tm.dbId && !has(theirs) && has(db)) { server.again = true; return; }
+  if (!tm.dbId && !has(theirs)) { server.again = true; return; }
   const mine = db;
   try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(mine)); } catch (_) {}
   db = migrate(theirs);
@@ -2036,14 +2038,15 @@ function autoCompTeams(c, only) {
       // la jornada següent en tindria massa; i per tant tampoc compta per saber quants equips nous calen)
       const full = t => isUpcoming(c) && t.sourceTeamId && ((teamById(t.sourceTeamId) || {}).memberIds || []).length >= max;
       const teams = compTeamsOf(c, g).filter(t => t.clubId === clubId), open = teams.filter(t => !full(t));
-      // (en una que vé, un equip hi compta amb totes les de la fitxa, encara que avui no hi siguin totes)
-      const cap = t => { const m = isUpcoming(c) && t.sourceTeamId && teamById(t.sourceTeamId); return m ? Math.max(size(t), m.memberIds.length) : size(t); };
-      const total = open.reduce((n, t) => n + cap(t), 0) + free.length;
-      // equips nous que calen (com si es fessin tots de cop), però només si les noves els poden omplir fins al mínim
-      const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - open.length, Math.floor(free.length / min)));
       // en una competició passada (o si aquell dia competeixen en un altre grup) els equips nous són només d'aquell
       // dia: no es toca cap fitxa
       const toRecords = isUpcoming(c) && free.some(inRecordGroup);
+      // (si les noves entraran a les fitxes, un equip hi compta amb totes les de la fitxa, encara que avui no hi
+      // siguin totes: a la jornada següent hi seran)
+      const cap = t => { const m = toRecords && t.sourceTeamId && teamById(t.sourceTeamId); return m ? Math.max(size(t), m.memberIds.length) : size(t); };
+      const total = open.reduce((n, t) => n + cap(t), 0) + free.length;
+      // equips nous que calen (com si es fessin tots de cop), però només si les noves els poden omplir fins al mínim
+      const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - open.length, Math.floor(free.length / min)));
       const fresh = range(kNew).map(() => {
         if (toRecords) return compTeamFor(c, makeTeam(clubId, g));
         const ct = { id: uid(), name: newTeamName(clubId, g, c.teams), clubId, category: g.category, gender: genderOf(g), level: g.level, sourceTeamId: null, auto: true };
@@ -2159,8 +2162,13 @@ function mergeDupTeams() {
     for (const ct of c.teams) {
       const o = kc.get(key(ct));
       if (!o) { kc.set(key(ct), ct); continue; }
-      if (past || size(o) + size(ct) > (c.teamMax || max)) {
-        ct.name = freeName(c.teams, ct); kc.set(key(ct), ct);
+      // (tampoc dues còpies d'equips diferents de la fitxa: cadascuna es queda el nom del seu equip, o «… 2»)
+      const differ = o.sourceTeamId && ct.sourceTeamId && o.sourceTeamId !== ct.sourceTeamId;
+      if (past || differ || size(o) + size(ct) > (c.teamMax || max)) {
+        const m = !past && ct.sourceTeamId && teamById(ct.sourceTeamId);
+        if (m && sameGroup(m, ct) && norm(m.name) !== norm(ct.name) && !kc.has(key(Object.assign({}, ct, { name: m.name })))) ct.name = m.name;
+        else ct.name = freeName(c.teams, ct);
+        kc.set(key(ct), ct);
         if (ct.sourceTeamId === o.sourceTeamId) ct.sourceTeamId = null;   // (si no, el rànquing el comptaria dues vegades)
         continue;
       }

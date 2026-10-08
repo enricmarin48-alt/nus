@@ -1,0 +1,43 @@
+name: NotesGim · programa per a les tutores (Windows, Mac i Linux)
+
+# Cada cop que canvia gimnastica/ a main, compila el servidor (amb l'app a dins) i el deixa,
+# juntament amb index.html, a la pàgina «Releases» del repositori (etiqueta notesgim-servidor).
+
+on:
+  push:
+    branches: [main]
+    paths: ['gimnastica/**', '.github/workflows/notesgim-servidor.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notesgim-servidor
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Tests del motor de càlcul
+        run: node --test gimnastica/tests/engine.test.mjs
+      - name: Tests del servidor
+        run: |
+          cd gimnastica/servidor
+          mkdir -p web && cp ../index.html web/index.html
+          go test ./...
+      - name: Compila
+        run: sh gimnastica/servidor/build.sh
+      - name: Publica a Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view notesgim-servidor >/dev/null 2>&1 || \
+            gh release create notesgim-servidor --latest=false --title "NotesGim (app i programa per a les tutores)" \
+              --notes "index.html: l'app (obre-la amb doble clic). NotesGim-servidor-*: el programa perquè les tutores entrin les notes des del mòbil per la Wi-Fi, sense internet. Es torna a generar sol a cada canvi."
+          gh release upload notesgim-servidor gimnastica/servidor/dist/* gimnastica/index.html --clobber

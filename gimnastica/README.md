@@ -67,6 +67,34 @@ Per defecte, les de la normativa UCEC de gimnàstica artística dels JEEC:
   dins la general), 1 o 2 intents (compta la millor, la mitjana o la suma), nota final o
   **D + E − penalització**, nota mínima per a qui fa l'exercici, quantes notes compten per equip.
 
+## Tutores entrant les notes des del mòbil (sense internet)
+
+Amb el programa **NotesGim-servidor** (un sol fitxer, no cal instal·lar res; porta l'app a dins):
+
+1. A l'ordinador de la taula, posa `NotesGim-servidor-windows.exe` en una carpeta (per exemple
+   *Documents/NotesGim*) i obre'l. S'obre una finestra negra (deixa-la oberta) i l'app al
+   navegador. Les dades es guarden a `notesgim-dades.json`, a la mateixa carpeta, i cada 10
+   minuts es fa una còpia a `copies-notesgim/`.
+   - Windows pot avisar «Windows ha protegit l'ordinador»: *Més informació → Executa igualment*.
+   - La primera vegada, el tallafoc pregunta si el deixes accedir a la xarxa: digues que **sí**
+     (xarxes privades).
+2. A la competició: *Configuració → Tutores* → marca «Permet que les tutores entrin notes». Surt
+   un **codi** i l'adreça que han d'obrir (per exemple `http://192.168.1.23:8080`).
+3. Les tutores connecten el mòbil a **la mateixa Wi-Fi** que l'ordinador, obren l'adreça, posen el
+   codi, trien el grup i el seu aparell i escriuen la nota final. **No cal internet**: n'hi ha
+   prou amb una Wi-Fi qualsevol (la del pavelló, un router sense internet o la zona Wi-Fi d'un
+   mòbil encara que no tingui dades).
+4. A l'ordinador les notes surten al moment amb fons groc (per revisar) i les classificacions
+   s'actualitzen soles. Les podeu canviar quan vulgueu. Si un mòbil perd la connexió, les notes
+   es guarden al mòbil i s'envien soles quan torna.
+
+Quan la competició es tanca, les tutores ja no poden entrar notes. Sense el programa servidor,
+l'app funciona igual que sempre (només a l'ordinador).
+
+On es descarrega: a la pàgina *Releases* del repositori (etiqueta `notesgim-servidor`), que es
+torna a generar sola cada cop que hi ha canvis a `main`. També es pot compilar amb
+`sh servidor/build.sh` (cal Go).
+
 ## Dades i còpies de seguretat
 
 Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
@@ -85,3 +113,6 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/engine.test.mjs` — `node --test tests/engine.test.mjs` (sense dependències).
 - `tests/e2e.mjs` — `node tests/e2e.mjs` prova l'app sencera en un Chromium obrint-la des del
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
+- `servidor/` — el programa per a les tutores (Go, sense dependències). `go test` dins la
+  carpeta, i `node tests/e2e-servidor.mjs` prova la taula i un mòbil de tutora alhora, també
+  tallant la connexió.

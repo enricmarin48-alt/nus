@@ -141,10 +141,15 @@
   input.sc.sm{width:58px}
   input.sc.invalid{border-color:var(--bad);background:var(--bad-soft);outline-color:#f0a3a6}
   input.sc.high{border-color:#e2a33b;background:var(--warn-soft)}
+  input.sc.tutor{border-color:#d29a1e;background:#fff6dd;box-shadow:inset 3px 0 0 #d29a1e}
   input.sc:disabled{background:#f6f7f9;color:#555}
   input.bib{width:62px;text-align:right}
   select.teamsel{max-width:170px;padding:4px 6px;font-size:12px}
   .lc{text-transform:none}
+  .tutor-mode header.top nav,.tutor-mode #savestate{display:none}
+  .tutor-mode input.sc{width:92px;font-size:18px;padding:8px 9px}
+  .st{display:inline-block;width:16px;margin-left:4px;font-weight:800}
+  .st.ok{color:var(--ok)} .st.err{color:var(--bad)} .st.wait{color:var(--warn)}
   td.out{color:#26324a;font-weight:700}
   .minhint{color:var(--warn);font-weight:700;margin-right:4px;font-size:12px}
   .minhint:empty{display:none}
@@ -533,6 +538,35 @@ const Engine = (() => {
     });
   }
 
+  // fusiona a base les notes d'una altra còpia de les dades: de cada intent guanya el més recent (camp at).
+  // Torna la llista d'intents que s'han agafat de l'altra còpia. El servidor (servidor/main.go) fa el mateix.
+  function mergeScores(base, other) {
+    const changed = [];
+    const ocomps = new Map(((other && other.competitions) || []).map(c => [c.id, c]));
+    for (const c of (base && base.competitions) || []) {
+      const oc = ocomps.get(c.id);
+      if (!oc) continue;
+      const oents = new Map((oc.entries || []).map(e => [e.id, e]));
+      for (const e of c.entries || []) {
+        const oe = oents.get(e.id);
+        if (!oe || !oe.scores || typeof oe.scores !== 'object') continue;
+        if (!e.scores || typeof e.scores !== 'object') e.scores = {};
+        for (const appId of Object.keys(oe.scores)) {
+          const ol = Array.isArray(oe.scores[appId]) ? oe.scores[appId] : [];
+          const l = Array.isArray(e.scores[appId]) ? e.scores[appId] : (e.scores[appId] = []);
+          ol.forEach((x, i) => {
+            if (x && (+x.at || 0) > (+(l[i] && l[i].at) || 0)) {
+              while (l.length <= i) l.push({});
+              l[i] = JSON.parse(JSON.stringify(x));
+              changed.push({ compId: c.id, entryId: e.id, appId, i });
+            }
+          });
+        }
+      }
+    }
+    return changed;
+  }
+
   // curs escolar a partir d'una data: setembre-agost
   function seasonFor(dateStr) {
     const m = /^(\d{4})-(\d{2})/.exec(dateStr || '');
@@ -543,7 +577,7 @@ const Engine = (() => {
 
   return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appDE, genderOf, appMode, enabledApps,
     totalApps, teamApps, entryTotal, groupKey, groupsOf, categoryForYear, cmpDesc, assignRanks, individualRanking,
-    apparatusRanking, teamRanking, seasonRanking, seasonFor };
+    apparatusRanking, teamRanking, seasonRanking, mergeScores, seasonFor };
 })();
 /* ═══════════════════════════════════════════ ENGINE-END */
 </script>
@@ -683,6 +717,8 @@ function normalizeComp(c, defs) {
   if (!Array.isArray(c.teams)) c.teams = [];
   for (const e of c.entries) { if (!e.scores || typeof e.scores !== 'object') e.scores = {}; if (!e.status) e.status = ''; e.gender = Engine.genderOf(e); }
   for (const t of c.teams) t.gender = Engine.genderOf(t);
+  if (typeof c.tutorsOn !== 'boolean') c.tutorsOn = false;
+  if (typeof c.tutorPin !== 'string') c.tutorPin = '';
   return c;
 }
 
@@ -716,12 +752,111 @@ function flush() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(db)); saveError = false; }
   catch (e) { console.error(e); saveError = true; toast('No s’ha pogut desar al navegador. Descarrega una còpia de seguretat ara!', 'bad'); }
   if (fileHandle) queueFileWrite();
+  if (server.on && server.role === 'admin') serverPush();
   renderSaveState(false);
 }
+/* ═══════════════════════════════════════════ MODE SERVIDOR (xarxa local, sense internet)
+   Quan l'app s'obre des del programa NotesGim-servidor, les dades viuen al fitxer del servidor:
+   l'ordinador de la taula (role admin) hi envia cada canvi i en rep les notes de les tutores al moment;
+   des d'un altre aparell (role tutor) s'obre el mode tutora. */
+const server = { on: false, role: null, version: null, urls: [], pushing: false, again: false, online: true, deferred: false };
+async function api(path, opts = {}, timeout = 0) {
+  const ctl = timeout ? new AbortController() : null;
+  const t = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
+  try {
+    const r = await fetch(path, Object.assign({ cache: 'no-store', headers: { 'Content-Type': 'application/json' }, signal: ctl && ctl.signal }, opts));
+    if (r.status === 204) return null;
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const err = new Error(j.error || ('HTTP ' + r.status)); err.status = r.status; throw err; }
+    return j;
+  } finally { if (t) clearTimeout(t); }
+}
+async function serverInit() {
+  if (!location.protocol.startsWith('http')) return false;
+  let info;
+  try { info = await api('api/info', {}, 2500); } catch (_) { return false; }
+  if (!info || info.app !== 'notesgim') return false;
+  server.on = true; server.role = info.role; server.urls = info.urls || [];
+  if (info.role === 'tutor') { await tutorStart(); return true; }
+  const remote = await api('api/db');
+  const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
+  if (has(remote.db) && has(db)) {
+    try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(db)); } catch (_) {}
+    // es queda la còpia més nova sencera, i de l'altra només s'hi afegeixen les notes més noves
+    if (Date.parse(db.meta.updated || 0) > Date.parse(((remote.db.meta) || {}).updated || 0)) Engine.mergeScores(db, remote.db);
+    else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }
+  } else if (has(remote.db)) db = migrate(remote.db);
+  server.version = remote.version;
+  flush();
+  render();
+  serverWaitLoop();
+  return true;
+}
+function serverPush() {
+  if (!server.on || server.role !== 'admin') return;
+  if (server.pushing) { server.again = true; return; }
+  server.pushing = true;
+  api('api/db', { method: 'PUT', body: JSON.stringify({ db }) })
+    .then(resp => { server.online = true; server.version = resp.version; if (resp.taken && resp.db) applyRemote(resp.db); })
+    .catch(() => { server.online = false; })
+    .finally(() => {
+      server.pushing = false; renderSaveState(false);
+      if (server.again) { server.again = false; serverPush(); } else if (!server.online) setTimeout(serverPush, 4000);
+    });
+}
+async function serverWaitLoop() {
+  for (;;) {
+    try {
+      const resp = await api('api/wait?since=' + server.version);
+      if (!server.online) { server.online = true; renderSaveState(false); serverPush(); }
+      if (resp) { server.version = resp.version; applyRemote(resp.db); }
+    } catch (_) {
+      if (server.online) { server.online = false; renderSaveState(false); }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la tutora ' + a.who : 'una tutora'}${a.at ? ' a les ' + new Date(a.at).toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' }) : ''}. Si la canvies, compta com a revisada.` : '';
+// arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint
+function applyRemote(remoteDb) {
+  const changed = Engine.mergeScores(db, remoteDb);
+  if (!changed.length) return;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (_) {}
+  const c = curComp();
+  if (ui.view === 'competicio' && c && ui.tab === 'notes' && $('#scoregrid')) {
+    for (const ch of changed) {
+      if (ch.compId !== c.id) continue;
+      const e = c.entries.find(x => x.id === ch.entryId);
+      if (!e) continue;
+      const a = att(e, { id: ch.appId }, ch.i);
+      $$(`#scoregrid input.sc[data-e="${e.id}"][data-a="${ch.appId}"][data-i="${ch.i}"]`).forEach(inp => {
+        if (inp === document.activeElement) return;
+        const m = Engine.toM(a[inp.dataset.f]);
+        inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value;
+        inp.classList.toggle('tutor', a.by === 'tutor' && !a.ok); inp.title = tutorTitle(a);
+      });
+      refreshScoreRow(c, e);
+    }
+    const tb = $('#tutorreview'); if (tb) tb.outerHTML = tutorReviewBtn(c, groupsOf(c).find(x => x.key === ui.group));
+    toast(`${plural(changed.length, 'nota nova', 'notes noves')} de les tutores.`);
+  } else if ($('#dlg').open || $('#confirm').open) server.deferred = true;
+  else renderKeepFocus();
+}
+// notes de tutores encara no revisades en un grup
+function tutorPending(c, g) {
+  let n = 0;
+  for (const e of (g ? g.entries : c.entries)) for (const list of Object.values(e.scores || {})) for (const a of list || []) if (a && a.by === 'tutor' && !a.ok && a.v !== undefined && a.v !== null) n++;
+  return n;
+}
+function tutorReviewBtn(c, g) {
+  const n = g ? tutorPending(c, g) : 0;
+  return n ? `<button class="btn sm" id="tutorreview" data-act="reviewTutor" title="Les notes que han entrat les tutores surten amb fons groc fins que les dones per revisades (o les canvies)">✓ Dona per revisada${n === 1 ? ' la nota' : `s les ${n} notes`} de les tutores</button>` : '<span id="tutorreview"></span>';
+}
+
 // si es tanca la finestra amb una nota escrita però sense Intro, també es desa
 function commitTyping() {
   const el = document.activeElement;
-  if (el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value) changes.score(el);
+  if (el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value) changes[el.dataset.chg](el);
 }
 const leaving = () => { commitTyping(); if (saveTimer) flush(); };
 addEventListener('pagehide', leaving);
@@ -910,6 +1045,7 @@ const ui = { view: 'competicions', compId: null, tab: null, group: null, app: 'a
   gSearch: '', gClub: '', gGender: '', gCat: '', gLevel: '', gArchived: false, gWrong: false, tCat: '', import: null };
 
 function route() {
+  if (document.body.classList.contains('tutor-mode')) { ui.view = 'tutor'; return; }
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
   ui.view = parts[0] || 'competicions';
   if (ui.view === 'competicio') {
@@ -982,7 +1118,7 @@ function withUndo(label, fn) {
 
 /* ═══════════════════════════════════════════ render general */
 // torna a pintar però deixa el focus on l'usuari l'ha posat (p. ex. Tab després d'editar una casella de configuració)
-const FOCUS_KEYS = ['data-chg', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'id', 'name'];
+const FOCUS_KEYS = ['data-chg', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'data-e', 'data-a', 'data-f', 'id', 'name'];
 function renderKeepFocus() {
   setTimeout(() => {
     const a = document.activeElement;
@@ -997,6 +1133,7 @@ const views = {};
 function render() {
   const v = views[ui.view] || views.competicions;
   $('#main').innerHTML = v();
+  if (ui.view === 'tutor') tutStatusBar();
   $$('header.top nav a').forEach(a => {
     const on = a.dataset.nav === ui.view || (ui.view === 'competicio' && a.dataset.nav === 'competicions');
     a.classList.toggle('on', on);
@@ -1006,6 +1143,13 @@ function render() {
 function renderSaveState(busy) {
   const el = $('#savestate'); if (!el || !db) return;
   const parts = [];
+  if (server.on && server.role === 'admin') {
+    parts.push(server.online
+      ? `<span title="Les dades es desen al fitxer del programa servidor i es reben les notes de les tutores"><span class="dot ${busy || server.pushing ? 'busy' : ''}"></span>Servidor · ${busy || server.pushing ? 'desant…' : 'desat'}</span>`
+      : `<span title="Es continua desant en aquest navegador i s'enviarà quan torni la connexió"><span class="dot err"></span>Sense connexió amb el servidor</span>`);
+    el.innerHTML = parts.join('');
+    return;
+  }
   if (saveError) parts.push(`<span><span class="dot err"></span>No s’ha pogut desar</span>`);
   else parts.push(`<span title="Les dades es desen automàticament en aquest navegador"><span class="dot ${busy ? 'busy' : ''}"></span>${busy ? 'Desant…' : 'Desat'}</span>`);
   const fileOk = fileHandle && fileState === 'ok';
@@ -1248,8 +1392,9 @@ function tabNotes(c) {
   const help = `<p class="small muted">Escriu la nota i prem <b>Intro</b> per baixar a la gimnasta següent. Es pot fer servir coma o punt (8,35 o 8.35). Tot es desa sol.
     ${c.scoring === 'detailed' ? 'Nota = D + E − Penalització.' : ''} ${Engine.toM(c.minScore) ? `Qui fa l’exercici té com a mínim ${fmt(Engine.toM(c.minScore))} punts (un 0 vol dir que no l’ha fet).` : ''}</p>`;
   const table = ui.app === 'all' ? notesAllTable(c, g, apps) : notesAppTable(c, g, apps.find(a => a.id === ui.app));
+  const tutLine = server.on && c.tutorsOn ? `<div class="note small">Tutores: codi <b>${h(c.tutorPin)}</b>${server.urls.length ? ` · obren al mòbil ${server.urls.map(u => `<b>${h(u)}</b>`).join(' o ')}` : ''}. Les seves notes surten amb fons groc. ${tutorReviewBtn(c, g)}</div>` : '';
   return `<div class="pills">${gp}</div><div class="pills">${ap}</div>
-    <div class="progress" id="progress">${progressHtml(c, g)}</div>${help}${table}`;
+    <div class="progress" id="progress">${progressHtml(c, g)}</div>${tutLine}${help}${table}`;
 }
 function progressHtml(c, g) {
   const active = g.entries.filter(e => e.status !== 'np');
@@ -1266,10 +1411,12 @@ function minHint(c, raw) {
 }
 function scoreInput(c, e, a, i, f, val, cls = '') {
   const m = Engine.toM(val);
+  const a0 = att(e, a, i);
+  if (a0.by === 'tutor' && !a0.ok) cls += ' tutor';
   const high = m !== null && f !== 'p' && c.maxScore && m > c.maxScore * 1000;
   const hint = f === 'v' ? `<small class="minhint" data-out="min:${e.id}:${a.id}:${i}" title="Nota mínima per a qui fa l’exercici">${minHint(c, val)}</small>` : '';
   return hint + `<input type="text" inputmode="decimal" autocomplete="off" class="sc ${cls} ${high ? 'high' : ''}" value="${m === null ? '' : fmt(m)}" data-last="${m === null ? '' : fmt(m)}"
-    data-chg="score" data-e="${e.id}" data-a="${a.id}" data-i="${i}" data-f="${f}" data-col="${a.id}:${i}:${f}"
+    data-chg="score" data-e="${e.id}" data-a="${a.id}" data-i="${i}" data-f="${f}" data-col="${a.id}:${i}:${f}" title="${h(tutorTitle(a0))}"
     aria-label="${h(a.name)} ${f.toUpperCase()} ${h(entryName(e))}" ${c.locked || e.status === 'np' ? 'disabled' : ''}>`;
 }
 const att = (e, a, i) => ((e.scores || {})[a.id] || [])[i] || {};
@@ -1333,6 +1480,8 @@ function setAttemptField(e, appId, i, f, val) {
   while (arr.length <= i) arr.push({});
   const at = arr[i] || (arr[i] = {});
   if (val === null) delete at[f]; else at[f] = val;
+  at.at = Date.now();                       // hora del canvi: si hi ha dues versions, guanya la més nova
+  delete at.by; delete at.who; delete at.ok; // si la toca l'organització, ja no és «de tutora per revisar»
   if (f === 'v') {
     // nota final escrita a mà (mode simple): mana sobre qualsevol D/E d'abans
     delete at.d; delete at.e; delete at.p; delete at.src;
@@ -1437,8 +1586,18 @@ function htmlTeams(c, g, print = false) {
 }
 
 /* ─── Configuració de la competició (i valors per defecte) */
+function tutorsCard(c) {
+  const dis = c.locked ? 'disabled' : '';
+  return `<div class="card"><h3 style="margin-bottom:8px">Tutores: entrar les notes des del mòbil (sense internet)</h3>
+    ${server.on ? '' : `<div class="note">Perquè les tutores puguin entrar les notes, obre NotesGim amb el programa <b>NotesGim-servidor</b> en aquest ordinador. Les tutores es connecten amb el mòbil a la mateixa Wi-Fi (no cal que tingui internet). Mentre no, entreu les notes vosaltres com sempre.</div>`}
+    <label class="chk"><input type="checkbox" data-chg="tutorsOn" ${c.tutorsOn ? 'checked' : ''} ${dis}> Permet que les tutores entrin notes en aquesta competició</label>
+    ${c.tutorsOn ? `<p style="margin:10px 0">Codi per a les tutores: <b style="font-size:22px;letter-spacing:.15em">${h(c.tutorPin)}</b> <button class="btn sm" data-act="newPin" ${dis}>Canvia el codi</button></p>
+      ${server.on ? (server.urls.length ? `<p>Les tutores obren al mòbil: ${server.urls.map(u => `<b>${h(u)}</b>`).join(' o ')}</p>` : '<div class="note warn">Aquest ordinador no està connectat a cap Wi-Fi: les tutores no hi podran entrar.</div>') : ''}
+      <p class="small muted">Cada tutora posa el codi, tria el grup i el seu aparell, i escriu la nota final. Us surt aquí al moment (amb fons groc fins que la reviseu) i podeu canviar-la si cal. Quan tanqueu la competició, ja no poden entrar-ne més.</p>` : ''}
+  </div>`;
+}
 function tabCompConfig(c) {
-  return `<div class="card"><div class="card-head"><h3>Dades</h3><div class="actions"><button class="btn sm" data-act="editComp" ${c.locked ? 'disabled' : ''}>Canvia nom, data, lloc…</button></div></div>
+  return tutorsCard(c) + `<div class="card"><div class="card-head"><h3>Dades</h3><div class="actions"><button class="btn sm" data-act="editComp" ${c.locked ? 'disabled' : ''}>Canvia nom, data, lloc…</button></div></div>
     <p>${h(c.name)} · ${fmtDate(c.date)} · ${h(c.place)} · Curs ${h(c.season)}</p></div>
     ${configForm(c, 'comp')}
     <div class="toolbar"><button class="btn" data-act="saveAsDefaults">Fes servir aquesta configuració per a les competicions noves</button></div>`;
@@ -1874,6 +2033,133 @@ function catEditor() {
   </div>`;
 }
 
+/* ═══════════════════════════════════════════ MODE TUTORA (mòbil a la Wi-Fi del servidor)
+   La tutora posa el codi de la competició, tria el grup i el seu aparell i escriu la nota final.
+   Si es perd la connexió, les notes queden a la cua del mòbil i s'envien soles quan torna. */
+const TUT_KEY = 'notesgim.tutor';
+const tut = { pin: '', who: '', comps: [], compId: null, group: null, app: null, version: null, queue: [], error: '', online: true, sending: false };
+function tutLoad() { try { Object.assign(tut, JSON.parse(localStorage.getItem(TUT_KEY) || '{}')); } catch (_) {} if (!Array.isArray(tut.queue)) tut.queue = []; }
+function tutSave() { try { localStorage.setItem(TUT_KEY, JSON.stringify({ pin: tut.pin, who: tut.who, compId: tut.compId, group: tut.group, app: tut.app, queue: tut.queue })); } catch (_) {} }
+async function tutorStart() {
+  document.body.classList.add('tutor-mode');
+  tutLoad();
+  ui.view = 'tutor';
+  if (tut.pin) { try { await tutFetch(); } catch (_) { tut.online = false; } }
+  render();
+  tutWaitLoop();
+  tutSend();
+}
+async function tutFetch(since) {
+  try {
+    const j = await api(`api/tutor?pin=${encodeURIComponent(tut.pin)}${since != null ? '&since=' + since : ''}`);
+    if (!j) return false;
+    tut.error = ''; tut.comps = j.comps || []; tut.version = j.version; tut.online = true;
+    for (const op of tut.queue) tutApplyLocal(op);   // el que encara no s'ha enviat, es continua veient
+    return true;
+  } catch (e) {
+    if (e.status === 403) { tut.error = e.message; tut.comps = []; return true; }
+    throw e;
+  }
+}
+async function tutWaitLoop() {
+  for (;;) {
+    if (!tut.pin || !tut.comps.length) { await new Promise(r => setTimeout(r, 3000)); continue; }
+    try {
+      const changed = await tutFetch(tut.version);
+      if (!tut.online) tut.online = true;
+      if (changed) tutRefresh();
+    } catch (_) { tut.online = false; tutStatusBar(); await new Promise(r => setTimeout(r, 3000)); }
+  }
+}
+const tutComp = () => tut.comps.find(c => c.id === tut.compId) || tut.comps[0];
+function tutApplyLocal(op) {
+  const c = tut.comps.find(x => x.id === op.compId); if (!c) return;
+  const e = c.entries.find(x => x.id === op.entryId); if (!e) return;
+  e.scores = e.scores || {};
+  const l = e.scores[op.appId] = e.scores[op.appId] || [];
+  while (l.length <= op.i) l.push({});
+  l[op.i] = { v: op.value, by: 'tutor', at: op.at, mine: true };
+}
+// envia la cua de notes, d'una en una i en ordre
+async function tutSend() {
+  if (tut.sending) return;
+  tut.sending = true;
+  try {
+    while (tut.queue.length) {
+      const op = tut.queue[0];
+      try {
+        await api('api/score', { method: 'POST', body: JSON.stringify({ pin: tut.pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value }) });
+        tut.online = true;
+        tut.queue.shift(); tutSave(); tutMark(op, 'ok');
+      } catch (e) {
+        if (e.status && e.status !== 500) { tut.queue.shift(); tutSave(); tutMark(op, 'err'); toast(e.message, 'bad'); continue; }
+        tut.online = false; tutStatusBar();
+        await new Promise(r => setTimeout(r, 4000));
+      }
+    }
+  } finally { tut.sending = false; tutStatusBar(); }
+}
+function tutMark(op, st) {
+  const el = $(`[data-st="${op.entryId}:${op.appId}:${op.i}"]`);
+  if (el) { el.textContent = st === 'ok' ? '✓' : st === 'err' ? '✕' : '…'; el.className = 'st ' + st; }
+}
+function tutStatusBar() {
+  const el = $('#tutstatus'); if (!el) return;
+  el.innerHTML = !tut.online ? `<span class="badge bad">Sense connexió: ${plural(tut.queue.length, 'nota pendent', 'notes pendents')} d’enviar (s’enviaran soles)</span>`
+    : tut.queue.length ? `<span class="badge warn">Enviant ${plural(tut.queue.length, 'nota', 'notes')}…</span>` : '<span class="badge ok">Connectada · tot enviat</span>';
+}
+// dades noves del servidor: s'actualitzen les caselles que no s'estan editant
+function tutRefresh() {
+  if (!$('#scoregrid')) { render(); return; }
+  const c = tutComp(); if (!c) { render(); return; }
+  $$('#scoregrid input.sc').forEach(inp => {
+    if (inp === document.activeElement) return;
+    const e = c.entries.find(x => x.id === inp.dataset.e); if (!e) return;
+    const a = ((e.scores || {})[inp.dataset.a] || [])[+inp.dataset.i] || {};
+    const m = Engine.toM(a.v); inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value;
+  });
+  tutStatusBar();
+}
+views.tutor = () => {
+  const c = tutComp();
+  if (!tut.pin || !c) return `<section style="max-width:420px;margin:0 auto">
+    <div class="card"><h2>Mode tutora</h2>
+      <p class="muted small">Escriu el codi de la competició que t’ha donat l’organització.</p>
+      <form data-form="tutLogin"><div class="grid2" style="grid-template-columns:1fr">
+        <label class="f"><span>Codi</span><input type="text" name="pin" inputmode="numeric" required value="${h(tut.pin)}" autofocus style="font-size:22px;letter-spacing:.15em"></label>
+        <label class="f"><span>El teu nom (opcional)</span><input type="text" name="who" value="${h(tut.who)}"></label></div>
+        ${tut.error ? `<div class="note bad" style="margin-top:10px">${h(tut.error)}</div>` : ''}
+        <div class="dlg-actions"><button class="btn primary">Entra</button></div></form></div></section>`;
+  if (tut.compId !== c.id) tut.compId = c.id;
+  const groups = Engine.groupsOf(c, S()).filter(g => g.entries.length);
+  if (!groups.find(g => g.key === tut.group)) tut.group = groups[0] && groups[0].key;
+  const g = groups.find(x => x.key === tut.group);
+  const apps = g ? Engine.enabledApps(c, g.gender) : [];
+  if (!apps.find(a => a.id === tut.app)) tut.app = apps[0] && apps[0].id;
+  const a = apps.find(x => x.id === tut.app);
+  tutSave();
+  const n = a ? Math.max(1, a.attempts || 1) : 1;
+  const rows = g && a ? [...g.entries].sort((x, y) => (+x.bib || 1e9) - (+y.bib || 1e9)).map(e => {
+    const np = e.status === 'np';
+    const cells = range(n).map(i => {
+      const at = ((e.scores || {})[a.id] || [])[i] || {};
+      const m = Engine.toM(at.v);
+      return `<td class="num"><input type="text" inputmode="decimal" autocomplete="off" class="sc" value="${m === null ? '' : fmt(m)}" data-last="${m === null ? '' : fmt(m)}"
+        data-chg="tscore" data-e="${e.id}" data-a="${a.id}" data-i="${i}" data-f="v" data-col="${a.id}:${i}:v" ${np ? 'disabled' : ''} aria-label="${h(a.name)} ${h(e.name)}">
+        <span class="st" data-st="${e.id}:${a.id}:${i}"></span></td>`;
+    }).join('');
+    return `<tr class="${np ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td>${h(e.name)}${np ? ' <span class="badge">NP</span>' : ''}<br><span class="small muted">${h(e.club)}</span></td>${cells}</tr>`;
+  }).join('') : '';
+  return `<section>
+    <div class="page-head"><h1 style="font-size:19px">${h(c.name)}</h1><div class="actions"><span id="tutstatus"></span><button class="btn sm" data-act="tutLogout">Surt</button></div></div>
+    ${tut.comps.length > 1 ? `<div class="pills">${tut.comps.map(x => `<button class="pill ${x.id === c.id ? 'on' : ''}" data-act="tutComp" data-id="${x.id}">${h(x.name)}</button>`).join('')}</div>` : ''}
+    <div class="pills">${groups.map(x => `<button class="pill ${x.key === tut.group ? 'on' : ''}" data-act="tutGroup" data-g="${h(x.key)}">${h(groupLabel(x))}</button>`).join('')}</div>
+    <div class="pills">${apps.map(x => `<button class="pill ${x.id === tut.app ? 'on' : ''}" data-act="tutApp" data-a="${x.id}">${icon(x)} ${h(x.name)}</button>`).join('')}</div>
+    <p class="small muted">Escriu la nota final i prem <b>Intro</b> (o «Següent» al mòbil). S’envia sola a la taula.${n > 1 ? ' Hi ha 2 salts: compta el millor.' : ''}</p>
+    ${a ? `<div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead><tr><th class="num">Dors.</th><th>Gimnasta</th>${range(n).map(i => `<th class="num">${n > 1 ? ordHtml(i + 1) + ' salt' : icon(a) + ' ' + h(a.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">No hi ha cap aparell per a aquest grup.</div>'}
+  </section>`;
+};
+
 /* ═══════════════════════════════════════════ IMPRESSIÓ */
 function printHeader(c) {
   const s = S();
@@ -2185,6 +2471,16 @@ const actions = {
     });
     downloadBlob(XLSX.build(sheets), `ranquing ${ui.rkSeason}.xlsx`);
   },
+  tutComp: el => { tut.compId = el.dataset.id; render(); },
+  tutGroup: el => { tut.group = el.dataset.g; render(); },
+  tutApp: el => { tut.app = el.dataset.a; render(); const f = $('#scoregrid input.sc:not(:disabled)'); if (f) f.focus(); },
+  tutLogout: () => { if (tut.queue.length && !confirm('Encara hi ha notes per enviar. Si surts, es perdran. Vols sortir igualment?')) return; tut.pin = ''; tut.comps = []; tut.queue = []; tutSave(); render(); },
+  newPin: () => { const c = curComp(); c.tutorPin = String(1000 + Math.floor(Math.random() * 9000)); commit(); render(); },
+  reviewTutor: () => {
+    const c = curComp(), g = groupsOf(c).find(x => x.key === ui.group);
+    for (const e of g.entries) for (const list of Object.values(e.scores || {})) for (const a of list || []) if (a && a.by === 'tutor') a.ok = true;
+    commit(); render(); toast('Notes de les tutores revisades.', 'ok');
+  },
   autoCompTeams: () => {
     const c = curComp();
     let res;
@@ -2451,6 +2747,13 @@ function openCompTeamForm(c, t, g) {
 
 /* ═══════════════════════════════════════════ formularis (submit) */
 const forms = {
+  tutLogin: async f => {
+    const fd = new FormData(f);
+    tut.pin = String(fd.get('pin') || '').trim(); tut.who = String(fd.get('who') || '').trim();
+    try { await tutFetch(); } catch (_) { tut.error = 'No es pot connectar amb l’ordinador de la taula. Comprova que estàs a la mateixa Wi-Fi.'; tut.comps = []; }
+    if (!tut.comps.length) tut.pin = tut.error ? tut.pin : '';
+    tutSave(); render(); tutStatusBar();
+  },
   comp: f => {
     const fd = new FormData(f), id = f.dataset.id;
     const vals = { name: fd.get('name').trim(), date: fd.get('date'), place: fd.get('place').trim(), season: fd.get('season').trim() || Engine.seasonFor(fd.get('date')) };
@@ -2569,6 +2872,21 @@ const forms = {
 
 /* ═══════════════════════════════════════════ canvis en camps (change / input) */
 const changes = {
+  // nota d'una tutora: es posa a la cua i s'envia
+  tscore: el => {
+    if (el.dataset.last === el.value) return !el.classList.contains('invalid');
+    const val = Engine.parseScore(el.value);
+    if (Number.isNaN(val) || (val !== null && val > 100)) {
+      el.classList.add('invalid'); toast(`«${el.value}» no és una nota vàlida. Escriu un número, per exemple 8,35.`, 'bad'); return false;
+    }
+    el.classList.remove('invalid');
+    const m = Engine.toM(val); el.value = m === null ? '' : fmt(m); el.dataset.last = el.value;
+    const op = { compId: tutComp().id, entryId: el.dataset.e, appId: el.dataset.a, i: +el.dataset.i, value: val, at: Date.now() };
+    tut.queue = tut.queue.filter(q => !(q.compId === op.compId && q.entryId === op.entryId && q.appId === op.appId && q.i === op.i));
+    tut.queue.push(op); tutSave(); tutApplyLocal(op); tutMark(op, 'wait'); tutStatusBar();
+    tutSend();
+    return true;
+  },
   score: el => {
     const c = curComp(); if (!c || c.locked) return;
     const e = c.entries.find(x => x.id === el.dataset.e); if (!e) return;
@@ -2585,6 +2903,10 @@ const changes = {
     const m = Engine.toM(val);
     el.value = m === null ? '' : fmt(m);
     el.dataset.last = el.value;
+    if (el.classList.contains('tutor')) {   // corregida per l'organització: ja no és «per revisar»
+      el.classList.remove('tutor'); el.title = '';
+      const tb = $('#tutorreview'); if (tb) tb.outerHTML = tutorReviewBtn(c, groupsOf(c).find(x => x.key === ui.group));
+    }
     el.classList.toggle('high', m !== null && el.dataset.f !== 'p' && c.maxScore && m > c.maxScore * 1000);
     if (el.classList.contains('high')) toast(`Compte: ${fmt(m)} passa de ${c.maxScore}. Revisa que sigui correcta.`, 'bad');
     const minM = Engine.toM(c.minScore) || 0;
@@ -2669,6 +2991,7 @@ const changes = {
     });
   },
   setting: el => { S()[el.dataset.k] = el.value; commit(); },
+  tutorsOn: el => { const c = curComp(); c.tutorsOn = el.checked; if (c.tutorsOn && !/^\d{4,6}$/.test(c.tutorPin)) c.tutorPin = String(1000 + Math.floor(Math.random() * 9000)); commit(); render(); },
   rkSeason: el => { ui.rkSeason = el.value; ui.rkGroup = null; render(); },
   rkComp: el => { ui.rkOff[el.dataset.id] = !el.checked; render(); },
   catField: el => {
@@ -2752,7 +3075,7 @@ document.addEventListener('keydown', e => {
     const up = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey);
     const col = $$(`#scoregrid input.sc[data-col="${el.dataset.col}"]:not(:disabled)`);
     const i = col.indexOf(el);
-    if (changes.score(el) === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
+    if (changes[el.dataset.chg](el) === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
     const next = col[i + (up ? -1 : 1)];
     if (next) { next.focus(); next.select(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else el.blur();
     return;
@@ -2773,7 +3096,7 @@ document.addEventListener('click', () => { if (fileHandle && fileState === 'perm
 async function start() {
   loadDb();
   route();
-  render();
+  if (!(await serverInit())) render();
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if (fsSupported()) {
     const hd = await idbGet('fileHandle');

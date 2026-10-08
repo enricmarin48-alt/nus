@@ -1,7 +1,7 @@
 // Service worker de NotesGim: desa l'app a l'ordinador perquè funcioni sense internet.
 // Puja la versió cada cop que canviïs index.html i els ordinadors es descarregaran la nova.
 // (Les dades no passen mai per aquí: són al localStorage del navegador.)
-const VERSION = 'notesgim-v3';
+const VERSION = 'notesgim-v4';
 const SHELL = [
   './',
   './index.html',

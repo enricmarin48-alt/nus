@@ -347,3 +347,20 @@ test('aparells per gènere: les noies fan barra, els nois minitramp', () => {
   const girls = E.teamRanking(c, gs.find(g => g.gender === 'F') || { category: 'Aleví', gender: 'F', level: 'A', entries: [] });
   assert.deepEqual(plain(girls.rows.map(r => r.name)), ['Noies']);
 });
+
+test('fusió de notes entre còpies: de cada intent guanya el més recent', () => {
+  const mk = () => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores: { salt: [{ v: 8, at: 100 }], barra: [{ v: 7, at: 300 }] } }] }] });
+  const base = mk(), other = mk();
+  other.competitions[0].entries[0].scores.salt = [{ v: 9.5, at: 200, by: 'tutor' }];   // més nova
+  other.competitions[0].entries[0].scores.barra = [{ v: 6, at: 250 }];                 // més vella
+  other.competitions[0].entries[0].scores.terra = [{ v: 8.8, at: 50 }];                // nova a base
+  const ch = E.mergeScores(base, other);
+  const sc = base.competitions[0].entries[0].scores;
+  assert.equal(sc.salt[0].v, 9.5);
+  assert.equal(sc.salt[0].by, 'tutor');
+  assert.equal(sc.barra[0].v, 7);
+  assert.equal(sc.terra[0].v, 8.8);
+  assert.deepEqual(plain(ch.map(x => x.appId).sort()), ['salt', 'terra']);
+  // tornar-ho a fer no canvia res
+  assert.equal(E.mergeScores(base, other).length, 0);
+});

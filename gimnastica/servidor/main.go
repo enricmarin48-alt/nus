@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math"
 	"net"
@@ -35,10 +36,13 @@ import (
 	"time"
 )
 
-//go:embed web/index.html
+// l'app (web/index.html, que build.sh hi copia de ../index.html) i les icones (web/icons)
+//
+//go:embed web
 var webFS embed.FS
 
-const appVersion = "1.0"
+// la publicació automàtica hi posa la data i el commit (-ldflags "-X main.appVersion=…")
+var appVersion = "1.1"
 
 /* ═══════════════════════════════════════════ dades */
 
@@ -83,8 +87,16 @@ func (s *store) saveLocked() error {
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		return err
+	// a Windows, un antivirus o OneDrive poden tenir el fitxer obert un moment: es torna a provar
+	var err2 error
+	for i := 0; i < 10; i++ {
+		if err2 = os.Rename(tmp, s.path); err2 == nil {
+			break
+		}
+		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+	}
+	if err2 != nil {
+		return err2
 	}
 	// una còpia de seguretat cada 10 minuts, i se'n guarden les 60 últimes
 	if time.Since(s.lastBak) > 10*time.Minute {
@@ -177,7 +189,23 @@ func deepCopy(v any) any {
 	return out
 }
 
-// mergeScores: a base hi posa, de cada intent de nota, la versió d'other si és més recent.
+// un intent amb alguna nota
+func hasMark(a map[string]any) bool {
+	for _, k := range []string{"v", "d", "e", "p"} {
+		if v, ok := a[k]; ok && v != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// la nota l'ha posada la taula (o és d'una tutora però ja revisada): cap nota de tutora la trepitja
+func guarded(a map[string]any) bool {
+	return a != nil && hasMark(a) && (str(a["by"]) != "tutor" || truthy(a["ok"]))
+}
+
+// mergeScores: a base hi posa, de cada intent de nota, la versió d'other si és més recent (excepte que una
+// nota de tutora no passa mai per sobre d'una de la taula o ja revisada).
 // Retorna quants intents s'han agafat d'other. (Igual que Engine.mergeScores a index.html.)
 func mergeScores(base, other map[string]any) int {
 	taken := 0
@@ -210,7 +238,7 @@ func mergeScores(base, other map[string]any) int {
 					if i < len(list) {
 						ym = obj(list[i])
 					}
-					if num(xm["at"]) > num(ym["at"]) {
+					if num(xm["at"]) > num(ym["at"]) && !(str(xm["by"]) == "tutor" && guarded(ym)) {
 						for len(list) <= i {
 							list = append(list, map[string]any{})
 						}
@@ -298,7 +326,7 @@ func tutorData(db map[string]any, pin string) []any {
 				var atts []any
 				for _, a := range arr(list) {
 					am := obj(a)
-					atts = append(atts, map[string]any{"v": am["v"], "by": am["by"], "at": am["at"]})
+					atts = append(atts, map[string]any{"v": am["v"], "by": am["by"], "at": am["at"], "ok": truthy(am["ok"]), "locked": guarded(am)})
 				}
 				scores[appID] = atts
 			}
@@ -323,6 +351,17 @@ type scoreReq struct {
 	I       int      `json:"i"`
 	Value   *float64 `json:"value"`
 	Who     string   `json:"who"`
+}
+
+// la taula ja ha posat (o revisat) aquesta nota: la tutora no la pot canviar (resposta 409)
+var errLocked = errors.New("Aquesta nota ja l'ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.")
+
+// nota màxima de la competició (per defecte 20)
+func maxScoreOf(comp map[string]any) float64 {
+	if m := num(comp["maxScore"]); m > 0 {
+		return m
+	}
+	return 20
 }
 
 // posa la nota d'una tutora a les dades. at = ara (rellotge de l'ordinador de la taula)
@@ -363,8 +402,8 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 	}
 	if r.Value != nil {
 		v := *r.Value
-		if math.IsNaN(v) || v < 0 || v > 100 {
-			return errors.New("nota fora de límits")
+		if mx := maxScoreOf(comp); math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > mx {
+			return fmt.Errorf("Aquesta nota no pot ser: ha de ser entre 0 i %s.", strings.Replace(strconv.FormatFloat(mx, 'f', -1, 64), ".", ",", 1))
 		}
 		att["v"] = math.Round(v*1000) / 1000
 	}
@@ -374,6 +413,9 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 		entry["scores"] = scores
 	}
 	list := arr(scores[r.AppID])
+	if r.I < len(list) && guarded(obj(list[r.I])) {
+		return errLocked
+	}
 	for len(list) <= r.I {
 		list = append(list, map[string]any{})
 	}
@@ -404,8 +446,28 @@ func fail(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]any{"error": msg})
 }
 
+// adreces on les tutores poden trobar aquest ordinador. Primer la de la Wi-Fi de debò (192.168.x, 10.x,
+// 172.16-31.x) i al final les dels adaptadors virtuals (WSL, Hyper-V, VPN…), que des del mòbil no serveixen
 func lanURLs(port int) []string {
-	var urls []string
+	type cand struct {
+		url  string
+		rank int
+	}
+	virtual := func(name string) bool {
+		n := strings.ToLower(name)
+		for _, w := range []string{"vethernet", "wsl", "hyper-v", "virtualbox", "vboxnet", "vmware", "vmnet", "docker", "tailscale", "zerotier", "bluetooth", "utun", "npcap"} {
+			if strings.Contains(n, w) {
+				return true
+			}
+		}
+		for _, p := range []string{"tap", "tun", "br-", "veth", "virbr"} {
+			if strings.HasPrefix(n, p) {
+				return true
+			}
+		}
+		return false
+	}
+	var cs []cand
 	ifaces, _ := net.Interfaces()
 	for _, ifc := range ifaces {
 		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
@@ -417,16 +479,52 @@ func lanURLs(port int) []string {
 			if !ok || ipn.IP.To4() == nil || ipn.IP.IsLinkLocalUnicast() {
 				continue
 			}
-			urls = append(urls, fmt.Sprintf("http://%s:%d", ipn.IP.String(), port))
+			ip := ipn.IP.To4()
+			rank := 3
+			switch {
+			case ip[0] == 192 && ip[1] == 168:
+				rank = 0
+			case ip[0] == 10:
+				rank = 1
+			case ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31:
+				rank = 2
+			}
+			if virtual(ifc.Name) {
+				rank += 10
+			}
+			cs = append(cs, cand{fmt.Sprintf("http://%s:%d", ip.String(), port), rank})
 		}
 	}
-	sort.Strings(urls)
+	sort.SliceStable(cs, func(i, j int) bool {
+		return cs[i].rank < cs[j].rank || (cs[i].rank == cs[j].rank && cs[i].url < cs[j].url)
+	})
+	urls := []string{}
+	for _, c := range cs {
+		urls = append(urls, c.url)
+	}
 	return urls
 }
+
+// manifest per als mòbils de les tutores: «Afegeix a la pantalla d'inici» amb el nom i la icona de NotesGim
+const manifestJSON = `{"id":"/","name":"NotesGim · Gimnàstica artística","short_name":"NotesGim","lang":"ca","start_url":"/","scope":"/","display":"standalone",
+"background_color":"#f3f5f9","theme_color":"#6d1a33","icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+{"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"/icons/maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}`
 
 func (s *store) routes(port int) http.Handler {
 	mux := http.NewServeMux()
 	index, _ := webFS.ReadFile("web/index.html")
+	if web, err := fs.Sub(webFS, "web"); err == nil {
+		icons := http.FileServer(http.FS(web))
+		mux.HandleFunc("/icons/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "max-age=3600")
+			icons.ServeHTTP(w, r)
+		})
+	}
+	mux.HandleFunc("/manifest.webmanifest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		_, _ = io.WriteString(w, manifestJSON)
+	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
@@ -505,6 +603,19 @@ func (s *store) routes(port int) http.Handler {
 		writeJSON(w, 200, map[string]any{"version": s.version, "db": s.db})
 	})
 
+	// botó «Obre la carpeta de les dades» (Configuració)
+	mux.HandleFunc("/api/reveal", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || r.Method != http.MethodPost {
+			fail(w, 403, "no permès")
+			return
+		}
+		if err := revealPath(s.path); err != nil {
+			fail(w, 500, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+
 	// botó «Tanca NotesGim» de l'app
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if !isLocal(r) || r.Method != http.MethodPost {
@@ -550,7 +661,11 @@ func (s *store) routes(port int) http.Handler {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if err := applyScore(s.db, req, time.Now().UnixMilli()); err != nil {
-			fail(w, 403, err.Error())
+			code := 403
+			if errors.Is(err, errLocked) {
+				code = 409
+			}
+			fail(w, code, err.Error())
 			return
 		}
 		s.bumpLocked()
@@ -600,6 +715,11 @@ func openApp(url string) {
 			}
 		}
 	}
+	openDefault(url)
+}
+
+// el navegador de sempre
+func openDefault(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
@@ -612,39 +732,98 @@ func openApp(url string) {
 	_ = cmd.Start()
 }
 
+// hi ha un NotesGim amb aquestes dades al port p? Torna la seva adreça o ""
+func instanceAt(p int, dataPath string) string {
+	client := &http.Client{Timeout: 700 * time.Millisecond}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/info", p))
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var info struct {
+		App      string `json:"app"`
+		DataFile string `json:"dataFile"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&info)
+	if info.App == "notesgim" && filepath.Clean(info.DataFile) == filepath.Clean(dataPath) {
+		return fmt.Sprintf("http://localhost:%d", p)
+	}
+	return ""
+}
+
 // si NotesGim ja està obert (amb les mateixes dades), no se n'obre un altre: només se'n mostra la finestra
 func runningInstance(port int, dataPath string) string {
-	client := &http.Client{Timeout: 700 * time.Millisecond}
 	for p := port; p < port+20; p++ {
-		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/info", p))
-		if err != nil {
-			continue
-		}
-		var info struct {
-			App      string `json:"app"`
-			DataFile string `json:"dataFile"`
-		}
-		_ = json.NewDecoder(resp.Body).Decode(&info)
-		resp.Body.Close()
-		if info.App == "notesgim" && filepath.Clean(info.DataFile) == filepath.Clean(dataPath) {
-			return fmt.Sprintf("http://localhost:%d", p)
+		if u := instanceAt(p, dataPath); u != "" {
+			return u
 		}
 	}
 	return ""
 }
 
-// on es guarden les dades: al costat del programa; si aquella carpeta no es pot escriure, a Documents/NotesGim
-func defaultDataPath(dir string) string {
-	test := filepath.Join(dir, ".notesgim-prova")
-	if f, err := os.Create(test); err == nil {
-		f.Close()
-		os.Remove(test)
-		return filepath.Join(dir, "notesgim-dades.json")
+// un sol NotesGim per fitxer de dades, encara que es faci doble clic dues vegades seguides: el fitxer
+// <dades>.lock diu en quin port és el que ja està obert. Torna la funció per alliberar-lo, o l'adreça de
+// l'altre NotesGim si ja n'hi ha un.
+func lockData(dataPath string) (release func(), port func(int), existing string) {
+	lock := dataPath + ".lock"
+	stale := 0
+	for try := 0; try < 60; try++ {
+		if f, err := os.OpenFile(lock, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644); err == nil {
+			f.Close()
+			return func() { _ = os.Remove(lock) }, func(p int) { _ = os.WriteFile(lock, []byte(strconv.Itoa(p)), 0o644) }, ""
+		}
+		b, _ := os.ReadFile(lock)
+		if p, _ := strconv.Atoi(strings.TrimSpace(string(b))); p > 0 {
+			if u := instanceAt(p, dataPath); u != "" {
+				return nil, nil, u
+			}
+			// no respon: és d'un NotesGim que es va tancar malament (es prova unes quantes vegades abans)
+			if stale++; stale >= 5 {
+				_ = os.Remove(lock)
+				stale = 0
+				continue
+			}
+		} else if st, err := os.Stat(lock); err == nil && time.Since(st.ModTime()) > 15*time.Second {
+			_ = os.Remove(lock) // buit i vell: el NotesGim que l'havia creat no va arribar a engegar
+			continue
+		}
+		time.Sleep(300 * time.Millisecond) // un altre NotesGim s'està engegant ara mateix
 	}
-	home, _ := os.UserHomeDir()
-	alt := filepath.Join(home, "Documents", "NotesGim")
-	_ = os.MkdirAll(alt, 0o755)
-	return filepath.Join(alt, "notesgim-dades.json")
+	return func() {}, func(int) {}, ""
+}
+
+// on es guarden les dades: a Documents/NotesGim. Al costat del programa només si ja n'hi ha (per exemple en
+// un USB), i mai en una carpeta temporal (un programa obert des d'un .zip s'executa des d'allà).
+func defaultDataPath(dir string) string {
+	const name = "notesgim-dades.json"
+	tmp := strings.ToLower(filepath.Clean(os.TempDir()))
+	inTemp := strings.HasPrefix(strings.ToLower(filepath.Clean(dir)), tmp)
+	if _, err := os.Stat(filepath.Join(dir, name)); err == nil && !inTemp {
+		return filepath.Join(dir, name)
+	}
+	writable := func(d string) bool {
+		if os.MkdirAll(d, 0o755) != nil {
+			return false
+		}
+		f, err := os.CreateTemp(d, ".notesgim-prova-*")
+		if err != nil {
+			return false
+		}
+		f.Close()
+		_ = os.Remove(f.Name())
+		return true
+	}
+	if docs := documentsDir(); docs != "" {
+		if d := filepath.Join(docs, "NotesGim"); writable(d) {
+			return filepath.Join(d, name)
+		}
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if d := filepath.Join(home, "NotesGim"); writable(d) {
+			return filepath.Join(d, name)
+		}
+	}
+	return filepath.Join(dir, name)
 }
 
 func main() {
@@ -678,10 +857,20 @@ func main() {
 		}
 		return
 	}
+	release, setPort, other := lockData(*dataPath)
+	if other != "" {
+		log.Printf("NotesGim ja està obert a %s: només se n'obre la finestra", other)
+		if !*noBrowser {
+			openApp(other)
+		}
+		return
+	}
+	defer release()
 
 	s, err := newStore(*dataPath)
 	if err != nil {
 		log.Print(err)
+		release()
 		alert("NotesGim", "No s'han pogut llegir les dades:\n\n"+err.Error())
 		os.Exit(1)
 	}
@@ -696,9 +885,11 @@ func main() {
 	}
 	if ln == nil {
 		log.Printf("no s'ha pogut obrir cap port a partir del %d: %v", *portFlag, err)
+		release()
 		alert("NotesGim", fmt.Sprintf("No s'ha pogut engegar NotesGim (cap port lliure a partir del %d).", *portFlag))
 		os.Exit(1)
 	}
+	setPort(port)
 
 	fmt.Println("════════════════════════════════════════════════════════════")
 	fmt.Println(" NotesGim " + appVersion + " — funciona sense internet")
@@ -721,6 +912,7 @@ func main() {
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Print(err)
+			release()
 			alert("NotesGim", "NotesGim s'ha aturat: "+err.Error())
 			os.Exit(1)
 		}
@@ -729,7 +921,8 @@ func main() {
 	// es tanca sol quan fa 2 minuts que la finestra de l'app no hi és (si s'ha tancat la finestra).
 	// Si l'ordinador ha estat adormit, es compta des que es desperta.
 	tick := time.NewTicker(time.Duration(min(10, max(1, *grace/4))) * time.Second)
-	last := time.Now()
+	last, started, fallback := time.Now(), time.Now(), false
+	appURL := fmt.Sprintf("http://localhost:%d", port)
 	for {
 		select {
 		case <-s.quit:
@@ -744,6 +937,20 @@ func main() {
 			}
 			last = now
 			seen := s.lastAdmin.Load()
+			// la finestra no ha arribat a obrir-se (navegador bloquejat o sense Edge/Chrome): el navegador de
+			// sempre i, si al cap de 10 minuts encara res, s'avisa i es tanca (no es queda amagat)
+			if !*noBrowser && seen == 0 {
+				if !fallback && now.Sub(started) > 20*time.Second {
+					fallback = true
+					log.Print("la finestra no s'ha obert: es prova amb el navegador de sempre")
+					openDefault(appURL)
+				}
+				if now.Sub(started) > 10*time.Minute {
+					log.Print("no s'ha pogut obrir cap finestra: es tanca")
+					alert("NotesGim", "No s'ha pogut obrir la finestra de NotesGim. Obre "+appURL+" al navegador, o torna a obrir NotesGim.")
+					return
+				}
+			}
 			if !*keepAlive && !*noBrowser && seen > 0 && now.UnixMilli()-seen > int64(*grace)*1000 {
 				log.Print("fa estona que la finestra de l'app no hi és: es tanca")
 				s.mu.Lock()

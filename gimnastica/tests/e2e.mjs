@@ -85,34 +85,38 @@ await step('l’any de naixement posa la categoria sola', async () => {
   await page.click('#dlg button[data-act=closeDlg]');
 });
 
-await step('proposa equips automàticament (3 a 6 per entitat)', async () => {
-  await page.click('a[data-nav=equips]');
+await step('fa els equips per entitat (3 a 6) i queden a la fitxa de cada gimnasta', async () => {
+  await page.click('a[data-nav=gimnastes]');
+  await page.click('.seg a:has-text("Equips")');
   await page.click('button[data-act=autoTeams]');
   const n = await page.locator('#dlg input[name=p]').count();
   assert.equal(n, 3, 'CG Lleida (4), Escola Pardinyes (3), Club Balaguer (3); el Pau sol no fa equip');
   await page.click('#dlg button.primary');
-  await page.waitForSelector('text=CG Lleida Aleví A femení');
+  await page.waitForSelector('main >> text=Escola Pardinyes');
   await shot('equips');
+  await page.goto(url + '#/gimnastes');
+  const anna = page.locator('#gymtable tr:has(td:text-is("Puig"))');
+  assert.match(await anna.locator('select.teamsel option:checked').textContent(), /^CG Lleida — 4\/6/);
+  const pau = page.locator('#gymtable tr:has(td:text-is("Gil"))');
+  assert.match(await pau.locator('select.teamsel option:checked').textContent(), /^Automàtic/);
 });
 
-await step('crea una competició i hi inscriu equips i una individual', async () => {
+await step('crea una competició i hi inscriu tothom: cadascú va al seu equip', async () => {
   await page.click('a[data-nav=competicions]');
   await page.click('button[data-act=newComp]');
   await page.fill('#dlg input[name=name]', 'Fase comarcal de gim. artística');
   await page.fill('#dlg input[name=date]', '2027-01-22');
   await page.click('#dlg button.primary');
-  await page.waitForSelector('button[data-act=enrollTeams]');
-  await page.click('button[data-act=enrollTeams]');
+  await page.waitForSelector('button[data-act=enrollGyms]');
+  await page.click('button[data-act=enrollGyms]');
   await page.click('#dlg button[data-act=checkAll]');
   await page.click('#dlg button.primary');
   await page.waitForSelector('text=Aleví femení · Nivell A');
-  await page.click('button[data-act=enrollGyms]');
-  await page.click('#dlg label:has-text("Iris") input');
-  await page.click('#dlg label:has-text("Pau Gil") input');
-  await page.click('#dlg button.primary');
   await page.waitForSelector('text=Aleví femení · Nivell B');
   await page.waitForSelector('text=Aleví masculí · Nivell A');
   assert.equal(await page.locator('table.tbl tbody tr').count(), 12);
+  const chips = await page.locator('.chip b').allTextContents();
+  assert.deepEqual(chips.sort(), ['CG Lleida', 'Club Balaguer', 'Escola Pardinyes']);
   await shot('inscripcions');
 });
 
@@ -141,6 +145,32 @@ await step('entra notes amb el teclat (Intro baixa a la següent)', async () => 
   const tot = await page.locator('#scoregrid td[data-out^="tot:"]').allTextContents();
   assert.ok(tot.every(t => /\d+,\d\d/.test(t)), 'tots els totals calculats: ' + tot.join(' | '));
   await shot('notes');
+});
+
+await step('nota impossible (835 amb màxim 20): no es desa i proposa 8,35', async () => {
+  const col = page.locator('#scoregrid input.sc[data-col="salt:0:v"]');
+  const before = await col.nth(5).inputValue();
+  await col.nth(5).click();
+  await page.keyboard.type('835');
+  await page.keyboard.press('Enter');
+  assert.ok(await col.nth(5).evaluate(el => el === document.activeElement && el.classList.contains('invalid')));
+  await page.waitForSelector('#fixtip:has-text("el màxim és 20")');
+  await page.click('#fixtip button:has-text("8,35")');
+  assert.equal(await col.nth(5).inputValue(), '8,35');
+  assert.ok(await col.nth(6).evaluate(el => el === document.activeElement), 'passa a la següent');
+  // la torna a deixar com estava
+  await col.nth(5).click(); await page.keyboard.type(before); await page.keyboard.press('Enter');
+});
+
+await step('«NP» escrit a la casella: no presentada (i es pot desfer)', async () => {
+  const col = page.locator('#scoregrid input.sc[data-col="terra:0:v"]');
+  const id = await col.nth(2).getAttribute('data-e');
+  await col.nth(2).click();
+  await page.keyboard.type('np');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(`#scoregrid tr[data-row="${id}"].np`);
+  await page.click('.toast:has-text("no presentada") button:has-text("Desfés")');
+  await page.waitForSelector(`#scoregrid tr[data-row="${id}"]:not(.np)`);
 });
 
 await step('nota no vàlida queda marcada i no es desa', async () => {
@@ -185,12 +215,17 @@ await step('minitramp dels nois: 2 salts, compta el millor', async () => {
   await page.click('button[data-act=pickGroup]:has-text("Aleví femení · Nivell A")');
 });
 
-await step('canviar d’equip el mateix dia des de la graella de notes', async () => {
+await step('canviar d’equip el mateix dia des de la graella (només aquell dia; la fitxa no canvia)', async () => {
   const sel = page.locator('#scoregrid select.teamsel').first();
-  const before = await sel.inputValue();
+  assert.equal(await sel.getAttribute('tabindex'), '-1', 'amb Tab i Intro no s’hi entra');
+  const before = await sel.inputValue(), eid = await sel.getAttribute('data-id');
   await sel.selectOption('');
-  await page.waitForSelector('#scoregrid');
+  await page.waitForSelector('.toast:has-text("en aquesta competició") button:has-text("També a la fitxa")');
   assert.equal(await page.locator('#scoregrid select.teamsel').first().inputValue(), '');
+  await page.waitForTimeout(300);
+  const d = JSON.parse(await page.evaluate(() => localStorage.getItem('notesgim.db')));
+  const gid = d.competitions[0].entries.find(e => e.id === eid).gymnastId;
+  assert.ok(d.teams.some(t => t.memberIds.includes(gid)), 'a la fitxa continua al seu equip');
   await page.locator('#scoregrid select.teamsel').first().selectOption(before);
   await page.waitForSelector('#scoregrid');
   assert.equal(await page.locator('#scoregrid select.teamsel').first().inputValue(), before);
@@ -250,30 +285,33 @@ await step('les dades es mantenen després de tancar i tornar a obrir', async ()
   await p2.close();
 });
 
-await step('competició nova amb inscripcions soltes: els equips es fan sols', async () => {
+await step('jornada següent: es proposa copiar l’anterior, i els equips surten de les fitxes', async () => {
   await page.click('a[data-nav=competicions]');
   await page.click('button[data-act=newComp]');
+  // del mateix curs: proposa copiar la jornada anterior i el nom
+  assert.ok((await page.locator('#dlg select[name=copyFrom] option:checked').textContent()).includes('Fase comarcal'));
   await page.fill('#dlg input[name=name]', 'Segona fase');
   await page.fill('#dlg input[name=date]', '2027-03-05');
   await page.click('#dlg button.primary');
-  await page.waitForSelector('button[data-act=enrollGyms]');
-  await page.click('button[data-act=enrollGyms]');
-  await page.click('#dlg button[data-act=checkAll]');
-  await page.click('#dlg button.primary');
+  await page.waitForSelector('.toast:has-text("Competició creada amb 12 gimnastes")');
+  await page.click('.tabs a:has-text("Inscripcions")');
   await page.waitForSelector('text=Aleví femení · Nivell A');
-  // les que tenen equip fix (fet abans a «Equips») hi van soles; l'Iris (nivell B) i el Pau, sols, no fan equip
   const chips = await page.locator('.chip b').allTextContents();
-  assert.deepEqual(chips.sort(), ['CG Lleida Aleví A femení', 'Club Balaguer Aleví A femení', 'Escola Pardinyes Aleví A femení']);
-  // treure una gimnasta d'un equip a mà i inscriure'n una altra no la torna a posar a l'equip
+  assert.deepEqual(chips.sort(), ['CG Lleida', 'Club Balaguer', 'Escola Pardinyes']);
+  // treure una gimnasta d'un equip a mà: «Fes equips per entitat» no la torna a posar
   const row = page.locator('tr', { hasText: 'Dana Roca' });
   await row.locator('select[data-chg=entryTeam]').selectOption('');
-  await page.waitForSelector('text=Aleví femení · Nivell A');
+  await page.waitForSelector('.toast:has-text("Dana Roca → individual")');
   await page.click('button[data-act=enrollGyms]');
   await page.waitForSelector('#dlg[open]');
   assert.ok((await page.locator('#gympick').textContent()).includes('Ja està tothom inscrit'));
   await page.click('#dlg button[data-act=closeDlg]');
   await page.click('button[data-act=autoCompTeams]');
   assert.equal(await page.locator('tr', { hasText: 'Dana Roca' }).locator('select[data-chg=entryTeam]').inputValue(), '');
+  // la cerca amaga les que no hi coincideixen
+  await page.fill('input[data-inp=insSearch]', 'pardinyes');
+  assert.equal(await page.locator('table.ins tbody tr:not(.hidden)').count(), 3);
+  await page.fill('input[data-inp=insSearch]', '');
   // tornem a la primera competició (la de gener, que surt la segona a la llista)
   await page.goto(url + '#/competicions');
   await page.locator('.comp-card', { hasText: '22/01/2027' }).locator('a.btn').click();
@@ -301,11 +339,14 @@ await step('exporta a Excel (.xlsx)', async () => {
   await dl.saveAs(path.join(out, 'competicio.xlsx'));
 });
 
-await step('impressió: genera PDF de totes les classificacions', async () => {
+await step('impressió: avisa de les notes que falten i genera el PDF', async () => {
   await page.evaluate(() => { window.print = () => {}; });
-  await page.click('button[data-act=printDlg]');
+  await page.click('.comp-head .hide-ph button[data-act=printDlg]');
   for (const t of ['podium', 'apps', 'notes', 'judge', 'list']) await page.check(`#dlg input[name=t][value=${t}]`);
   await page.click('#dlg button.primary');
+  // l'Iris (nivell B) i el Pau encara no tenen totes les notes
+  await page.waitForSelector('#confirm[open] >> text=Encara falten');
+  await page.click('#confirm button[value=print]');
   await page.waitForFunction(() => document.querySelectorAll('#print .sheet').length > 0);
   const n = await page.locator('#print .sheet').count();
   assert.ok(n >= 10, 'fulls: ' + n);
@@ -353,11 +394,67 @@ await step('l’equip es tria a la mateixa fitxa (i la competició oberta la seg
     if (!e || c.locked) continue;
     assert.equal(c.teams.find(x => x.id === e.teamId).name, 'Equip de prova');
   }
-  // a la llista es pot canviar directament
+  // a la llista es pot canviar directament (i es pot desfer)
   const sel = page.locator(`#gymtable select.teamsel[data-id="${g.id}"]`);
-  assert.equal(await sel.locator('option:checked').textContent(), 'Equip de prova');
-  await sel.selectOption({ label: 'CG Lleida Aleví A femení' });
-  await page.waitForSelector('.toast:has-text("CG Lleida Aleví A femení")');
+  assert.match(await sel.locator('option:checked').textContent(), /^Equip de prova — 1\/6/);
+  const lleida = d.teams.find(x => x.name === 'CG Lleida');
+  await sel.selectOption(lleida.id);
+  await page.waitForSelector('.toast:has-text("→ CG Lleida")');
+  await page.click('.toast:has-text("→ CG Lleida") button:has-text("Desfés")');
+  await page.waitForSelector('.toast:has-text("Desfet")');
+  // «Només individual»: no entra a cap equip, tampoc als automàtics
+  await page.locator(`#gymtable select.teamsel[data-id="${g.id}"]`).selectOption('__none');
+  await page.waitForSelector('.toast:has-text("només individual")');
+  await page.waitForTimeout(400);
+  const d2 = JSON.parse(await page.evaluate(() => localStorage.getItem('notesgim.db')));
+  assert.equal(d2.teams.filter(x => x.memberIds.includes(g.id)).length, 0);
+  for (const c of d2.competitions) { const e = c.entries.find(x => x.gymnastId === g.id); if (e) assert.equal(e.teamId, null); }
+});
+
+await step('al mòbil: navegació a baix, res no desborda i entrada ràpida amb el teclat gran', async () => {
+  const raw = await page.evaluate(() => localStorage.getItem('notesgim.db'));
+  const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: 'ca-ES' });
+  await mctx.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, raw);
+  const ph = await mctx.newPage();
+  ph.on('pageerror', e => errors.push('mòbil pageerror: ' + e.message));
+  ph.on('console', m => { if (m.type() === 'error') errors.push('mòbil console: ' + m.text()); });
+  const comp = JSON.parse(raw).competitions.find(c => c.date === '2027-01-22');
+  for (const v of ['#/competicions', '#/gimnastes', '#/equips', '#/ranquing', '#/configuracio', '#/entitats',
+    ...['inscripcions', 'notes', 'classificacions', 'configuracio'].map(t => `#/competicio/${comp.id}/${t}`)]) {
+    await ph.goto(url + v); await ph.waitForTimeout(120);
+    assert.ok(await ph.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'desborda a ' + v);
+  }
+  assert.ok(await ph.locator('nav.bottom').isVisible());
+  assert.equal(await ph.locator('header.top nav').isVisible(), false);
+  // a l'inici, la competició del dia amb accés directe
+  await ph.goto(url + '#/competicions');
+  await ph.locator('.avui a:has-text("Notes")').click();
+  await ph.waitForSelector('.gsel select');
+  assert.equal(await ph.locator('button[data-act=pickApp][data-a=all]').count(), 0, 'al mòbil, un aparell cada vegada');
+  const key = await ph.locator('.gsel select option', { hasText: 'masculí' }).getAttribute('value');
+  await ph.locator('.gsel select').selectOption(key);
+  await ph.click('button[data-act=pickApp][data-a=salt]');
+  await ph.click('button[data-act=toggleQe]');
+  await ph.waitForSelector('#qe');
+  assert.ok((await ph.locator('.qe-who b').textContent()).includes('Pau'));
+  // 950 no pot ser: proposa 9,50
+  for (const k of ['9', '5', '0']) await ph.click(`.qe-keys button[data-k="${k}"]`);
+  assert.ok(await ph.locator('#qesave').isDisabled());
+  await ph.click('#qehint button:has-text("9,50")');
+  assert.equal(await ph.locator('#qedisp').textContent(), '9,50');
+  for (let i = 0; i < 4; i++) await ph.click('.qe-keys button[data-k="del"]');
+  for (const k of ['9', ',', '2', '5']) await ph.click(`.qe-keys button[data-k="${k}"]`);
+  await ph.click('#qesave');
+  await ph.waitForSelector('.toast:has-text("Desada 9,25")');
+  await ph.waitForTimeout(400);
+  const d = JSON.parse(await ph.evaluate(() => localStorage.getItem('notesgim.db')));
+  const pau = d.gymnasts.find(g => g.name === 'Pau');
+  assert.equal(d.competitions.find(c => c.id === comp.id).entries.find(e => e.gymnastId === pau.id).scores.salt[0].v, 9.25);
+  await ph.screenshot({ path: path.join(out, 'mobil-entrada-rapida.png') });
+  await ph.goto(url + `#/competicio/${comp.id}/classificacions`);
+  await ph.waitForSelector('.gsel select');
+  await ph.screenshot({ path: path.join(out, 'mobil-classificacio.png') });
+  await mctx.close();
 });
 
 await step('còpia de seguretat: es descarrega i es pot restaurar', async () => {

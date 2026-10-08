@@ -1,6 +1,6 @@
 // Service worker de NUS: desa el joc al telèfon perquè funcioni sense cobertura.
 // Puja la versió cada cop que canviïs index.html i el telèfon es descarregarà el nou.
-const VERSION = 'nus-v4';
+const VERSION = 'nus-v5';
 const SHELL = [
   './',
   './index.html',
@@ -29,8 +29,10 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // NotesGim (gimnastica/) té el seu propi service worker i la seva memòria: no la toquem
+  if (new URL(e.request.url).pathname.includes('/gimnastica/')) return;
   e.respondWith(
-    caches.match(e.request).then(hit => {
+    caches.open(VERSION).then(c => c.match(e.request)).then(hit => {
       if (hit) {
         // el tenim: el servim de seguida i mirem si n'hi ha un de nou per a la pròxima
         fetch(e.request)
@@ -46,7 +48,7 @@ self.addEventListener('fetch', e => {
           }
           return res;
         })
-        .catch(() => caches.match('./index.html'));
+        .catch(() => caches.open(VERSION).then(c => c.match('./index.html')));
     })
   );
 });

@@ -3,7 +3,7 @@
 //   node tests/e2e-servidor.mjs
 import { createRequire } from 'node:module';
 import { execSync, spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,8 +20,9 @@ const out = path.join(here, 'out', 'servidor');
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
 const srvDir = path.join(root, 'servidor');
-mkdirSync(path.join(srvDir, 'web'), { recursive: true });
+mkdirSync(path.join(srvDir, 'web', 'icons'), { recursive: true });
 copyFileSync(path.join(root, 'index.html'), path.join(srvDir, 'web', 'index.html'));
+for (const f of readdirSync(path.join(root, 'icons'))) copyFileSync(path.join(root, 'icons', f), path.join(srvDir, 'web', 'icons', f));
 const bin = path.join(out, 'notesgim-servidor');
 execSync(`go build -o "${bin}" .`, { cwd: srvDir, stdio: 'inherit', env: { ...process.env, CGO_ENABLED: '0' } });
 
@@ -72,9 +73,21 @@ try {
   await step('l’ordinador de la taula obre l’app sencera amb les dades del servidor', async () => {
     await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
     await admin.waitForSelector('#scoregrid');
-    await admin.waitForSelector('text=Servidor');
+    await admin.waitForSelector('text=Desat al fitxer');
     assert.equal(await admin.locator('#scoregrid input.sc[data-e=e2][data-a=salt]').inputValue(), '8,00');
     await admin.waitForSelector('text=Tutores: codi');
+  });
+
+  await step('la taula té el codi QR per a les tutores, i el programa serveix la icona i el manifest', async () => {
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/configuracio`);
+    await admin.waitForSelector('.tut-join .qr svg');
+    const m = await (await fetch(`http://127.0.0.1:${PORT}/manifest.webmanifest`)).json();
+    assert.equal(m.short_name, 'NotesGim');
+    const icon = await fetch(`http://127.0.0.1:${PORT}/icons/icon-192.png`);
+    assert.equal(icon.status, 200);
+    assert.equal(icon.headers.get('content-type'), 'image/png');
+    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+    await admin.waitForSelector('#scoregrid');
   });
 
   await step('un mòbil de la xarxa veu el mode tutora (i no l’app sencera)', async () => {
@@ -87,17 +100,33 @@ try {
     await tutor.fill('input[name=pin]', '4321');
     await tutor.fill('input[name=who]', 'Marta');
     await tutor.click('button:has-text("Entra")');
-    await tutor.waitForSelector('#scoregrid');
+    // l'aparell s'ha de triar (no se'n posa cap per defecte)
+    await tutor.waitForSelector('text=Quin aparell puntues?');
   });
 
-  await step('la tutora entra notes de barra i arriben a la taula al moment', async () => {
+  await step('escanejant el QR (#codi=…) s’entra sense escriure el codi', async () => {
+    const t2 = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
+    watch(t2, 'tutora 2');
+    await t2.goto(`http://${lan.address}:${PORT}/#codi=4321`);
+    await t2.waitForSelector('text=Quin aparell puntues?');
+    assert.equal(await t2.evaluate(() => location.hash), '');
+    await t2.close();
+  });
+
+  await step('la tutora entra notes de barra amb el teclat gran i arriben a la taula al moment', async () => {
     await tutor.click('button[data-act=tutApp][data-a=barra]');
-    const first = tutor.locator('#scoregrid input.sc').first();
-    await first.click();
-    await tutor.keyboard.type('9,1'); await tutor.keyboard.press('Enter');
-    await tutor.keyboard.type('8,45'); await tutor.keyboard.press('Enter');
-    await tutor.waitForSelector('[data-st="e1:barra:0"].ok');
-    await tutor.waitForSelector('[data-st="e2:barra:0"].ok');
+    await tutor.waitForSelector('#qe');
+    assert.ok((await tutor.locator('.qe-who b').textContent()).includes('Anna'));
+    for (const k of ['9', ',', '1']) await tutor.click(`.qe-keys button[data-k="${k}"]`);
+    await tutor.click('#qesave');
+    await tutor.waitForSelector('.toast:has-text("Desada 9,10")');
+    // passa sola a la següent: la Berta
+    assert.ok((await tutor.locator('.qe-who b').textContent()).includes('Berta'));
+    for (const k of ['8', ',', '4', '5']) await tutor.click(`.qe-keys button[data-k="${k}"]`);
+    await tutor.click('#qesave');
+    await tutor.click('button[data-act=tutToggleList]');
+    await tutor.waitForSelector('#scoregrid');
+    await tutor.waitForFunction(() => document.querySelectorAll('#scoregrid input.sc')[1].value === '8,45', null, { timeout: 8000 });
     const inp = admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]');
     await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e1][data-a=barra]').value === '9,10', null, { timeout: 8000 });
     assert.ok(await inp.evaluate(el => el.classList.contains('tutor')));
@@ -118,6 +147,16 @@ try {
     assert.equal(await admin.locator('#scoregrid input.sc.tutor').count(), 0);
   });
 
+  await step('una nota posada o revisada a la taula, la tutora ja no la pot canviar (409)', async () => {
+    await new Promise(r => setTimeout(r, 800));
+    const post = body => fetch(`http://${lan.address}:${PORT}/api/score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ pin: '4321', compId: 'k1', i: 0 }, body)) });
+    assert.equal((await post({ entryId: 'e2', appId: 'salt', value: 9 })).status, 409, 'el salt de la Berta el va posar la taula');
+    assert.equal((await post({ entryId: 'e1', appId: 'barra', value: 9 })).status, 409, 'la barra de l’Anna ja està revisada');
+    assert.equal((await post({ entryId: 'e1', appId: 'salt', value: 25 })).status, 403, 'una nota de més de 20 no s’accepta');
+    // a la llista de la tutora surten amb el cadenat
+    await tutor.waitForSelector('#scoregrid input.sc.locked');
+  });
+
   await step('al fitxer del servidor hi ha les notes', async () => {
     await new Promise(r => setTimeout(r, 600));
     const d = JSON.parse(readFileSync(dataFile, 'utf8'));
@@ -125,12 +164,14 @@ try {
     assert.equal(e1.scores.barra[0].v, 9.1);
   });
 
-  await step('el noi no té barra; el minitramp té 2 salts', async () => {
-    await tutor.click('button[data-act=tutGroup]:has-text("masculí")');
+  await step('el noi no té barra (es torna a demanar l’aparell); el minitramp té 2 salts', async () => {
+    const sel = tutor.locator('.gsel select');
+    await sel.selectOption(await tutor.locator('.gsel select option', { hasText: 'masculí' }).getAttribute('value'));
+    await tutor.waitForSelector('text=Aquest grup no fa aquest aparell');
     assert.equal(await tutor.locator('button[data-act=tutApp][data-a=barra]').count(), 0);
     await tutor.click('button[data-act=tutApp][data-a=mini]');
     assert.equal(await tutor.locator('#scoregrid input.sc').count(), 2);
-    await tutor.click('button[data-act=tutGroup]:has-text("femení")');
+    await sel.selectOption(await tutor.locator('.gsel select option', { hasText: 'femení' }).getAttribute('value'));
     await tutor.click('button[data-act=tutApp][data-a=terra]');
   });
 
@@ -138,15 +179,15 @@ try {
     await stopServer();
     const first = tutor.locator('#scoregrid input.sc').first();
     await first.click(); await tutor.keyboard.type('8,8'); await tutor.keyboard.press('Enter');
-    await tutor.waitForSelector('text=Sense connexió', { timeout: 10000 });
-    await admin.waitForSelector('text=Sense connexió amb el servidor', { timeout: 10000 });
+    await tutor.waitForSelector('.banner:has-text("No tanquis aquesta pàgina")', { timeout: 10000 });
+    await admin.waitForSelector('text=Sense connexió amb el programa', { timeout: 10000 });
     // la taula també segueix treballant
     const inp = admin.locator('#scoregrid input.sc[data-e=e1][data-a=salt]');
     await inp.click(); await admin.keyboard.type('7,7'); await admin.keyboard.press('Enter');
     await startServer();
-    await tutor.waitForSelector('[data-st="e1:terra:0"].ok', { timeout: 15000 });
+    await tutor.waitForSelector('[data-st="e1:terra:0"].ok, #tutstatus:has-text("tot enviat")', { timeout: 15000 });
     await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e1][data-a=terra]').value === '8,80', null, { timeout: 15000 });
-    await admin.waitForSelector('text=Servidor ·', { timeout: 15000 });
+    await admin.waitForSelector('text=Desat al fitxer', { timeout: 15000 });
     await new Promise(r => setTimeout(r, 1500));
     const d = JSON.parse(readFileSync(dataFile, 'utf8'));
     const e1 = d.competitions[0].entries.find(e => e.id === 'e1');

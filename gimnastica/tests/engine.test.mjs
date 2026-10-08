@@ -349,7 +349,7 @@ test('aparells per gènere: les noies fan barra, els nois minitramp', () => {
 });
 
 test('fusió de notes entre còpies: de cada intent guanya el més recent', () => {
-  const mk = () => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores: { salt: [{ v: 8, at: 100 }], barra: [{ v: 7, at: 300 }] } }] }] });
+  const mk = () => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores: { salt: [{ v: 8, at: 100, by: 'tutor' }], barra: [{ v: 7, at: 300 }] } }] }] });
   const base = mk(), other = mk();
   other.competitions[0].entries[0].scores.salt = [{ v: 9.5, at: 200, by: 'tutor' }];   // més nova
   other.competitions[0].entries[0].scores.barra = [{ v: 6, at: 250 }];                 // més vella
@@ -363,4 +363,59 @@ test('fusió de notes entre còpies: de cada intent guanya el més recent', () =
   assert.deepEqual(plain(ch.map(x => x.appId).sort()), ['salt', 'terra']);
   // tornar-ho a fer no canvia res
   assert.equal(E.mergeScores(base, other).length, 0);
+});
+
+test('fusió: una nota de tutora no trepitja mai la de la taula ni una de revisada', () => {
+  const mk = scores => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores }] }] });
+  // la taula ha posat 8 (sense «by») abans que arribés la de la tutora: es queda la de la taula
+  const base = mk({ salt: [{ v: 8, at: 100 }], barra: [{ v: 7, at: 100, by: 'tutor', ok: true }], terra: [{ at: 100 }], mini: [{ v: 7, at: 100 }] });
+  const other = mk({ salt: [{ v: 9.5, at: 200, by: 'tutor' }], barra: [{ v: 6.5, at: 200, by: 'tutor' }], terra: [{ v: 8.2, at: 200, by: 'tutor' }], mini: [{ v: 7.5, at: 200 }] });
+  const ch = E.mergeScores(base, other);
+  const sc = base.competitions[0].entries[0].scores;
+  assert.equal(sc.salt[0].v, 8);
+  assert.equal(sc.barra[0].v, 7);          // revisada: no es toca
+  assert.equal(sc.terra[0].v, 8.2);        // la taula l'havia esborrat: la de la tutora hi entra
+  assert.equal(sc.mini[0].v, 7.5);         // dues de la taula: guanya la més nova
+  assert.deepEqual(plain(ch.map(x => x.appId).sort()), ['mini', 'terra']);
+  assert.equal(E.guarded({ v: 8 }), true);
+  assert.equal(E.guarded({ v: 8, by: 'tutor' }), false);
+  assert.equal(E.guarded({ v: 8, by: 'tutor', ok: true }), true);
+  assert.equal(E.guarded({ at: 5 }), false);
+});
+
+test('nota massa alta: proposa on anava la coma', () => {
+  assert.equal(E.suggestScore('835', 20), 8.35);
+  assert.equal(E.suggestScore('1050', 20), 10.5);
+  assert.equal(E.suggestScore('83,5', 20), 8.35);
+  assert.equal(E.suggestScore('950', 20), 9.5);
+  assert.equal(E.suggestScore('2000', 20), 20);
+  assert.equal(E.suggestScore('9', 20), null);
+  assert.equal(E.suggestScore('99999', 5), null);
+  assert.equal(E.suggestScore('', 20), null);
+});
+
+test('notes que falten per grup (sense comptar les NP)', () => {
+  const c = comp();
+  c.entries.push(entry('Anna', { salt: 8, barra: 8, terra: 8, mini: 7 }), entry('Berta', { salt: 8 }), entry('Carla', {}, { status: 'np' }));
+  const m = E.missingScores(c, group(c));
+  assert.equal(m.total, 3 + 0);   // Berta: barra, terra, minitramp
+  assert.deepEqual(plain(m.perApp), { barra: 1, terra: 1, mini: 1 });
+});
+
+test('rànquing de jornades: el mateix equip encara que canviï de nom; equips diferents amb el mateix nom no es barregen', () => {
+  const mk = (id, teams) => {
+    const c = comp({ id });
+    teams.forEach(([tid, name, src, gid, s]) => {
+      c.teams.push({ id: tid, name, clubId: 'cx', category: 'Aleví', level: 'A', sourceTeamId: src });
+      for (let k = 0; k < 3; k++) c.entries.push(entry(name + k, { salt: s, barra: s, terra: s }, { gymnastId: gid + k, teamId: tid }));
+    });
+    return c;
+  };
+  // J1: equip antic sense sourceTeamId «Club X»; J2: el mateix equip ja enllaçat (T1) i un altre (T2) amb el nom
+  // «Club X 2»; J3: T1 reanomenat «Club X A» i T2 amb el nom «Club X»
+  const j1 = mk('j1', [['a', 'Club X', null, 'g', 8]]);
+  const j2 = mk('j2', [['b', 'Club X', 'T1', 'g', 8], ['c', 'Club X 2', 'T2', 'h', 7]]);
+  const j3 = mk('j3', [['d', 'Club X A', 'T1', 'g', 8], ['e', 'Club X', 'T2', 'h', 7]]);
+  const [g] = E.seasonRanking([j1, j2, j3], { categories: CATS, levels: ['A'] }, { nameOf });
+  assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X A', 3], ['Club X', 2]]);
 });

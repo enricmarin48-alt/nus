@@ -27,10 +27,16 @@ jobs:
           go-version: '1.22'
       - name: Tests del motor de càlcul
         run: node --test gimnastica/tests/engine.test.mjs
+      - name: Versió (data i commit)
+        run: |
+          v="$(date -u +%Y-%m-%d) · ${GITHUB_SHA::7}"
+          sed -i "s/^const APP_BUILD = 'dev';/const APP_BUILD = '$v';/" gimnastica/index.html
+          grep -q "APP_BUILD = '$v'" gimnastica/index.html
+          echo "NOTESGIM_VERSION=$v" >> "$GITHUB_ENV"
       - name: Tests del servidor
         run: |
           cd gimnastica/servidor
-          mkdir -p web && cp ../index.html web/index.html
+          mkdir -p web/icons && cp ../index.html web/index.html && cp ../icons/*.png web/icons/
           go test ./...
       - name: Compila
         run: sh gimnastica/servidor/build.sh

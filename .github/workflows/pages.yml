@@ -24,6 +24,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepara Pages
         uses: actions/configure-pages@v5
+      - name: Versió de NotesGim (cada aparell es posa al dia sol)
+        run: |
+          v="$(date -u +%Y-%m-%d) · ${GITHUB_SHA::7}"
+          sed -i "s/^const VERSION = 'notesgim-[A-Za-z0-9]*';/const VERSION = 'notesgim-${GITHUB_SHA::8}';/" gimnastica/sw.js
+          sed -i "s/^const APP_BUILD = 'dev';/const APP_BUILD = '$v';/" gimnastica/index.html
+          grep -q "notesgim-${GITHUB_SHA::8}" gimnastica/sw.js
+          grep -q "APP_BUILD = '$v'" gimnastica/index.html
       - name: Empaqueta el joc
         uses: actions/upload-pages-artifact@v3
         with:

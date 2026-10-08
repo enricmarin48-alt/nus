@@ -2809,6 +2809,9 @@ function gymForm(g, keep = {}, opts = {}) {
   const ec = !g && opts.compId ? compById(opts.compId) : null;
   const v = Object.assign({ name: '', surname: '', clubName: '', gender: 'F', category: '', level: '', birthYear: '', notes: '', teamId: '' }, keep, g ? {
     name: g.name, surname: g.surname, clubName: clubName(g.clubId), gender: genderOf(g), category: g.category, level: g.level, birthYear: g.birthYear || '', notes: g.notes || '', teamId: gymTeamValue(g) } : {});
+  // (el que recorda «Desa i afegeix-ne una altra» pot ser un nivell o una categoria que ja no hi és)
+  if (!g && v.level && !S().levels.includes(v.level)) v.level = '';
+  if (!g && v.category && !catNames().includes(v.category)) v.category = '';
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
   return `<form data-form="gym" data-id="${g ? g.id : ''}" data-comp="${ec ? ec.id : ''}" data-back="${ec && opts.back ? 1 : ''}"><h2>${g ? 'Edita la fitxa' : 'Afegeix gimnasta'}</h2>
     <div class="grid2">
@@ -2817,15 +2820,15 @@ function gymForm(g, keep = {}, opts = {}) {
       <label class="f"><span>Entitat (club o escola)</span><input type="text" name="club" list="clublist" value="${h(v.clubName)}" placeholder="Escriu-la o tria-la" data-chg="gymFormTeams"></label>
       <label class="f"><span>Gènere</span><select name="gender" data-chg="gymFormTeams">${genderOptions(v.gender)}</select></label>
       <label class="f"><span>Any de naixement <span class="small">(posa la categoria sola)</span></span><input type="number" name="birthYear" min="1950" max="2100" value="${h(v.birthYear)}" data-inp="gymYear"></label>
-      <label class="f"><span>Categoria</span><select name="category" data-chg="gymFormTeams" required><option value="">—</option>${catOptions(v.category)}</select></label>
-      <label class="f"><span>Nivell</span><select name="level" data-chg="gymFormTeams" required><option value="">—</option>${levelOptions(v.level)}</select></label>
+      <label class="f"><span>Categoria</span><select name="category" data-chg="gymFormTeams" ${g && g.archived ? '' : 'required'}><option value="">—</option>${catOptions(v.category)}</select></label>
+      <label class="f"><span>Nivell</span><select name="level" data-chg="gymFormTeams" ${g && g.archived ? '' : 'required'}><option value="">—</option>${levelOptions(v.level)}</select></label>
       <label class="f"><span>Equip</span><select name="team" data-chg="gymFormTeams">${teamOptionsFor(gymLike(v, g), v.teamId)}</select></label>
       <label class="f ${v.teamId === '__new' ? '' : 'hidden'}" id="newteam"><span>Nom de l’equip nou</span><input type="text" name="newTeam" value="${h(v.newTeam || '')}" placeholder="${h(newTeamName(gymLike(v, g).clubId, gymLike(v, g)))}"></label>
       <label class="f"><span>Observacions</span><input type="text" name="notes" value="${h(v.notes)}"></label>
     </div>
     <p class="small muted" id="yearhint">${v.birthYear && !catForYear(v.birthYear) ? `Cap categoria no inclou l’any ${h(v.birthYear)}. Revisa els anys a Configuració → Categories.` : ''}</p>
     <datalist id="clublist">${clubs.map(c => `<option value="${h(c.name)}">`).join('')}</datalist>
-    ${g ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="archived" ${g.archived ? 'checked' : ''}> Arxivada (ja no competeix; no surt a les llistes per inscriure)</label>` : ''}
+    ${g ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="archived" data-chg="gymArchived" ${g.archived ? 'checked' : ''}> Arxivada (ja no competeix; no surt a les llistes per inscriure)</label>` : ''}
     ${ec ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="enroll" checked ${ec.locked ? 'disabled' : ''}> Inscriu-la també a <b>${h(ec.name)}</b></label>` : ''}
     <div class="dlg-actions">${g ? `<button type="button" class="btn danger left" data-act="delGym" data-id="${g.id}">Esborra la fitxa</button>` : ''}<button type="button" class="btn" data-act="${ec && opts.back ? 'backToPick' : 'closeDlg'}">Cancel·la</button>
       ${g ? '' : `<button class="btn" name="again" value="1">Desa i afegeix-ne una altra</button>`}<button class="btn primary">Desa</button></div></form>`;
@@ -2932,7 +2935,7 @@ function importResolve(imp) {
     const category = matchFromList(catNames(), catRaw) || catRaw;
     // «Nivell A», «Nivel B», «Level A», «Niv. A» → A
     const lv = String(levelRaw || '').replace(/^\s*(nivell|nivel|level|niv\.?)\s*/i, '').trim() || levelRaw;
-    const level = matchFromList(S().levels, lv) || lv.toUpperCase();
+    const level = matchFromList(S().levels, lv) || matchFromList(S().levels, levelRaw) || lv.toUpperCase();
     const team = get(r, 'team');
     const key = norm(name + ' ' + surname) + '|' + norm(club);
     let status = 'new';
@@ -4320,7 +4323,7 @@ const forms = {
     const vals = { name, surname: fd.get('surname').trim(), clubId: ensureClub(fd.get('club')), gender: fd.get('gender') === 'M' ? 'M' : 'F',
       category: fd.get('category'), level: fd.get('level'), birthYear: fd.get('birthYear') ? String(fd.get('birthYear')) : '', notes: fd.get('notes').trim() };
     const teamVal = fd.get('team') || '', newTeam = fd.get('newTeam') || '';
-    if (!vals.category || !vals.level) { toast('Tria la categoria i el nivell (sense, competiria sola en un grup a part).', 'bad'); return; }
+    if (fd.get('archived') !== 'on' && (!vals.category || !vals.level)) { toast('Tria la categoria i el nivell (sense, competiria sola en un grup a part).', 'bad'); return; }
     if (id) {
       const g = gymById(id);
       if (!g) { closeDialog(); return; }
@@ -4369,7 +4372,7 @@ const forms = {
     toast(`${name} ${vals.surname}: desat${team ? ` a l’equip ${team.name}` : ''}${enrolled ? ` · inscripció feta (dorsal ${enrolled.bib})` : ''}.${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
     // (si s'ha obert des de «Inscriu gimnastes», s'hi torna amb les que ja hi havia marcades)
     const back = !!f.dataset.back;
-    if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym, { compId: ec ? ec.id : '', back }));
+    if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym, { compId: f.dataset.comp || '', back }));
     else if (back) { render(); actions.enrollGyms({ back: true }); return; }
     else closeDialog();
     render();
@@ -4410,7 +4413,7 @@ const forms = {
   },
   enrollGyms: f => {
     const c = curComp(), ids = new FormData(f).getAll('g');
-    if (!ids.length) { toast('No has marcat cap gimnasta.', 'bad'); return; }
+    if (!ids.length) { if (!f.querySelector('input[name=g]')) closeDialog(); else toast('No has marcat cap gimnasta.', 'bad'); return; }
     let res = { made: 0, placed: 0 };
     closeDialog();
     withUndo(() => `${plural(ids.length, 'inscripció feta', 'inscripcions fetes')}${res.placed ? ` · ${plural(res.placed, 'gimnasta', 'gimnastes')} en equips` : ''}${res.made ? ` (${plural(res.made, 'equip nou', 'equips nous')})` : ''}.`, () => {
@@ -4710,6 +4713,7 @@ const changes = {
         db.competitions.forEach(c => { c.entries.forEach(fix); c.teams.forEach(fix); });
         S()[key].splice(S()[key].indexOf(old), 1);
         mergeDupTeams();
+        renameInUi(field, old, to);
       });
       return;
     }
@@ -4717,9 +4721,17 @@ const changes = {
     const fix = o => { if (o[field] === old) o[field] = v; };
     db.gymnasts.forEach(fix); db.teams.forEach(fix);
     db.competitions.forEach(c => { c.entries.forEach(fix); c.teams.forEach(fix); });
+    renameInUi(field, old, v);
     commit(); toast(`«${old}» ara es diu «${v}».`, 'ok');
   },
 };
+// un nivell (o categoria) ha canviat de nom: els filtres i el que recorda el formulari, també
+function renameInUi(field, old, to) {
+  const f = field === 'level' ? ['gLevel', 'level'] : ['gCat', 'cat'];
+  if (ui[f[0]] === old) ui[f[0]] = to;
+  if (ui.pick && ui.pick[f[1]] === old) ui.pick[f[1]] = to;
+  if (ui.lastGym && ui.lastGym[field] === old) ui.lastGym[field] = to;
+}
 changes.groupSel = el => { const fn = actions[el.dataset.target]; if (fn) fn({ dataset: { g: el.value } }); };
 const inputs = {
   gSearch: el => { ui.gSearch = el.value; $('#gymtable').innerHTML = gymTable(); },
@@ -4743,6 +4755,8 @@ const inputs = {
   pickFilter: el => { ui.pick[el.dataset.k] = el.value; refreshPick(); },
 };
 // el formulari de la fitxa: la llista d'equips segueix l'entitat, el gènere, la categoria i el nivell
+// una fitxa arxivada (ja no competeix) es pot desar sense categoria ni nivell
+changes.gymArchived = el => el.form.querySelectorAll('select[name=category],select[name=level]').forEach(x => { x.required = !el.checked; });
 changes.gymFormTeams = el => {
   const f = el.closest('form'); if (!f) return;
   const fd = new FormData(f), sel = f.querySelector('select[name=team]');

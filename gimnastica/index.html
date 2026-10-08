@@ -785,7 +785,7 @@ function loadDb() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     db = migrate(raw ? JSON.parse(raw) : null);
-    lastRaw = raw;
+    lastRaw = raw; sessionStamp = db.meta.updated;
   } catch (e) {
     console.error(e);
     db = defaultDb();
@@ -972,7 +972,9 @@ function queueFileWrite() {
   fileDirty = true;
   fileQueue = fileQueue.then(writeFileNow).catch(() => {});
 }
-let fileChecked = false;
+// sessionStamp: l'hora de les dades del navegador quan s'ha obert l'app. Si el fitxer és més nou que això,
+// l'ha canviat algú altre (un altre ordinador o navegador) i no s'hi escriu sense preguntar.
+let fileChecked = false, sessionStamp = null;
 async function writeFileNow() {
   if (!fileHandle || !fileDirty) return;
   try {
@@ -982,7 +984,8 @@ async function writeFileNow() {
     if (!fileChecked) {
       const inFile = await readHandle(fileHandle);
       const theirs = inFile && (inFile.gymnasts.length || inFile.competitions.length);
-      const other = theirs && ((inFile.meta || {}).dbId !== db.meta.dbId || Date.parse((inFile.meta || {}).updated || 0) > Date.parse(db.meta.updated || 0));
+      const fm = (inFile && inFile.meta) || {};
+      const other = theirs && ((fm.dbId && fm.dbId !== db.meta.dbId) || Date.parse(fm.updated || 0) > Date.parse(sessionStamp || 0));
       if (other) { fileState = 'conflict'; renderSaveState(false); return; }
       fileChecked = true;
     }
@@ -1029,7 +1032,11 @@ async function regrantFile() {
   if (!fileHandle) return;
   try {
     const p = await fileHandle.requestPermission({ mode: 'readwrite' });
-    if (p === 'granted') { fileState = 'ok'; queueFileWrite(); await fileQueue; toast('Fitxer reactivat.', 'ok'); }
+    if (p === 'granted') {
+      fileState = 'ok'; queueFileWrite(); await fileQueue;
+      if (fileState === 'ok') toast('Fitxer reactivat.', 'ok');
+      else if (fileState === 'conflict') toast('El fitxer té dades d’un altre lloc: tria què fer (botó groc de dalt).', 'bad');
+    }
   } catch (e) { toast('No s’ha pogut accedir al fitxer.', 'bad'); }
   renderSaveState(false);
 }
@@ -1887,13 +1894,24 @@ function guessField(header) {
   return '';
 }
 // parteix en files respectant les cometes: una cel·la d'Excel amb salt de línia arriba entre cometes
+// (Excel només posa entre cometes les cel·les que ho necessiten, i la cometa és el primer caràcter de la
+// cel·la; una cometa enmig d'un nom, com a Anna "Nena", és un caràcter normal)
 function quotedLines(text) {
-  const out = []; let cur = '', q = false;
+  const out = []; let cur = '', q = false, start = true;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-    if (ch === '"') { if (q && text[i + 1] === '"') { cur += '""'; i++; continue; } q = !q; cur += ch; continue; }
-    if (ch === '\n' && !q) { out.push(cur); cur = ''; continue; }
-    cur += (ch === '\n') ? ' ' : ch;
+    if (q) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { cur += '""'; i++; continue; }
+        q = false; cur += ch; continue;
+      }
+      cur += ch === '\n' ? ' ' : ch;
+      continue;
+    }
+    if (ch === '"' && start) { q = true; cur += ch; start = false; continue; }
+    if (ch === '\n') { out.push(cur); cur = ''; start = true; continue; }
+    cur += ch;
+    start = ch === '\t' || ch === ';' || ch === ',';
   }
   out.push(cur);
   return out;
@@ -3258,6 +3276,8 @@ async function start() {
       fileHandle = hd;
       try { fileState = (await hd.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'ok' : 'perm'; } catch (_) { fileState = 'perm'; }
       renderSaveState(false);
+      // es comprova el fitxer ja en obrir, abans que ningú escrigui res
+      if (fileState === 'ok') queueFileWrite();
     }
   }
 }

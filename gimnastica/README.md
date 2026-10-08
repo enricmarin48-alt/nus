@@ -113,6 +113,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/engine.test.mjs` — `node --test tests/engine.test.mjs` (sense dependències).
 - `tests/e2e.mjs` — `node tests/e2e.mjs` prova l'app sencera en un Chromium obrint-la des del
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
+- `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi
+  escriu sense preguntar.
 - `servidor/` — el programa per a les tutores (Go, sense dependències). `go test` dins la
   carpeta, i `node tests/e2e-servidor.mjs` prova la taula i un mòbil de tutora alhora, també
   tallant la connexió.

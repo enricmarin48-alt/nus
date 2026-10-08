@@ -1208,6 +1208,10 @@ function serverConflict(r) {
   // (diskStamp: el darrer que se sap que és al fitxer; si el programa no podia desar i s'ha tornat a obrir, el
   // fitxer té aquestes, més velles que les d'aquí, i no són d'una altra finestra)
   if (tm.dbId === db.meta.dbId && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp)) { server.again = true; return; }
+  // el programa s'ha tornat a obrir amb un fitxer buit (o que no hi era): no passa per sobre de les d'aquí
+  const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
+  // (només si el fitxer no té dades de NotesGim: si una altra finestra ho ha esborrat tot, té un dbId nou i mana)
+  if (!tm.dbId && !has(theirs) && has(db)) { server.again = true; return; }
   const mine = db;
   try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(mine)); } catch (_) {}
   db = migrate(theirs);
@@ -3940,10 +3944,11 @@ const actions = {
     const msg = bad ? `<b>Ara no es pot desar al fitxer</b> (${h(bad)}).<br>Si tanques NotesGim, els últims canvis només quedaran en aquest ordinador, en aquesta finestra. Abans, fes «Descarrega còpia de seguretat» a Configuració.<br><br>Vols tancar-lo igualment?`
       : 'Tancar NotesGim? Tot queda desat al fitxer de dades. Les tutores ja no podran entrar notes fins que el tornis a obrir.';
     if (!(await confirmBox(msg, { ok: bad ? 'Tanca igualment' : 'Tanca', danger: !!bad }))) return;
-    commitTyping(); flush();
+    commitTyping(); if (saveTimer) flush();
     for (let i = 0; i < 40 && (server.pushing || server.again); i++) await new Promise(r => setTimeout(r, 100));
     let saved = !server.saveErr;
-    try { await api('api/quit', { method: 'POST', body: JSON.stringify({ force: !!bad }) }); }
+    // (el que diu el programa en tancar mana: potser ara sí que ha pogut desar, o no)
+    try { const r = await api('api/quit', { method: 'POST', body: JSON.stringify({ force: !!bad }) }); if (r && typeof r.saved === 'boolean') saved = r.saved; }
     catch (e) {
       // el programa no ha pogut desar l'últim cop i no s'ha tancat: es diu, i la finestra continua
       if (e && e.status === 500) { setSaveErr(e.message); toast('NotesGim no s’ha tancat perquè no ha pogut desar al fitxer. Torna-ho a provar o fes una còpia de seguretat.', 'bad'); return; }

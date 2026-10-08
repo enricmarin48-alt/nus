@@ -324,6 +324,9 @@ func TestQuitRefusesWhenCannotSave(t *testing.T) {
 	srv := httptest.NewServer(s.routes(0))
 	defer srv.Close()
 	_ = os.Mkdir(path+".tmp", 0o755)
+	s.mu.Lock()
+	_ = s.saveLocked() // un canvi que no s'ha pogut desar
+	s.mu.Unlock()
 	post := func(body string) int {
 		r, err := http.Post(srv.URL+"/api/quit", "application/json", bytes.NewReader([]byte(body)))
 		if err != nil {
@@ -350,5 +353,66 @@ func TestQuitRefusesWhenCannotSave(t *testing.T) {
 	case <-s.quit:
 	case <-time.After(2 * time.Second):
 		t.Fatal("no s'ha tancat")
+	}
+}
+
+// si ja estava tot desat, «Tanca NotesGim» tanca encara que ara no es pugui escriure a la carpeta
+func TestQuitWhenAlreadySaved(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	_ = os.Mkdir(path+".tmp", 0o755)
+	r, err := http.Post(srv.URL+"/api/quit", "application/json", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j struct {
+		Saved bool `json:"saved"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&j)
+	r.Body.Close()
+	if r.StatusCode != 200 || !j.Saved {
+		t.Fatalf("vull 200 i saved: %d %+v", r.StatusCode, j)
+	}
+	select {
+	case <-s.quit:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no s'ha tancat")
+	}
+}
+
+// la finestra torna a desar les mateixes dades (sense cap canvi): no es reescriu el fitxer, i si ara la carpeta
+// no es pot fer servir no és cap error (no hi ha res per perdre)
+func TestPutSameDataDoesNotRewrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	_ = os.Mkdir(path+".tmp", 0o755)
+	rev := s.dataRev
+	b, _ := json.Marshal(map[string]any{"db": parse(t, sample), "base": rev})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != 200 || s.dirty || s.dataRev != rev {
+		t.Fatalf("dades iguals: %d dirty=%v rev %d→%d", r.StatusCode, s.dirty, rev, s.dataRev)
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"sort"
 	"strconv"
@@ -685,6 +686,12 @@ func (s *store) routes(port int) http.Handler {
 				writeJSON(w, 409, map[string]any{"error": "les dades han canviat des d'una altra finestra", "version": s.version, "dataRev": s.dataRev, "db": s.db})
 				return
 			}
+			// les mateixes dades que ja té (p. ex. la finestra torna a desar sense cap canvi): no cal tornar a
+			// escriure el fitxer (si ara no es pot, no és cap dada perduda)
+			if !s.dirty && !body.Replace && reflect.DeepEqual(body.DB, s.db) {
+				writeJSON(w, 200, map[string]any{"version": s.version, "dataRev": s.dataRev, "taken": 0})
+				return
+			}
 			taken := 0
 			if !body.Replace {
 				taken = mergeScores(body.DB, s.db) // notes de tutores més noves que les que té l'ordinador
@@ -772,17 +779,21 @@ func (s *store) routes(port int) http.Handler {
 			Force bool `json:"force"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
-		// abans de tancar, es desa; si no es pot, no es tanca (si no, es perdrien els últims canvis) excepte si
-		// la finestra ho demana expressament
+		// abans de tancar, es desa el que encara no s'ha pogut desar; si no es pot, no es tanca (si no, es
+		// perdrien els últims canvis) excepte si la finestra ho demana expressament. Si ja estava tot desat, no
+		// cal tornar-hi a escriure (encara que ara la carpeta no es pugui fer servir)
 		s.mu.Lock()
-		err := s.saveLocked()
-		msg := s.saveErr
+		var err error
+		if s.dirty {
+			err = s.saveLocked()
+		}
+		msg, saved := s.saveErr, !s.dirty
 		s.mu.Unlock()
 		if err != nil && !body.Force {
 			fail(w, 500, msg)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"ok": true})
+		writeJSON(w, 200, map[string]any{"ok": true, "saved": saved})
 		s.quitOnce.Do(func() { go func() { time.Sleep(300 * time.Millisecond); close(s.quit) }() })
 	})
 

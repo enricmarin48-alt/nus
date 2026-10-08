@@ -332,8 +332,9 @@
   @media screen and (max-width:700px), screen and (max-height:500px) and (orientation:landscape) and (max-width:950px){ html #toasts{inset:calc(52px + env(safe-area-inset-top)) 8px auto 8px;max-width:none} }
   @media (max-width:1100px), (pointer:coarse){ html body.has-qe #toasts{inset:calc(var(--top,0px) + 8px) 8px auto auto} }
   /* mòbil girat: els avisos dins la franja de dalt, d'una sola línia (mai a sobre del teclat gran ni de la casella) */
-  @media screen and (max-height:500px) and (orientation:landscape) and (max-width:950px){
+  @media screen and (max-height:500px) and (min-aspect-ratio:3/2) and (max-width:950px){
     html #toasts, html body.has-qe #toasts{inset:calc(4px + env(safe-area-inset-top)) 8px auto 150px;max-width:none}
+    #toasts .toast:not(:last-child){display:none}
     #toasts .toast{padding:4px 10px;min-height:40px}
     #toasts .toast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #tutbanner .banner{padding:4px 10px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -347,7 +348,7 @@
   html:has(#qe){scroll-padding-top:0}
   .qe{scroll-margin-top:calc(var(--top,0px) + 6px)}
   /* mòbil girat: el teclat al costat de la gimnasta */
-  @media screen and (max-height:500px) and (orientation:landscape) and (max-width:950px){
+  @media screen and (max-height:500px) and (min-aspect-ratio:3/2) and (max-width:950px){
     .qe{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start;
       grid-template-areas:"app app" "card keys" "disp keys" "hint keys" "next bar" "strip strip"}
     .qe-app{grid-area:app;position:static}.qe-card{grid-area:card}.qe-display{grid-area:disp}.qe-hint{grid-area:hint}
@@ -753,10 +754,10 @@ const Engine = (() => {
           const kS = r.team.sourceTeamId ? 's:' + r.team.sourceTeamId : null;
           const kN = 'n:' + norm(r.team.name) + '|' + (r.team.clubId || '');
           const old = S.teams.get(kN);
-          const oldGone = !!(old && old.src && opts.teamGone && old.id.startsWith('s:') && opts.teamGone(old.id.slice(2)));
+          const oldGone = !!(old && old.src && opts.teamGone && (old.srcIds || []).every(opts.teamGone));
           let t = (kS && S.teams.get(kS)) || (old && (!kS || !old.src || oldGone) ? old : null);
           if (!t) { t = { id: kS || kN, src: !!kS, name: r.team.name, team: r.team, per: {}, sum: 0, n: 0 }; }
-          if (kS) { S.teams.set(kS, t); t.src = true; }
+          if (kS) { S.teams.set(kS, t); t.src = true; t.srcIds = t.srcIds || []; if (!t.srcIds.includes(r.team.sourceTeamId)) t.srcIds.push(r.team.sourceTeamId); }
           if (!S.teams.has(kN)) S.teams.set(kN, t);
           t.name = r.team.name; t.team = r.team;   // el nom de l'última jornada
           if (r.total !== null) { t.per[c.id] = r.total; t.sum += r.total; t.n++; }
@@ -2019,10 +2020,13 @@ function autoCompTeams(c, only) {
     }
     for (const [clubId, free] of byClub) {
       const size = ct => c.entries.filter(x => x.teamId === ct.id).length;
-      const teams = compTeamsOf(c, g).filter(t => t.clubId === clubId);
-      const total = teams.reduce((n, t) => n + size(t), 0) + free.length;
+      // (en una competició que vé, un equip que a la fitxa ja és ple no rep ningú més: avui li falta algú, però a
+      // la jornada següent en tindria massa; i per tant tampoc compta per saber quants equips nous calen)
+      const full = t => isUpcoming(c) && t.sourceTeamId && ((teamById(t.sourceTeamId) || {}).memberIds || []).length >= max;
+      const teams = compTeamsOf(c, g).filter(t => t.clubId === clubId), open = teams.filter(t => !full(t));
+      const total = open.reduce((n, t) => n + size(t), 0) + free.length;
       // equips nous que calen (com si es fessin tots de cop), però només si les noves els poden omplir fins al mínim
-      const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - teams.length, Math.floor(free.length / min)));
+      const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - open.length, Math.floor(free.length / min)));
       // en una competició passada (o si aquell dia competeixen en un altre grup) els equips nous són només d'aquell
       // dia: no es toca cap fitxa
       const toRecords = isUpcoming(c) && free.some(inRecordGroup);
@@ -2041,9 +2045,6 @@ function autoCompTeams(c, only) {
       for (const ct of fresh) while (size(ct) < min && free.length) put(free.shift(), ct);
       const all = teams.concat(fresh);
       while (free.length) {
-        // (en una competició que vé, tampoc en un equip que a la fitxa ja és ple: avui li falta algú, però a la
-        // jornada següent en tindria massa)
-        const full = t => isUpcoming(c) && t.sourceTeamId && ((teamById(t.sourceTeamId) || {}).memberIds || []).length >= max;
         const room = all.filter(t => size(t) < max && !full(t)).sort((a, b) => size(a) - size(b))[0];
         if (!room) break;
         put(free.shift(), room);
@@ -2115,20 +2116,40 @@ function syncTeamToRecords(c, ct) {
   return propagateTeam(team, removed, team.memberIds.filter(id => !before.includes(id)));
 }
 // equips repetits (mateixa entitat, grup i nom) després d'ajuntar dos nivells: es queden en un de sol
+// Si junts en serien massa, o en una competició passada o tancada (aquell dia eren dos equips), no s'ajunten:
+// el segon passa a dir-se «… 2».
 function mergeDupTeams() {
   const key = t => (t.clubId || '') + '|' + groupKeyOf(t) + '|' + norm(t.name);
+  const freeName = (list, t) => { for (let n = 2; ; n++) { const nm = `${t.name} ${n}`; if (!list.some(o => o !== t && key(o) === key(Object.assign({}, t, { name: nm })))) return nm; } };
+  const max = S().compDefaults.teamMax || 6;
   const keep = new Map(), remap = new Map();
   for (const t of db.teams) {
     const o = keep.get(key(t));
     if (!o) { keep.set(key(t), t); continue; }
+    if (new Set(o.memberIds.concat(t.memberIds)).size > max) { t.name = freeName(db.teams, t); keep.set(key(t), t); continue; }
     for (const id of t.memberIds) if (!o.memberIds.includes(id)) o.memberIds.push(id);
     remap.set(t.id, o.id);
   }
   db.teams = db.teams.filter(t => !remap.has(t.id));
   for (const c of db.competitions) {
-    for (const ct of c.teams) if (remap.has(ct.sourceTeamId)) ct.sourceTeamId = remap.get(ct.sourceTeamId);
+    const past = c.locked || !isUpcoming(c);
+    const size = ct => c.entries.filter(e => e.teamId === ct.id).length;
+    for (const ct of c.teams) {
+      if (remap.has(ct.sourceTeamId)) ct.sourceTeamId = remap.get(ct.sourceTeamId);
+      // a les que vénen, la còpia té el nom de l'equip de la fitxa (que potser ara és «… 2»)
+      else if (!past) { const m = ct.sourceTeamId && teamById(ct.sourceTeamId); if (m && sameGroup(m, ct)) ct.name = m.name; }
+    }
     const kc = new Map(), rc = new Map();
-    for (const ct of c.teams) { const o = kc.get(key(ct)); if (!o) kc.set(key(ct), ct); else rc.set(ct.id, o.id); }
+    for (const ct of c.teams) {
+      const o = kc.get(key(ct));
+      if (!o) { kc.set(key(ct), ct); continue; }
+      if (past || size(o) + size(ct) > (c.teamMax || max)) {
+        ct.name = freeName(c.teams, ct); kc.set(key(ct), ct);
+        if (ct.sourceTeamId === o.sourceTeamId) ct.sourceTeamId = null;   // (si no, el rànquing el comptaria dues vegades)
+        continue;
+      }
+      rc.set(ct.id, o.id);
+    }
     if (!rc.size) continue;
     for (const e of c.entries) if (rc.has(e.teamId)) e.teamId = rc.get(e.teamId);
     c.teams = c.teams.filter(ct => !rc.has(ct.id));
@@ -4335,7 +4356,7 @@ const forms = {
         if (t0 && (t0.clubId || null) === oldClub && teamVal === before) putInTeam(g.id, null);
         for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
           const e = c.entries.find(x => x.gymnastId === g.id);
-          if (!e || (e.clubId || null) !== oldClub) continue;
+          if (!e || (e.clubId || null) !== oldClub || hasScores(e)) continue;   // (on ja té notes, no es toca)
           e.clubId = g.clubId || null; e.teamId = null; delete e.noAuto;
           pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, [e]); else autoAssignTeams(c, [e]); pruneAutoTeams(c);
         }
@@ -4439,14 +4460,18 @@ const forms = {
     const c = curComp(), fd = new FormData(f), id = f.dataset.id;
     const name = fd.get('name').trim(); if (!name) return;
     const grp = { category: f.dataset.cat, gender: f.dataset.gender === 'M' ? 'M' : 'F', level: f.dataset.level };
-    const members = new Set(fd.getAll('m')), clubId = fd.get('clubId') || null;
+    const members = new Set(fd.getAll('m'));
+    // equip nou sense entitat triada: si totes les marcades són de la mateixa, és la seva
+    const clubsOf = new Set(c.entries.filter(e => members.has(e.id)).map(e => e.clubId || null));
+    const clubId = fd.get('clubId') || (!id && clubsOf.size === 1 ? [...clubsOf][0] : null);
     let t = id && c.teams.find(x => x.id === id);
     const isNew = !t;
     const sameName = x => (x.clubId || null) === (clubId || null) && sameGroup(x, grp) && norm(x.name) === norm(name);
     if (!isNew) {
       // reanomenar-lo amb el nom d'un altre equip de la mateixa entitat i grup en faria dos d'iguals
-      const ex = findTeam(clubId, grp, name);
-      if (c.teams.some(x => x !== t && sameName(x)) || (ex && t.sourceTeamId && ex.id !== t.sourceTeamId)) {
+      const ex = findTeam(clubId, grp, name), src = t.sourceTeamId && teamById(t.sourceTeamId) ? t.sourceTeamId : null;
+      const changedKey = norm(name) !== norm(t.name) || (clubId || null) !== (t.clubId || null);
+      if (changedKey && (c.teams.some(x => x !== t && sameName(x)) || (ex && src && ex.id !== src))) {
         toast(`Aquesta entitat ja té un equip «${name}» en aquest grup. Posa-li un altre nom (per exemple «${name} 2»).`, 'bad'); return;
       }
     }
@@ -4518,8 +4543,10 @@ const changes = {
     const c = curComp(); if (!c || c.locked) return;
     const e = c.entries.find(x => x.id === el.dataset.e); if (!e) return;
     const max = +c.maxScore || 20;
-    if (el.dataset.last === el.value) {   // ja processat (Intro i després blur)
-      if (el.classList.contains('invalid') && document.activeElement === el && !$('#fixtip')) badScore(el, Engine.parseScore(el.value), max, () => changes.score(el), el._why);
+    // ja processat (Intro i després blur). Si s'havia rebutjat per D + E − Pen., es torna a mirar (potser ja s'ha
+    // corregit l'altra nota)
+    if (el.dataset.last === el.value && !el._why) {
+      if (el.classList.contains('invalid') && document.activeElement === el && !$('#fixtip')) badScore(el, Engine.parseScore(el.value), max, () => changes.score(el));
       return !el.classList.contains('invalid');
     }
     el.dataset.last = el.value;
@@ -4541,7 +4568,7 @@ const changes = {
     const val = Engine.parseScore(el.value);
     if (Number.isNaN(val) || (val !== null && val > max)) { badScore(el, val, max, () => changes.score(el)); return false; }
     // D + E − Pen.: la nota que en surt tampoc pot passar del màxim, ni la penalització ser més gran que D + E
-    if (c.scoring === 'detailed' && ['d', 'e', 'p'].includes(el.dataset.f) && val !== null) {
+    if (c.scoring === 'detailed' && ['d', 'e', 'p'].includes(el.dataset.f)) {
       const x = Object.assign({}, att(e, { id: el.dataset.a }, +el.dataset.i), { [el.dataset.f]: val });
       const dM = Engine.toM(x.d), eM = Engine.toM(x.e), pM = Engine.toM(x.p) || 0, mx = Engine.toM(max);
       const why = dM === null || eM === null ? null
@@ -4562,6 +4589,12 @@ const changes = {
     const minM = Engine.toM(c.minScore) || 0;
     if (el.dataset.f !== 'p' && minM && m !== null && m > 0 && m < minM && c.scoring !== 'detailed') toast(`S’aplica la nota mínima: compta com a ${fmt(minM)}.`);
     commit(); refreshScoreRow(c, e);
+    // D + E − Pen.: una altra casella d'aquest intent que s'havia rebutjat potser ara ja val (es desa)
+    if (c.scoring === 'detailed') for (const o of $$(`#scoregrid input.sc.invalid[data-e="${e.id}"][data-a="${el.dataset.a}"][data-i="${el.dataset.i}"]`)) {
+      if (o === el || !o._why) continue;
+      changes.score(o);
+      const t = $('#fixtip'); if (t && t._for === o) hideFixTip();
+    }
     return true;
   },
   bib: el => {
@@ -4861,7 +4894,12 @@ function advanceFrom(el, up = false) {
   toast(`Final de ${g ? groupLabel(g) : 'aquest grup'}${cur ? ` · ${cur.name}` : ''}${g && !miss(g).total ? ': notes completes ✓' : ''}.`, 'ok', next ? { actions: [{ label: next.label, fn: () => {
     ui.group = next.g.key; ui.app = next.app; qe.buf = ''; render();
     // només una casella buida d'una nota que falta (mai una que ja té nota ni la de penalització)
-    const f = $$('#scoregrid input.sc[data-chg="score"]:not(:disabled)').find(x => !x.value && x.dataset.f !== 'p');
+    const c2 = curComp();
+    const f = c2 && $$('#scoregrid input.sc[data-chg="score"]:not(:disabled)').find(x => {
+      if (x.value || x.dataset.f === 'p') return false;
+      const e = c2.entries.find(y => y.id === x.dataset.e), a = c2.apparatus.find(y => y.id === x.dataset.a);
+      return !!(e && a && !Engine.appComplete(e, a, c2));
+    });
     if (f) focusSc(f);
   } }] } : {});
 }
@@ -4905,7 +4943,7 @@ const anyField = () => { const a = document.activeElement; return !!(a && a.matc
 try { matchMedia(PHONE_MQ).addEventListener('change', () => { if (anyField() || typingScore() || dialogOpen()) { mqLater = true; return; } renderKeepFocus(); }); } catch (_) {}
 document.addEventListener('focusout', () => setTimeout(() => { if (mqLater && !anyField() && !dialogOpen()) { mqLater = false; renderKeepFocus(); } }, 100));
 // en girar el mòbil amb el teclat gran, es torna a posar a la vista
-try { matchMedia('(orientation: landscape)').addEventListener('change', () => { if ($('#qe') && isPhone()) qeIntoView(); }); } catch (_) {}
+try { matchMedia('(orientation: landscape)').addEventListener('change', () => { if ($('#qe') && isPhone() && !anyField()) qeIntoView(); }); } catch (_) {}
 document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('.menu')) closeMenus(); }, true);
 
 /* ═══════════════════════════════════════════ esdeveniments */

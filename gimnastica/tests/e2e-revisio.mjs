@@ -196,6 +196,16 @@ try {
     await page.waitForSelector('.toast:has-text("més gran que D + E")');
     const at2 = (await comp('k2')).entries.find(x => x.id === 'f1').scores.salt[0];
     assert.equal(at2.v, 12); assert.ok(!at2.p);
+    // la E rebutjada (D 12 + E 9 > 20) es desa sola quan es corregeix la D
+    const d2 = page.locator('#scoregrid input.sc[data-e=f2][data-a=salt][data-f=d]');
+    await d2.click(); await page.keyboard.type('12'); await page.keyboard.press('Tab');
+    await page.keyboard.type('9'); await page.keyboard.press('Tab');
+    await page.waitForSelector('.toast:has-text("D + E − Pen. = 21,00")');
+    await d2.click(); await d2.fill('10'); await d2.press('Tab');
+    await page.waitForTimeout(150);
+    const at3 = (await comp('k2')).entries.find(x => x.id === 'f2').scores.salt[0];
+    assert.deepEqual([at3.d, at3.e, at3.v], [10, 9, 19]);
+    assert.equal(await page.locator('#scoregrid input.sc.invalid[data-e=f2]').count(), 0);
   });
 
   await step('canviar la data d’una competició a un altre curs també en canvia el curs', async () => {

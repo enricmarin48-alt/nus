@@ -207,6 +207,8 @@
     .sheet:last-child{break-after:auto;page-break-after:auto}
     .sheet.landscape{page:land}
     .sheet, .sheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .sheet.landscape tfoot{display:table-row-group}
+    .sheet.landscape tfoot tr{break-before:avoid}
   }
   .sheet .ph{display:flex;align-items:center;gap:14px;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px}
   .sheet .ph-logo{width:90px;min-height:10px;display:flex;justify-content:center}
@@ -1218,7 +1220,7 @@ function renderKeepFocus() {
     render();
     if (!key || key.every(v => v === null)) return;
     const el = $$('#main input, #main select, #main button, #main textarea').find(x => FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i]));
-    if (el) el.focus();
+    if (el) { el.focus(); if (el.tagName === 'INPUT' && el.type !== 'checkbox' && typeof el.select === 'function') el.select(); }
   }, 0);
 }
 const views = {};
@@ -2913,6 +2915,8 @@ const forms = {
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
       commit(); closeDialog(); render();
       // si està inscrita en una competició oberta en un altre grup, ofereix canviar-ho també allà
+      const stuck = db.competitions.filter(c => !c.locked && c.entries.some(e => e.gymnastId === g.id && !sameGroup(e, g) && hasScores(e)));
+      if (stuck.length && g.category && g.level) toast(`${gymName(g)} ja té notes a ${stuck.map(c => c.name).join(', ')} i allà continua al grup d’abans. Si cal, canvia-ho a Inscripcions (clic al nom).`, 'bad');
       const open = db.competitions.filter(c => !c.locked && c.entries.some(e => e.gymnastId === g.id && !sameGroup(e, g) && !hasScores(e)));
       if (open.length && g.category && g.level) confirmBox(`${h(gymName(g))} està inscrita com a ${h(open.map(c => { const e = c.entries.find(x => x.gymnastId === g.id); return `${e.category} ${e.level}`; })[0])} a ${open.map(c => `<b>${h(c.name)}</b>`).join(', ')}. Ho canvio també allà a ${h(g.category)} ${genderWord(g.gender)} ${h(g.level)}?<br><span class="small muted">Només on encara no té notes.</span>`, { ok: 'Canvia-ho' })
         .then(ok => { if (!ok) return; withUndo('Inscripcions actualitzades.', () => { for (const c of open) { const e = c.entries.find(x => x.gymnastId === g.id); if (e.teamId) e.teamId = null; e.category = g.category; e.gender = g.gender; e.level = g.level; autoAssignTeams(c, [e]); pruneAutoTeams(c); } }); });
@@ -3070,6 +3074,8 @@ const changes = {
       v = n;
     } else if (el.type === 'number' && (el.value.trim() === '' || !Number.isFinite(+el.value))) {
       toast('Escriu un número.', 'bad'); el.value = cfg[k]; return;
+    } else if (el.type === 'number' && (+el.value < +el.min || +el.value > +el.max)) {
+      toast(`Ha de ser un número entre ${el.min} i ${el.max}.`, 'bad'); el.value = cfg[k]; return;
     } else if (el.type === 'number') {
       const n = el.dataset.dec ? Math.round((+v || 0) * 1000) / 1000 : Math.round(+v || 0);
       v = Math.max(+el.min || 0, Math.min(+el.max || 100, n));
@@ -3211,11 +3217,22 @@ document.addEventListener('keydown', e => {
     const i = col.indexOf(el);
     if (changes[el.dataset.chg](el) === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
     const next = col[i + (up ? -1 : 1)];
-    if (next) { next.focus(); next.select(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else el.blur();
+    if (next) { next.focus(); next.select(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); keepClear(next); } else el.blur();
     return;
   }
   if (el.dataset && el.dataset.enter && e.key === 'Enter') { e.preventDefault(); actions[el.dataset.enter](el); }
 });
+// que la casella activa no quedi tapada per la fila de títols (enganxosa) ni per la barra de dalt
+function keepClear(el) {
+  const wrap = el.closest('.grid-wrap'); if (!wrap) return;
+  const hd = $('header.top'), bar = getComputedStyle(hd).position === 'sticky' ? hd.getBoundingClientRect().bottom : 0;
+  const w = wrap.getBoundingClientRect(), r = el.getBoundingClientRect(), th = wrap.querySelector('thead');
+  const top = Math.max(w.top, bar) + (th ? th.getBoundingClientRect().height : 0), bottom = Math.min(w.bottom, innerHeight);
+  if (r.top < top) wrap.scrollTop -= top - r.top + 4;
+  else if (r.bottom > bottom) wrap.scrollTop += r.bottom - bottom + 4;
+  const r2 = el.getBoundingClientRect();
+  if (r2.top < bar + 4) window.scrollBy(0, r2.top - bar - 8);
+}
 // en entrar en una casella de nota, es selecciona tota perquè es pugui sobreescriure.
 // Ha de ser immediat: si s'espera, el que s'escriu de pressa després d'Intro quedaria seleccionat i se sobreescriuria.
 const isSc = el => el && el.matches && el.matches('input.sc');

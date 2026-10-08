@@ -2032,7 +2032,9 @@ function autoCompTeams(c, only) {
       // la jornada següent en tindria massa; i per tant tampoc compta per saber quants equips nous calen)
       const full = t => isUpcoming(c) && t.sourceTeamId && ((teamById(t.sourceTeamId) || {}).memberIds || []).length >= max;
       const teams = compTeamsOf(c, g).filter(t => t.clubId === clubId), open = teams.filter(t => !full(t));
-      const total = open.reduce((n, t) => n + size(t), 0) + free.length;
+      // (en una que vé, un equip hi compta amb totes les de la fitxa, encara que avui no hi siguin totes)
+      const cap = t => { const m = isUpcoming(c) && t.sourceTeamId && teamById(t.sourceTeamId); return m ? Math.max(size(t), m.memberIds.length) : size(t); };
+      const total = open.reduce((n, t) => n + cap(t), 0) + free.length;
       // equips nous que calen (com si es fessin tots de cop), però només si les noves els poden omplir fins al mínim
       const kNew = Math.max(0, Math.min(splitSizes(total, min, max).length - open.length, Math.floor(free.length / min)));
       // en una competició passada (o si aquell dia competeixen en un altre grup) els equips nous són només d'aquell
@@ -2114,7 +2116,9 @@ function syncTeamToRecords(c, ct) {
   let team = ct.sourceTeamId && teamById(ct.sourceTeamId);
   if (team && !sameGroup(team, ct)) team = null;
   if (!team) { team = findTeam(ct.clubId, ct, ct.name) || makeTeam(ct.clubId, ct, ct.name); ct.sourceTeamId = team.id; ct.auto = true; }
-  team.name = ct.name; team.clubId = ct.clubId || null;
+  // (mai dos equips de la fitxa amb el mateix nom, entitat i grup)
+  const other = findTeam(ct.clubId, ct, ct.name);
+  if (!other || other === team) { team.name = ct.name; team.clubId = ct.clubId || null; }
   const before = [...team.memberIds];
   const inComp = c.entries.filter(e => e.teamId === ct.id && inRecordGroup(e)).map(e => e.gymnastId);
   const enrolled = new Set(c.entries.filter(e => sameGroup(e, ct)).map(e => e.gymnastId));
@@ -2130,11 +2134,11 @@ function mergeDupTeams() {
   const key = t => (t.clubId || '') + '|' + groupKeyOf(t) + '|' + norm(t.name);
   const freeName = (list, t) => { for (let n = 2; ; n++) { const nm = `${t.name} ${n}`; if (!list.some(o => o !== t && key(o) === key(Object.assign({}, t, { name: nm })))) return nm; } };
   const max = S().compDefaults.teamMax || 6;
-  const keep = new Map(), remap = new Map();
+  const keep = new Map(), remap = new Map(), renamed = new Set();
   for (const t of db.teams) {
     const o = keep.get(key(t));
     if (!o) { keep.set(key(t), t); continue; }
-    if (new Set(o.memberIds.concat(t.memberIds)).size > max) { t.name = freeName(db.teams, t); keep.set(key(t), t); continue; }
+    if (new Set(o.memberIds.concat(t.memberIds)).size > max) { t.name = freeName(db.teams, t); keep.set(key(t), t); renamed.add(t.id); continue; }
     for (const id of t.memberIds) if (!o.memberIds.includes(id)) o.memberIds.push(id);
     remap.set(t.id, o.id);
   }
@@ -2144,8 +2148,8 @@ function mergeDupTeams() {
     const size = ct => c.entries.filter(e => e.teamId === ct.id).length;
     for (const ct of c.teams) {
       if (remap.has(ct.sourceTeamId)) ct.sourceTeamId = remap.get(ct.sourceTeamId);
-      // a les que vénen, la còpia té el nom de l'equip de la fitxa (que potser ara és «… 2»)
-      else if (!past) { const m = ct.sourceTeamId && teamById(ct.sourceTeamId); if (m && sameGroup(m, ct)) ct.name = m.name; }
+      // a les que vénen, la còpia d'un equip que ara es diu «… 2» també (les altres mantenen el nom que tinguin)
+      else if (!past && renamed.has(ct.sourceTeamId)) { const m = teamById(ct.sourceTeamId); if (m && sameGroup(m, ct)) ct.name = m.name; }
     }
     const kc = new Map(), rc = new Map();
     for (const ct of c.teams) {
@@ -2858,7 +2862,7 @@ function gymForm(g, keep = {}, opts = {}) {
     <p class="small muted" id="yearhint">${v.birthYear && !catForYear(v.birthYear) ? `Cap categoria no inclou l’any ${h(v.birthYear)}. Revisa els anys a Configuració → Categories.` : ''}</p>
     <datalist id="clublist">${clubs.map(c => `<option value="${h(c.name)}">`).join('')}</datalist>
     ${g ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="archived" data-chg="gymArchived" ${g.archived ? 'checked' : ''}> Arxivada (ja no competeix; no surt a les llistes per inscriure)</label>` : ''}
-    ${ec ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="enroll" checked ${ec.locked ? 'disabled' : ''}> Inscriu-la també a <b>${h(ec.name)}</b></label>` : ''}
+    ${ec ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="enroll" ${opts.enroll === false ? '' : 'checked'} ${ec.locked ? 'disabled' : ''}> Inscriu-la també a <b>${h(ec.name)}</b></label>` : ''}
     <div class="dlg-actions">${g ? `<button type="button" class="btn danger left" data-act="delGym" data-id="${g.id}">Esborra la fitxa</button>` : ''}<button type="button" class="btn" data-act="${ec && opts.back ? 'backToPick' : 'closeDlg'}">Cancel·la</button>
       ${g ? '' : `<button class="btn" name="again" value="1">Desa i afegeix-ne una altra</button>`}<button class="btn primary">Desa</button></div></form>`;
 }
@@ -4411,7 +4415,7 @@ const forms = {
     toast(`${name} ${vals.surname}: desat${team ? ` a l’equip ${team.name}` : ''}${enrolled ? ` · inscripció feta (dorsal ${enrolled.bib})` : ''}.${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
     // (si s'ha obert des de «Inscriu gimnastes», s'hi torna amb les que ja hi havia marcades)
     const back = !!f.dataset.back;
-    if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym, { compId: f.dataset.comp || '', back }));
+    if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym, { compId: f.dataset.comp || '', back, enroll: !f.dataset.comp || fd.get('enroll') === 'on' }));
     else if (back) { render(); actions.enrollGyms({ back: true }); return; }
     else closeDialog();
     render();
@@ -4503,6 +4507,9 @@ const forms = {
         // (després d'un Desfés les dades són unes altres: es busquen de nou)
         const cc = compById(c.id), tt = cc && cc.teams.find(x => x.id === t.id);
         if (!tt) { toast('Aquest equip ja no hi és.', 'bad'); return; }
+        // a les fitxes ja hi ha un altre equip amb aquest nom (de la mateixa entitat i grup): en serien dos d'iguals
+        const src = tt.sourceTeamId && teamById(tt.sourceTeamId), other = findTeam(tt.clubId, tt, tt.name);
+        if (src && sameGroup(src, tt) && other && other !== src) { toast(`A les fitxes ja hi ha un altre equip «${tt.name}» d’aquesta entitat en aquest grup. Canvia-li el nom aquí (per exemple «${tt.name} 2») i torna-ho a provar.`, 'bad'); return; }
         withUndo(() => `Fitxes de les gimnastes de «${tt.name}» actualitzades.`, () => { syncTeamToRecords(cc, tt); });
       } }] : [];
       return { msg, type: alive && (n < c.teamMin || n > c.teamMax) ? 'bad' : 'ok', actions: acts };
@@ -4742,6 +4749,7 @@ const changes = {
       const fix = o => { if (o.category === old) o.category = v; };
       db.gymnasts.forEach(fix); db.teams.forEach(fix);
       db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+      renameInUi('category', old, v);
       commit(); toast(`«${old}» ara es diu «${v}».`, 'ok');
       return;
     }

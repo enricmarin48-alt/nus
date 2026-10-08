@@ -143,11 +143,24 @@
   input.sc.high{border-color:#e2a33b;background:var(--warn-soft)}
   input.sc:disabled{background:#f6f7f9;color:#555}
   input.bib{width:62px;text-align:right}
+  select.teamsel{max-width:170px;padding:4px 6px;font-size:12px}
+  .lc{text-transform:none}
   td.out{color:#26324a;font-weight:700}
   .minhint{color:var(--warn);font-weight:700;margin-right:4px;font-size:12px}
   .minhint:empty{display:none}
   .progress{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 10px}
   .ico{width:18px;height:18px;vertical-align:-4px;display:inline-block}
+  html{scroll-padding-top:70px}
+  .grid-wrap{max-height:calc(100vh - 150px)}
+  #scoregrid td.who,#scoregrid th.who{position:sticky;left:0;background:#fff;z-index:2;box-shadow:1px 0 0 var(--line)}
+  #scoregrid thead th.who{background:#f7f9fc;z-index:3}
+  @media (max-width:700px){
+    header.top{position:static;gap:8px;padding:6px 10px}
+    header.top nav a{padding:5px 8px}
+    main{padding:12px 10px 60px}
+    .grid-wrap{max-height:calc(100vh - 40px)}
+    #scoregrid .club{display:none}
+  }
   .ico svg{width:100%;height:100%}
 
   /* ═══ diàlegs i avisos */
@@ -183,6 +196,7 @@
     .sheet{break-after:page;page-break-after:always}
     .sheet:last-child{break-after:auto;page-break-after:auto}
     .sheet.landscape{page:land}
+    .sheet, .sheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   }
   .sheet .ph{display:flex;align-items:center;gap:14px;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px}
   .sheet .ph-logo{width:90px;min-height:10px;display:flex;justify-content:center}
@@ -203,6 +217,11 @@
   .sheet .judge td{height:26px}
   .sheet .sign{margin-top:26px;display:flex;justify-content:space-between;gap:30px}
   .sheet .foot{margin-top:10px;font-size:8pt;color:#555}
+  .sheet tr.rep th{background:none !important;border:none;font-size:11pt;text-align:center;padding:6px 0 8px}
+  .sheet td.signrow{border:none;padding-top:22px;font-size:10pt;white-space:pre}
+  .sheet .ph-date{font-size:7pt;color:#666}
+  .sheet td{white-space:normal}
+  .sheet .num{white-space:nowrap}
   .sheet .ico{width:14px;height:14px;vertical-align:-2px}
   .sheet h3{margin:14px 0 6px;font-size:11pt;text-transform:uppercase}
 </style>
@@ -215,6 +234,7 @@
   </a>
   <nav>
     <a href="#/competicions" data-nav="competicions">Competicions</a>
+    <a href="#/ranquing" data-nav="ranquing">Rànquing</a>
     <a href="#/gimnastes" data-nav="gimnastes">Gimnastes</a>
     <a href="#/equips" data-nav="equips">Equips</a>
     <a href="#/entitats" data-nav="entitats">Entitats</a>
@@ -415,7 +435,7 @@ const Engine = (() => {
       for (const a of apps) {
         const r = appResult(e, a, comp), v = r.value;
         scores[a.id] = v;
-        if (r.complete) full++;
+        if (v !== null) full++;
         if (v !== null) { total += v; n++; const de = appDE(e, a, comp); eSum += de.e || 0; dSum += de.d || 0; }
       }
       return { entry: e, name: nameOf(e), scores, total: (n && !np) ? total : null,
@@ -476,6 +496,43 @@ const Engine = (() => {
     return { apps, rows: assignRanks(rows, r => r.total, tie) };
   }
 
+  // RÀNQUING DE JORNADES: suma de la nota final de cada gimnasta (i de cada equip que classifica) a totes
+  // les competicions triades. Cada grup (categoria + gènere + nivell) té el seu. Qui no hi va, no suma.
+  function seasonRanking(comps, settings, opts = {}) {
+    const nameOf = opts.nameOf || (() => '');
+    const groups = new Map();
+    const grp = (category, gender, level) => {
+      const key = groupKey(category, gender, level);
+      if (!groups.has(key)) groups.set(key, { key, category, gender, level, people: new Map(), teams: new Map() });
+      return groups.get(key);
+    };
+    for (const c of comps) {
+      for (const g of groupsOf(c, settings)) {
+        const S = grp(g.category, g.gender, g.level);
+        for (const r of individualRanking(c, g, { nameOf }).rows) {
+          const id = r.entry.gymnastId;
+          if (!S.people.has(id)) S.people.set(id, { gymnastId: id, name: r.name, entry: r.entry, per: {}, sum: 0, n: 0 });
+          const p = S.people.get(id);
+          p.entry = r.entry; p.name = r.name;
+          if (r.total !== null) { p.per[c.id] = r.total; p.sum += r.total; p.n++; } else if (r.np) p.per[c.id] = 'np';
+        }
+        for (const r of teamRanking(c, g).rows) {
+          const id = norm(r.team.name) + '|' + (r.team.clubId || '');
+          if (!S.teams.has(id)) S.teams.set(id, { id, name: r.team.name, team: r.team, per: {}, sum: 0, n: 0 });
+          const t = S.teams.get(id);
+          if (r.total !== null) { t.per[c.id] = r.total; t.sum += r.total; t.n++; }
+        }
+      }
+    }
+    const order = groupsOf({ entries: [], teams: [...groups.values()] }, settings).map(g => g.key);
+    return order.map(k => groups.get(k)).map(g => {
+      const rows = withOrder([...g.people.values()].map(p => Object.assign(p, { total: p.n ? p.sum : null })));
+      const teams = withOrder([...g.teams.values()].filter(t => t.n).map(t => Object.assign(t, { total: t.sum })));
+      return { key: g.key, category: g.category, gender: g.gender, level: g.level,
+        rows: assignRanks(rows, r => r.total, null), teams: assignRanks(teams, r => r.total, null) };
+    });
+  }
+
   // curs escolar a partir d'una data: setembre-agost
   function seasonFor(dateStr) {
     const m = /^(\d{4})-(\d{2})/.exec(dateStr || '');
@@ -486,7 +543,7 @@ const Engine = (() => {
 
   return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appDE, genderOf, appMode, enabledApps,
     totalApps, teamApps, entryTotal, groupKey, groupsOf, categoryForYear, cmpDesc, assignRanks, individualRanking,
-    apparatusRanking, teamRanking, seasonFor };
+    apparatusRanking, teamRanking, seasonRanking, seasonFor };
 })();
 /* ═══════════════════════════════════════════ ENGINE-END */
 </script>
@@ -506,6 +563,8 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : (s || ''); };
 const ordinal = n => ({ 1: '1r', 2: '2n', 3: '3r', 4: '4t' }[n] || n + 'è');
+// per a capçaleres en majúscules: «1r» i no «1R»
+const ordHtml = n => { const o = ordinal(n); return `${o.match(/^\d+/)[0]}<span class="lc">${o.replace(/^\d+/, '')}</span>`; };
 
 const ICONS = {
   salt: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 11V9.5A2.5 2.5 0 0 1 9.5 7H20"/><path d="M13 7v11M8 18h10"/></svg>',
@@ -517,12 +576,13 @@ const ICONS = {
 };
 const icon = a => `<span class="ico" aria-hidden="true">${ICONS[a.icon] || ICONS.altre}</span>`;
 
-// valors per defecte segons la normativa UCEC de gimnàstica artística dels JEEC: salt i minitramp amb
-// 2 intents (compta el millor) i nota mínima de 3 punts per a qui fa l'exercici.
+// valors per defecte segons la normativa UCEC dels JEEC i com treballa el Consell: les tutores donen la
+// nota final de cada aparell (1 casella); el minitramp només el fan els nois, amb 2 salts (compta el
+// millor); nota mínima de 3 punts per a qui fa l'exercici.
 // per a cada aparell, què és per a noies (F) i per a nois (M): 'total' = compta a la general i per equips,
 // 'apart' = només té la seva classificació, 'off' = no es fa
 const DEFAULT_APPS = () => [
-  { id: 'salt', name: 'Salt', icon: 'salt', modes: { F: 'total', M: 'total' }, attempts: 2, rule: 'best' },
+  { id: 'salt', name: 'Salt', icon: 'salt', modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' },
   { id: 'barra', name: 'Barra', icon: 'barra', modes: { F: 'total', M: 'off' }, attempts: 1, rule: 'best' },
   { id: 'terra', name: 'Terra', icon: 'terra', modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' },
   { id: 'mini', name: 'Minitramp', icon: 'mini', modes: { F: 'off', M: 'total' }, attempts: 2, rule: 'best' },
@@ -580,8 +640,9 @@ function defaultDb() {
       compName: 'Fase comarcal de gim. artística', place: 'Lleida',
       logoL: null, logoR: null,
       categories: DEFAULT_CATEGORIES(),
-      levels: ['A', 'B', 'F'],
+      levels: ['A', 'B'],
       compDefaults: COMP_DEFAULTS(),
+      rev: 3,
     },
     clubs: [], gymnasts: [], teams: [], competitions: [],
     meta: { created: new Date().toISOString(), updated: null, lastBackup: null },
@@ -599,6 +660,14 @@ function migrate(d) {
   d.settings.categories = normalizeCategories(d.settings.categories);
   d.settings.compDefaults.apparatus = normalizeApps(d.settings.compDefaults.apparatus);
   delete d.settings.suffix;
+  // revisió 3 dels valors per defecte: nivells A i B (la F de l'Excel era la pestanya d'equips) i salt amb 1 casella
+  if ((d.settings.rev || 0) < 3) {
+    const usesF = [...(d.gymnasts || []), ...(d.teams || []), ...(d.competitions || []).flatMap(c => [...(c.entries || []), ...(c.teams || [])])].some(x => x && x.level === 'F');
+    if (JSON.stringify(d.settings.levels) === '["A","B","F"]' && !usesF) d.settings.levels = ['A', 'B'];
+    const salt = d.settings.compDefaults.apparatus.find(a => a.id === 'salt');
+    if (salt) salt.attempts = 1;
+    d.settings.rev = 3;
+  }
   for (const k of ['clubs', 'gymnasts', 'teams', 'competitions']) if (!Array.isArray(d[k])) d[k] = [];
   d.meta = Object.assign({}, base.meta, d.meta || {});
   for (const g of d.gymnasts) g.gender = Engine.genderOf(g);
@@ -889,6 +958,17 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
   });
 }
 // Desfés torna a l'estat d'abans, però només si després no s'ha canviat res més (si no, es perdria)
+// diàleg amb diverses opcions: torna el value del botó triat o null
+function choiceBox(msg, buttons) {
+  return new Promise(res => {
+    const d = $('#confirm');
+    d.innerHTML = `<form method="dialog" class="dlg"><div>${msg}</div><div class="dlg-actions">${buttons.map(b => `<button value="${b.value}" class="btn ${b.cls || ''}">${h(b.label)}</button>`).join('')}<button value="" class="btn">Cancel·la</button></div></form>`;
+    d.returnValue = '';
+    d.onclose = () => res(d.returnValue || null);
+    d.showModal();
+    d.querySelector('button[value=""]').focus();
+  });
+}
 function withUndo(label, fn) {
   const snap = JSON.stringify(db);
   fn();
@@ -901,6 +981,18 @@ function withUndo(label, fn) {
 }
 
 /* ═══════════════════════════════════════════ render general */
+// torna a pintar però deixa el focus on l'usuari l'ha posat (p. ex. Tab després d'editar una casella de configuració)
+const FOCUS_KEYS = ['data-chg', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'id', 'name'];
+function renderKeepFocus() {
+  setTimeout(() => {
+    const a = document.activeElement;
+    const key = a && a !== document.body && a.getAttribute ? FOCUS_KEYS.map(k => a.getAttribute(k)) : null;
+    render();
+    if (!key || key.every(v => v === null)) return;
+    const el = $$('#main input, #main select, #main button, #main textarea').find(x => FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i]));
+    if (el) el.focus();
+  }, 0);
+}
 const views = {};
 function render() {
   const v = views[ui.view] || views.competicions;
@@ -938,7 +1030,7 @@ function backupDue() {
 function compStats(c) {
   const active = c.entries.filter(e => e.status !== 'np');
   let done = 0, total = 0;
-  for (const e of active) for (const a of Engine.enabledApps(c, genderOf(e))) { total++; if (Engine.appResult(e, a, c).complete) done++; }
+  for (const e of active) for (const a of Engine.enabledApps(c, genderOf(e))) { total++; if (Engine.appScore(e, a, c) !== null) done++; }
   return { entries: c.entries.length, teams: c.teams.length, done, total };
 }
 views.competicions = () => {
@@ -959,7 +1051,7 @@ views.competicions = () => {
       return `<div class="card comp-card">
         <h3>${h(c.name)} ${c.locked ? '<span class="badge">Tancada</span>' : ''}</h3>
         <div class="meta">${fmtDate(c.date)}${c.place ? ' · ' + h(c.place) : ''}${c.season ? ' · Curs ' + h(c.season) : ''}</div>
-        <div class="stats"><div><b>${st.entries}</b>gimnastes</div><div><b>${st.teams}</b>equips</div>
+        <div class="stats"><div><b>${st.entries}</b>${st.entries === 1 ? 'gimnasta' : 'gimnastes'}</div><div><b>${st.teams}</b>${st.teams === 1 ? 'equip' : 'equips'}</div>
           <div><b>${st.total ? Math.round(100 * st.done / st.total) : 0}%</b>notes entrades</div></div>
         <div class="actions">
           <a class="btn primary sm" href="#/competicio/${c.id}">Obre</a>
@@ -1076,27 +1168,37 @@ function enrollTeam(c, team) {
   for (const gid of team.memberIds) {
     const g = gymById(gid);
     if (!g) continue;
-    if (!sameGroup(g, ct)) moved.push(`${gymName(g)} (fitxa: ${g.category} ${g.level})`);
     let e = c.entries.find(x => x.gymnastId === gid);
+    const existed = !!e;
     if (!e) { e = newEntry(c, g, ct); c.entries.push(e); }
     if (!sameGroup(e, ct)) {
       if (hasScores(e)) { problems.push(gymName(g)); continue; }
+      moved.push(`${gymName(g)} (${existed ? `estava inscrita a ${e.category} ${e.level}` : `fitxa: ${g.category} ${g.level}`})`);
       e.category = ct.category; e.gender = ct.gender; e.level = ct.level;
-    }
-    e.teamId = ct.id;
+    } else if (!existed && !sameGroup(g, ct)) moved.push(`${gymName(g)} (fitxa: ${g.category} ${g.level})`);
+    e.teamId = ct.id; delete e.noAuto;
   }
+  pruneAutoTeams(c);
   return { problems, moved };
+}
+// treu els equips automàtics que s'han quedat sense ningú (p. ex. perquè les seves gimnastes han anat al seu equip fix)
+function pruneAutoTeams(c) {
+  c.teams = c.teams.filter(t => !t.auto || c.entries.some(e => e.teamId === t.id));
 }
 // EQUIPS AUTOMÀTICS: a cada grup, les gimnastes d'una mateixa entitat que no tenen equip en formen un
 // si n'hi ha prou (mínim 3). Primer s'omplen els equips automàtics que ja hi ha i tenen lloc; si en
 // sobren més del màxim (6), es reparteixen en diversos equips. Les que ja tenen equip no es toquen.
-function autoCompTeams(c) {
+// Mai es toca qui ja té equip, qui s'ha tret d'un equip a mà (noAuto), ni qui té un equip fix a «Equips».
+// only: si es passa, només es col·loquen aquestes inscripcions (les que s'acaben d'inscriure).
+function autoCompTeams(c, only) {
   const min = c.teamMin || 3, max = c.teamMax || 6;
+  const onlyIds = only ? new Set(only.map(e => e.id)) : null;
   let made = 0, placed = 0;
   for (const g of groupsOf(c)) {
     const byClub = new Map();
     for (const e of sortEntries(g.entries)) {
-      if (e.teamId || !e.clubId || e.status === 'np') continue;
+      if (e.teamId || !e.clubId || e.status === 'np' || e.noAuto || (onlyIds && !onlyIds.has(e.id))) continue;
+      if (db.teams.some(t => t.memberIds.includes(e.gymnastId) && sameGroup(t, e))) continue;
       if (!byClub.has(e.clubId)) byClub.set(e.clubId, []);
       byClub.get(e.clubId).push(e);
     }
@@ -1119,14 +1221,16 @@ function autoCompTeams(c) {
   }
   return { made, placed };
 }
-// després d'inscriure gimnastes soltes: si el seu equip ja hi és, les hi posem
+// després d'inscriure gimnastes soltes: si tenen un equip fix (a «Equips»), van a aquest equip; si l'equip
+// encara no és a la competició, s'hi crea (amb les seves companyes que ja hi siguin inscrites)
 function autoAssignTeams(c, entries) {
   for (const e of entries) {
     if (e.teamId) continue;
     const t = db.teams.find(t => t.memberIds.includes(e.gymnastId) && sameGroup(t, e));
     if (!t) continue;
-    const ct = c.teams.find(x => x.sourceTeamId === t.id);
-    if (ct) e.teamId = ct.id;
+    let ct = c.teams.find(x => x.sourceTeamId === t.id);
+    if (!ct) { ct = { id: uid(), name: t.name, clubId: t.clubId || null, category: t.category, gender: genderOf(t), level: t.level, sourceTeamId: t.id }; c.teams.push(ct); }
+    e.teamId = ct.id;
   }
 }
 
@@ -1150,9 +1254,9 @@ function tabNotes(c) {
 function progressHtml(c, g) {
   const active = g.entries.filter(e => e.status !== 'np');
   return Engine.enabledApps(c, g.gender).map(a => {
-    const n = active.filter(e => Engine.appResult(e, a, c).complete).length;
-    const some = active.filter(e => Engine.appScore(e, a, c) !== null).length;
-    const tip = (a.attempts || 1) > 1 && some > n ? ` <span class="badge warn" title="Algunes només tenen el 1r intent. Si només feu un intent, canvia-ho a Configuració → Aparells.">${some - n} amb 1 intent</span>` : '';
+    const n = active.filter(e => Engine.appScore(e, a, c) !== null).length;
+    const full = active.filter(e => Engine.appResult(e, a, c).complete).length;
+    const tip = (a.attempts || 1) > 1 && a.rule !== 'best' && n > full ? ` <span class="badge warn" title="Amb «${a.rule === 'sum' ? 'la suma' : 'la mitjana'}» calen els dos intents">${n - full} amb 1 intent</span>` : '';
     return `<span>${icon(a)} ${h(a.name)}: <b>${n}/${active.length}</b>${tip}</span>`;
   }).join('');
 }
@@ -1169,16 +1273,22 @@ function scoreInput(c, e, a, i, f, val, cls = '') {
     aria-label="${h(a.name)} ${f.toUpperCase()} ${h(entryName(e))}" ${c.locked || e.status === 'np' ? 'disabled' : ''}>`;
 }
 const att = (e, a, i) => ((e.scores || {})[a.id] || [])[i] || {};
+// casella per canviar d'equip el mateix dia, també des de la graella de notes
+function teamSelect(c, e, g) {
+  const teams = compTeamsOf(c, g);
+  return `<select data-chg="entryTeam" data-id="${e.id}" class="teamsel" ${c.locked ? 'disabled' : ''} aria-label="Equip de ${h(entryName(e))}"><option value="">— Individual —</option>
+    ${teams.map(t => `<option value="${t.id}" ${e.teamId === t.id ? 'selected' : ''}>${h(t.name)}</option>`).join('')}</select>`;
+}
 function notesAllTable(c, g, apps) {
   const det = c.scoring === 'detailed';
   const n = a => Math.max(1, a.attempts || 1);
   const span = a => det ? 1 : n(a) + (n(a) > 1 ? 1 : 0);
   const apart = a => Engine.appMode(a, g.gender) === 'total' ? '' : ' <span class="badge" title="No compta per a la general">a part</span>';
   const multi = !det && apps.some(a => n(a) > 1);
-  const head = `<tr><th class="num" ${multi ? 'rowspan="2"' : ''}>Dors.</th><th ${multi ? 'rowspan="2"' : ''}>Gimnasta</th><th ${multi ? 'rowspan="2"' : ''}>Entitat</th><th ${multi ? 'rowspan="2"' : ''}>Equip</th>
+  const head = `<tr><th class="num" ${multi ? 'rowspan="2"' : ''}>Dors.</th><th class="who" ${multi ? 'rowspan="2"' : ''}>Gimnasta</th><th class="club" ${multi ? 'rowspan="2"' : ''}>Entitat</th><th ${multi ? 'rowspan="2"' : ''}>Equip</th>
     ${apps.map(a => `<th class="num sep ${multi && span(a) > 1 ? 'grp' : ''}" colspan="${span(a)}" ${multi && span(a) === 1 ? 'rowspan="2"' : ''}>${icon(a)} ${h(a.name)}${apart(a)}</th>`).join('')}
     <th class="num sep" ${multi ? 'rowspan="2"' : ''}>Total</th></tr>
-    ${multi ? `<tr>${apps.filter(a => span(a) > 1).map(a => range(n(a)).map(i => `<th class="num ${i === 0 ? 'sep' : ''}">${ordinal(i + 1)}</th>`).join('') + `<th class="num">${{ best: 'Millor', avg: 'Mitjana', sum: 'Suma' }[a.rule] || 'Millor'}</th>`).join('')}</tr>` : ''}`;
+    ${multi ? `<tr>${apps.filter(a => span(a) > 1).map(a => range(n(a)).map(i => `<th class="num ${i === 0 ? 'sep' : ''}">${ordHtml(i + 1)}</th>`).join('') + `<th class="num">${{ best: 'Millor', avg: 'Mitjana', sum: 'Suma' }[a.rule] || 'Millor'}</th>`).join('')}</tr>` : ''}`;
   const rows = sortEntries(g.entries).map(e => {
     const team = c.teams.find(t => t.id === e.teamId);
     const cells = apps.map(a => {
@@ -1186,12 +1296,12 @@ function notesAllTable(c, g, apps) {
       const ins = range(n(a)).map(i => `<td class="num ${i === 0 ? 'sep' : ''}">${scoreInput(c, e, a, i, 'v', att(e, a, i).v, n(a) > 1 ? 'sm' : '')}</td>`).join('');
       return ins + (n(a) > 1 ? `<td class="num out" data-out="app:${e.id}:${a.id}">${fmt(Engine.appScore(e, a, c))}</td>` : '');
     }).join('');
-    return `<tr class="${e.status === 'np' ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}</td>
-      <td>${h(clubName(e.clubId))}</td><td class="small">${team ? h(team.name) : '<span class="muted">—</span>'}</td>${cells}
+    return `<tr class="${e.status === 'np' ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td class="who">${h(entryName(e))}${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}</td>
+      <td class="club">${h(clubName(e.clubId))}</td><td class="small">${teamSelect(c, e, g)}</td>${cells}
       <td class="num sep out total" data-out="tot:${e.id}">${fmt(Engine.entryTotal(c, e))}</td></tr>`;
   }).join('');
   const note = det ? `<div class="note">En aquesta vista es veuen les notes finals. Per entrar D, E i penalització, tria un aparell a dalt.</div>` : '';
-  return note + `<div class="tbl-wrap"><table class="tbl" id="scoregrid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+  return note + `<div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 function notesAppTable(c, g, a) {
   const det = c.scoring === 'detailed';
@@ -1199,8 +1309,8 @@ function notesAppTable(c, g, a) {
   const fields = det ? [['d', 'D'], ['e', 'E'], ['p', 'Pen.']] : [['v', 'Nota']];
   const ruleLbl = { best: 'la millor', avg: 'la mitjana', sum: 'la suma' }[a.rule] || 'la millor';
   const perAtt = fields.length + (det ? 1 : 0);
-  const head1 = n > 1 ? `<tr><th colspan="4"></th>${range(n).map(i => `<th colspan="${perAtt}" class="grp">${ordinal(i + 1)} intent</th>`).join('')}<th class="grp">Final (${ruleLbl})</th></tr>` : '';
-  const head2 = `<tr><th class="num">Dors.</th><th>Gimnasta</th><th>Entitat</th><th>Equip</th>
+  const head1 = n > 1 ? `<tr><th colspan="4"></th>${range(n).map(i => `<th colspan="${perAtt}" class="grp">${ordHtml(i + 1)} intent</th>`).join('')}<th class="grp">Final (${ruleLbl})</th></tr>` : '';
+  const head2 = `<tr><th class="num">Dors.</th><th class="who">Gimnasta</th><th class="club">Entitat</th><th>Equip</th>
     ${range(n).map(() => fields.map((f, k) => `<th class="num ${k === 0 ? 'sep' : ''}">${f[1]}</th>`).join('') + (det ? '<th class="num">Nota</th>' : '')).join('')}
     ${n > 1 || det ? `<th class="num sep">${icon(a)} ${h(a.name)}</th>` : ''}</tr>`;
   const rows = sortEntries(g.entries).map(e => {
@@ -1211,11 +1321,11 @@ function notesAppTable(c, g, a) {
       return fields.map((f, k) => `<td class="num ${k === 0 ? 'sep' : ''}">${scoreInput(c, e, a, i, f[0], at[f[0]], det ? 'sm' : '')}</td>`).join('') +
         (det ? `<td class="num out" data-out="att:${e.id}:${a.id}:${i}">${fmt(r.attempts[i])}</td>` : '');
     }).join('');
-    return `<tr class="${e.status === 'np' ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}</td>
-      <td>${h(clubName(e.clubId))}</td><td class="small">${team ? h(team.name) : '<span class="muted">—</span>'}</td>${cells}
+    return `<tr class="${e.status === 'np' ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td class="who">${h(entryName(e))}${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}</td>
+      <td class="club">${h(clubName(e.clubId))}</td><td class="small">${teamSelect(c, e, g)}</td>${cells}
       ${n > 1 || det ? `<td class="num sep out total" data-out="app:${e.id}:${a.id}">${fmt(r.value)}</td>` : ''}</tr>`;
   }).join('');
-  return `<div class="tbl-wrap"><table class="tbl" id="scoregrid"><thead>${head1}${head2}</thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead>${head1}${head2}</thead><tbody>${rows}</tbody></table></div>`;
 }
 function setAttemptField(e, appId, i, f, val) {
   if (!e.scores || typeof e.scores !== 'object') e.scores = {};
@@ -1251,22 +1361,33 @@ function refreshScoreRow(c, e) {
 
 /* ─── Classificacions */
 const medal = r => r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : '';
-const posTxt = r => r.rank ? r.rank + (r.tied ? '=' : '') : (r.np ? 'NP' : '—');
+const posTxt = r => r.rank ? String(r.rank) : (r.np ? 'NP' : '—');
 function tabClass(c) {
   const groups = groupsOf(c);
   if (!groups.length) return `<div class="empty">Encara no hi ha inscripcions.</div>`;
   if (ui.clsGroup !== 'all' && !groups.find(g => g.key === ui.clsGroup)) ui.clsGroup = groups[0].key;
   const gp = groups.map(x => `<button class="pill ${x.key === ui.clsGroup ? 'on' : ''}" data-act="pickClsGroup" data-g="${h(x.key)}">${h(groupLabel(x))}</button>`).join('')
     + (groups.length > 1 ? `<button class="pill ${ui.clsGroup === 'all' ? 'on' : ''}" data-act="pickClsGroup" data-g="all">Totes</button>` : '');
-  const types = [['general', 'General individual'], ['apps', 'Per aparells'], ['teams', 'Per equips']];
+  const types = [['general', 'General individual'], ['apps', 'Per aparells'], ['teams', 'Per equips'], ['podium', 'Podi']];
   const tp = types.map(([k, l]) => `<button class="pill ${ui.clsType === k ? 'on' : ''}" data-act="pickClsType" data-t="${k}">${l}</button>`).join('');
   const sel = ui.clsGroup === 'all' ? groups : groups.filter(g => g.key === ui.clsGroup);
   const body = sel.map(g => `<div class="card"><div class="card-head"><h3>${h(groupLabel(g))}</h3>
       <div class="actions"><button class="btn sm" data-act="printDlg" data-types="${ui.clsType}" data-group="${h(g.key)}">Imprimeix</button></div></div>
-      ${ui.clsType === 'general' ? htmlIndividual(c, g) : ui.clsType === 'apps' ? htmlApps(c, g) : htmlTeams(c, g)}</div>`).join('');
+      ${ui.clsType === 'general' ? htmlIndividual(c, g) : ui.clsType === 'apps' ? htmlApps(c, g) : ui.clsType === 'podium' ? htmlPodium(c, g) : htmlTeams(c, g)}</div>`).join('');
   const rules = ui.clsType === 'teams'
     ? `<div class="note">A cada aparell compten les <b>${c.teamCount} millors notes</b> de l’equip; les altres surten ratllades. Equips de ${c.teamMin} a ${c.teamMax} gimnastes.</div>` : '';
   return `<div class="pills">${gp}</div><div class="pills">${tp}</div>${rules}${body}`;
+}
+// PODI: les tres primeres posicions (amb empats, n'hi pot haver més) per a les medalles
+const MEDALS = { 1: 'Or', 2: 'Plata', 3: 'Bronze' };
+function htmlPodium(c, g) {
+  const ind = Engine.individualRanking(c, g, { nameOf: entryName }).rows.filter(r => r.rank && r.rank <= 3);
+  const teams = Engine.teamRanking(c, g).rows.filter(r => r.rank && r.rank <= 3);
+  const tbl = (title, rows, who, club) => `<h3 style="margin:10px 0 6px">${title}</h3><table class="tbl podium"><thead><tr><th class="num">Pos.</th><th>Medalla</th><th>${title === 'Equips' ? 'Equip' : 'Esportista'}</th><th>Entitat</th><th class="num">Nota</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${medal(r.rank)}"><td class="num pos">${r.rank}</td><td>${MEDALS[r.rank]}</td><td><b>${h(who(r))}</b></td><td>${h(club(r))}</td><td class="num total">${fmt(r.total)}</td></tr>`).join('')}</tbody></table>`;
+  const out = (ind.length ? tbl('Individual', ind, r => r.name, r => clubName(r.entry.clubId)) : '') +
+    (teams.length ? tbl('Equips', teams, r => r.team.name, r => clubName(r.team.clubId)) : '');
+  return out || `<p class="muted">Encara no hi ha notes.</p>`;
 }
 function htmlIndividual(c, g, print = false) {
   const { apps, rows } = Engine.individualRanking(c, g, { nameOf: entryName });
@@ -1281,7 +1402,7 @@ function htmlIndividual(c, g, print = false) {
 function htmlOneApp(c, g, a, print = false) {
   const rows = Engine.apparatusRanking(c, g, a, { nameOf: entryName });
   const n = Math.max(1, a.attempts || 1);
-  const head = `<tr><th class="num">Pos.</th><th>Esportista</th><th>Entitat</th>${n > 1 ? range(n).map(i => `<th class="num">${ordinal(i + 1)}</th>`).join('') : ''}<th class="num">Nota</th></tr>`;
+  const head = `<tr><th class="num">Pos.</th><th>Esportista</th><th>Entitat</th>${n > 1 ? range(n).map(i => `<th class="num">${ordHtml(i + 1)}</th>`).join('') : ''}<th class="num">Nota</th></tr>`;
   const body = rows.map(r => `<tr class="${medal(r.rank)} ${r.np ? 'np' : ''}"><td class="num pos">${posTxt(r)}</td><td>${h(r.name)}</td>
     <td>${h(clubName(r.entry.clubId))}</td>${n > 1 ? r.attempts.map(v => `<td class="num">${fmt(v)}</td>`).join('') : ''}
     <td class="num total">${r.np ? 'NP' : fmt(r.value)}</td></tr>`).join('');
@@ -1293,9 +1414,13 @@ function htmlApps(c, g) {
 // per què un equip no classifica (NC)
 const teamWhy = (c, r) => r.undersize ? `no classifica: ${plural(r.size, 'gimnasta', 'gimnastes')} (mínim ${c.teamMin})`
   : r.oversize ? `no classifica: ${r.size} gimnastes (màxim ${c.teamMax})` : '';
+// equips anul·lats: menys del mínim de gimnastes que hagin competit (per exemple, per una NP)
+const cancelledNote = (c, list) => list.length ? `<p class="small ${''}">Equips anul·lats (menys de ${c.teamMin} gimnastes que hagin competit; les seves gimnastes compten com a individuals): ${list.map(r => `${h(r.team.name)} (${r.size})`).join(', ')}.</p>` : '';
 function htmlTeams(c, g, print = false) {
-  const { apps, rows } = Engine.teamRanking(c, g);
-  if (!rows.length) return `<p class="muted">No hi ha equips en aquesta categoria i nivell.</p>`;
+  const { apps, rows: all } = Engine.teamRanking(c, g);
+  if (!all.length) return `<p class="muted">No hi ha equips en aquest grup.</p>`;
+  const cancelled = all.filter(r => r.undersize), rows = all.filter(r => !r.undersize);
+  if (!rows.length) return cancelledNote(c, cancelled);
   const head = `<tr><th class="num">Pos.</th><th>Equip / esportista</th><th>Entitat</th>${apps.map(a => `<th class="num">${icon(a)} ${h(a.name)}</th>`).join('')}<th class="num">Total</th></tr>`;
   const body = rows.map(r => {
     const why = teamWhy(c, r);
@@ -1308,7 +1433,7 @@ function htmlTeams(c, g, print = false) {
         return `<td class="num ${v === null ? '' : cnt ? 'cnt' : 'disc'}">${fmt(v)}</td>`; }).join('')}<td></td></tr>`).join('');
     return top + mem;
   }).join('');
-  return `<div class="${print ? '' : 'tbl-wrap'}"><table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="${print ? '' : 'tbl-wrap'}"><table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>${cancelledNote(c, cancelled)}`;
 }
 
 /* ─── Configuració de la competició (i valors per defecte) */
@@ -1322,7 +1447,9 @@ function configForm(cfg, scope) {
   const dis = scope === 'comp' && cfg.locked ? 'disabled' : '';
   const D = `data-scope="${scope}"`;
   const sel = (k, opts) => `<select data-chg="cfg" data-k="${k}" ${D} ${dis}>${opts.map(([v, l]) => `<option value="${v}" ${String(cfg[k]) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  const numIn = (k, min, max, dec = false) => `<input type="number" min="${min}" max="${max}" ${dec ? 'step="0.01"' : ''} value="${h(cfg[k])}" data-chg="cfg" data-k="${k}" ${dec ? 'data-dec="1"' : ''} ${D} ${dis} style="width:90px">`;
+  const numIn = (k, min, max, dec = false) => dec
+    ? `<input type="text" inputmode="decimal" value="${h(fmt(Engine.toM(cfg[k])))}" data-chg="cfg" data-k="${k}" data-dec="1" data-min="${min}" data-max="${max}" ${D} ${dis} style="width:90px">`
+    : `<input type="number" min="${min}" max="${max}" value="${h(cfg[k])}" data-chg="cfg" data-k="${k}" ${D} ${dis} style="width:90px">`;
   const modeSel = (a, i, g) => `<select data-chg="app" data-i="${i}" data-k="mode${g}" ${D} ${dis} aria-label="${h(a.name)} ${g === 'F' ? 'noies' : 'nois'}">${APP_MODES.map(([v, l]) => `<option value="${v}" ${Engine.appMode(a, g) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const appRows = cfg.apparatus.map((a, i) => `<tr>
     <td>${icon(a)} <input type="text" value="${h(a.name)}" data-chg="app" data-i="${i}" data-k="name" ${D} ${dis} style="width:140px"></td>
@@ -1331,7 +1458,7 @@ function configForm(cfg, scope) {
     <td><select data-chg="app" data-i="${i}" data-k="attempts" ${D} ${dis}>${[1, 2].map(n => `<option value="${n}" ${(a.attempts || 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
     <td><select data-chg="app" data-i="${i}" data-k="rule" ${D} ${dis || ((a.attempts || 1) === 1 ? 'disabled' : '')}>${[['best', 'La millor'], ['avg', 'La mitjana'], ['sum', 'La suma']].map(([v, l]) => `<option value="${v}" ${a.rule === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td class="nowrap"><button class="icon-btn" data-act="appMove" data-i="${i}" data-d="-1" ${D} ${dis} title="Puja">↑</button><button class="icon-btn" data-act="appMove" data-i="${i}" data-d="1" ${D} ${dis} title="Baixa">↓</button>
-      ${DEFAULT_APPS().some(x => x.id === a.id) ? '' : `<button class="icon-btn" data-act="appDel" data-i="${i}" ${D} ${dis} title="Esborra">✕</button>`}</td></tr>`).join('');
+      <button class="icon-btn" data-act="appDel" data-i="${i}" ${D} ${dis} title="Esborra">✕</button></td></tr>`).join('');
   return `<div class="card"><h3 style="margin-bottom:10px">Aparells</h3>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Aparell</th><th>Noies</th><th>Nois</th><th>Intents</th><th>Si n’hi ha 2, compta…</th><th></th></tr></thead><tbody>${appRows}</tbody></table></div>
     <p class="small muted">«Compta» vol dir que suma per a la general individual i per equips. «Classificació a part» vol dir que té la seva classificació però no suma (per exemple, el minitramp de les noies a l’Excel antic).</p>
@@ -1354,6 +1481,54 @@ function configForm(cfg, scope) {
 }
 function cfgTarget(el) { return el.dataset.scope === 'defaults' ? S().compDefaults : curComp(); }
 
+/* ═══════════════════════════════════════════ RÀNQUING DE JORNADES
+   Cada competició va sola; aquí se sumen les jornades d'un curs (les que es triïn). */
+function rankingData() {
+  const seasons = [...new Set(db.competitions.map(c => c.season).filter(Boolean))].sort().reverse();
+  if (!seasons.includes(ui.rkSeason)) ui.rkSeason = seasons[0] || '';
+  ui.rkOff = ui.rkOff || {};
+  const all = db.competitions.filter(c => c.season === ui.rkSeason).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const comps = all.filter(c => !ui.rkOff[c.id]);
+  return { seasons, all, comps, groups: Engine.seasonRanking(comps, S(), { nameOf: entryName }) };
+}
+const jLabel = (comps, c) => 'J' + (comps.indexOf(c) + 1);
+function htmlSeasonInd(d, g) {
+  if (!g.rows.length) return '<p class="muted">Cap gimnasta.</p>';
+  const head = `<tr><th class="num">Pos.</th><th>Esportista</th><th>Entitat</th>${d.comps.map(c => `<th class="num" title="${h(c.name)} · ${fmtDate(c.date)}">${jLabel(d.comps, c)}</th>`).join('')}<th class="num">Total</th><th class="num">Jorn.</th></tr>`;
+  const body = g.rows.map(r => `<tr class="${medal(r.rank)}"><td class="num pos">${posTxt(r)}</td><td>${h(r.name)}</td><td>${h(clubName(r.entry.clubId))}</td>
+    ${d.comps.map(c => `<td class="num">${r.per[c.id] === 'np' ? 'NP' : r.per[c.id] === undefined ? '<span class="muted">—</span>' : fmt(r.per[c.id])}</td>`).join('')}
+    <td class="num total">${fmt(r.total)}</td><td class="num">${r.n}</td></tr>`).join('');
+  return `<div class="tbl-wrap"><table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+function htmlSeasonTeams(d, g) {
+  if (!g.teams.length) return '<p class="muted">Cap equip classificat en aquestes jornades.</p>';
+  const head = `<tr><th class="num">Pos.</th><th>Equip</th><th>Entitat</th>${d.comps.map(c => `<th class="num" title="${h(c.name)} · ${fmtDate(c.date)}">${jLabel(d.comps, c)}</th>`).join('')}<th class="num">Total</th><th class="num">Jorn.</th></tr>`;
+  const body = g.teams.map(r => `<tr class="${medal(r.rank)}"><td class="num pos">${posTxt(r)}</td><td><b>${h(r.name)}</b></td><td>${h(clubName(r.team.clubId))}</td>
+    ${d.comps.map(c => `<td class="num">${r.per[c.id] === undefined ? '<span class="muted">—</span>' : fmt(r.per[c.id])}</td>`).join('')}
+    <td class="num total">${fmt(r.total)}</td><td class="num">${r.n}</td></tr>`).join('');
+  return `<div class="tbl-wrap"><table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+const jLegend = d => `<p class="small muted">${d.comps.map(c => `<b>${jLabel(d.comps, c)}</b>: ${h(c.name)} (${fmtDate(c.date)})`).join(' · ')}</p>`;
+views.ranquing = () => {
+  const d = rankingData();
+  if (!d.all.length) return `<section><div class="page-head"><h1>Rànquing de jornades</h1></div><div class="empty">Encara no hi ha cap competició.</div></section>`;
+  if (ui.rkGroup !== 'all' && !d.groups.find(g => g.key === ui.rkGroup)) ui.rkGroup = d.groups[0] ? d.groups[0].key : 'all';
+  const sel = ui.rkGroup === 'all' ? d.groups : d.groups.filter(g => g.key === ui.rkGroup);
+  const type = ui.rkType || 'ind';
+  return `<section>
+    <div class="page-head"><h1>Rànquing de jornades</h1>
+      <div class="actions"><button class="btn" data-act="printRanking">Imprimeix / PDF</button><button class="btn" data-act="exportRanking">Exporta a Excel</button></div></div>
+    <div class="toolbar"><label class="f" style="flex-direction:row;align-items:center;gap:8px"><span>Curs</span><select data-chg="rkSeason">${d.seasons.map(x => `<option ${x === ui.rkSeason ? 'selected' : ''}>${h(x)}</option>`).join('')}</select></label>
+      ${d.all.map(c => `<label class="chk"><input type="checkbox" data-chg="rkComp" data-id="${c.id}" ${ui.rkOff[c.id] ? '' : 'checked'}> ${jLabel(d.all, c)} · ${h(c.name)} <span class="muted small">${fmtDate(c.date)}</span></label>`).join('')}</div>
+    <p class="small muted">Suma la nota final de cada gimnasta (i de cada equip que classifica) a les jornades marcades. Qui no hi ha anat no suma res aquell dia. Els empats queden a la mateixa posició.</p>
+    ${d.comps.length ? `<div class="pills">${d.groups.map(g => `<button class="pill ${g.key === ui.rkGroup ? 'on' : ''}" data-act="pickRkGroup" data-g="${h(g.key)}">${h(groupLabel(g))}</button>`).join('')}
+      ${d.groups.length > 1 ? `<button class="pill ${ui.rkGroup === 'all' ? 'on' : ''}" data-act="pickRkGroup" data-g="all">Totes</button>` : ''}</div>
+    <div class="pills"><button class="pill ${type === 'ind' ? 'on' : ''}" data-act="pickRkType" data-t="ind">Individual</button><button class="pill ${type === 'teams' ? 'on' : ''}" data-act="pickRkType" data-t="teams">Equips</button></div>
+    ${jLegend(d)}
+    ${sel.map(g => `<div class="card"><div class="card-head"><h3>${h(groupLabel(g))}</h3></div>${type === 'teams' ? htmlSeasonTeams(d, g) : htmlSeasonInd(d, g)}</div>`).join('')}`
+    : '<div class="empty">Marca alguna jornada.</div>'}</section>`;
+};
+
 /* ═══════════════════════════════════════════ GIMNASTES */
 function filteredGyms() {
   const q = norm(ui.gSearch);
@@ -1370,7 +1545,7 @@ views.gimnastes = () => {
     <div class="page-head"><h1>Gimnastes</h1><span class="muted">${plural(db.gymnasts.filter(g => !g.archived).length, 'gimnasta', 'gimnastes')}</span>
       <div class="actions"><button class="btn primary" data-act="newGym">＋ Afegeix gimnasta</button>
       <button class="btn" data-act="importGyms">Enganxa des d’Excel…</button><button class="btn" data-act="exportGyms">Exporta a Excel</button></div></div>
-    ${wrong ? `<div class="note warn">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que els toca per l’any de naixement (per exemple, perquè s’ha passat de curs).
+    ${wrong ? `<div class="note warn">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que ${wrong === 1 ? 'li' : 'els'} toca per l’any de naixement (per exemple, perquè s’ha passat de curs).
       <button class="btn sm" data-act="recalcCats">Posa a tothom la categoria que li toca</button> <button class="btn sm ghost" data-act="toggleWrong">${ui.gWrong ? 'Mostra-les totes' : 'Mostra només aquestes'}</button></div>` : ''}
     <div class="toolbar">
       <input type="search" class="grow" placeholder="Cerca per nom o entitat…" value="${h(ui.gSearch)}" data-inp="gSearch" aria-label="Cerca">
@@ -1439,17 +1614,22 @@ function guessField(header) {
   if (/^(nom i cognoms|nom complet|esportista|gimnasta|alumne|alumna|nombre y apellidos|nombre completo)$/.test(x)) return 'full';
   if (/^(cognoms?|apellidos?)/.test(x)) return 'surname';
   if (/^(nom|nombre|name)$/.test(x)) return 'name';
-  if (/(entitat|club|escola|centre|colegio|entidad)/.test(x)) return 'club';
+  if (/^(entitat|club|escola|centre|colegio|entidad|club\/escola|escola\/club|nom entitat|nom de l'entitat)$/.test(x)) return 'club';
   if (/^categori/.test(x)) return 'category';
   if (/^(nivell|nivel|level)/.test(x)) return 'level';
-  if (/(naixement|nacimiento|^any$|^ano$|^año$|^data$|birth)/.test(x)) return 'birth';
+  if (/^(any|ano|any naixement|any de naixement|data naixement|data de naixement|naixement|fecha nacimiento|fecha de nacimiento|nacimiento|birth|data)$/.test(x)) return 'birth';
   if (/^(equip|equipo|team)/.test(x)) return 'team';
   return '';
 }
 function splitRows(text) {
   const lines = String(text).replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
   if (!lines.length) return [];
-  const delim = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+  // amb tabuladors (enganxat d'Excel) o punt i coma, es parteix per aquí; amb comes només si totes les files en tenen
+  // el mateix nombre (si no, és una sola columna del tipus «COGNOMS, NOM»)
+  const anyTab = lines.some(l => l.includes('\t')), anySemi = lines.some(l => l.includes(';'));
+  const commas = new Set(lines.map(l => (l.match(/,/g) || []).length));
+  const delim = anyTab ? '\t' : anySemi ? ';' : (commas.size === 1 && !commas.has(0) && guessField(lines[0]) !== 'full' && lines.length > 1 && !lines.slice(1).every(l => /^[^,]+,\s*[^,]+$/.test(l))) ? ',' : null;
+  if (!delim) return lines.map(l => [l.trim()]);
   return lines.map(l => {
     if (delim === '\t') return l.split('\t').map(s => s.trim());
     const out = []; let cur = '', q = false;
@@ -1467,8 +1647,9 @@ function importAnalyze(text) {
   if (!rows.length) return null;
   const width = Math.max(...rows.map(r => r.length));
   const guessed = range(width).map(i => guessField(rows[0][i]));
-  const hasHeader = guessed.filter(Boolean).length >= 1;
-  const map = hasHeader ? guessed : ['name', 'surname', 'club', 'category', 'level', 'birth', 'team'].slice(0, width).concat(range(Math.max(0, width - 7)).map(() => ''));
+  // la primera fila són títols si hi ha una columna de nom reconeguda, o almenys dues de reconegudes
+  const hasHeader = guessed.some(f => ['name', 'surname', 'full'].includes(f)) || guessed.filter(Boolean).length >= 2;
+  const map = hasHeader ? guessed : (width === 1 ? ['full'] : ['name', 'surname', 'club', 'gender', 'category', 'level', 'birth', 'team'].slice(0, width).concat(range(Math.max(0, width - 8)).map(() => '')));
   return { rows, width, hasHeader, map, defCat: '', defLevel: '', defGender: 'F' };
 }
 function importResolve(imp) {
@@ -1516,8 +1697,12 @@ function importDialog() {
       <label class="small">Gènere si no n’hi ha: <select data-chg="impDef" data-k="defGender">${genderOptions(imp.defGender)}</select></label>
       <label class="small">Categoria si no n’hi ha: <select data-chg="impDef" data-k="defCat"><option value="">—</option>${catOptions(imp.defCat, false)}</select></label>
       <label class="small">Nivell si no n’hi ha: <select data-chg="impDef" data-k="defLevel"><option value="">—</option>${S().levels.map(c => `<option ${imp.defLevel === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>` : ''}</div>
-    ${imp ? `<div class="tbl-wrap" style="max-height:40vh"><table class="tbl"><thead><tr><th>Columna</th>${range(imp.width).map(i => `<th><select data-chg="impMap" data-i="${i}">${IMPORT_FIELDS.map(([v, l]) => `<option value="${v}" ${imp.map[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></th>`).join('')}</tr></thead>
-      <tbody>${(imp.hasHeader ? imp.rows.slice(1) : imp.rows).slice(0, 200).map((r, k) => `<tr><td>${stLbl[preview[k].status]}</td>${range(imp.width).map(i => `<td class="small">${h(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    ${imp ? `<div class="tbl-wrap" style="max-height:40vh"><table class="tbl"><thead><tr><th>Columna</th>${range(imp.width).map(i => `<th><select data-chg="impMap" data-i="${i}">${IMPORT_FIELDS.map(([v, l]) => `<option value="${v}" ${imp.map[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></th>`).join('')}<th>Es guardarà com</th></tr></thead>
+      <tbody>${imp.hasHeader ? `<tr class="np"><td><span class="badge">títols</span></td>${range(imp.width).map(i => `<td class="small"><i>${h(imp.rows[0][i] ?? '')}</i></td>`).join('')}<td></td></tr>` : ''}
+      ${(imp.hasHeader ? imp.rows.slice(1) : imp.rows).slice(0, 200).map((r, k) => { const p = preview[k];
+        return `<tr><td>${stLbl[p.status]}</td>${range(imp.width).map(i => `<td class="small">${h(r[i] ?? '')}</td>`).join('')}
+        <td class="small nowrap">${h(p.name)} ${h(p.surname)} · ${genderShort(p.gender)} · ${p.category ? h(p.category) : '<span class="badge warn">sense categoria</span>'} · ${p.level ? h(p.level) : '<span class="badge warn">sense nivell</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      ${ok.filter(p => !p.category || !p.level).length ? `<div class="note warn">${plural(ok.filter(p => !p.category || !p.level).length, 'fitxa es guardaria', 'fitxes es guardarien')} sense categoria o sense nivell. Tria «Categoria / Nivell si no n’hi ha» a dalt, o afegeix una columna d’any de naixement.</div>` : ''}
       <p class="small">${plural(ok.length, 'fitxa nova', 'fitxes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} s’ometran` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · categories noves: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · nivells nous: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       <button class="btn primary" data-act="impDo" ${ok.length ? '' : 'disabled'}>Importa ${ok.length || ''}</button></div>`;
@@ -1605,7 +1790,9 @@ function proposeTeams() {
       const size = sizes[i];
       const members = list.slice(p, p + size); p += size;
       const g0 = members[0];
-      out.push({ name: `${clubName(g0.clubId)} ${g0.category} ${g0.level} ${genderWord(g0.gender)}${k > 1 ? ' ' + (i + 1) : ''}`, clubId: g0.clubId,
+      const base = `${clubName(g0.clubId)} ${g0.category} ${g0.level} ${genderWord(g0.gender)}`;
+      const already = db.teams.filter(t => t.clubId === g0.clubId && sameGroup(t, g0)).length;
+      out.push({ name: base + (k > 1 || already ? ' ' + (already + i + 1) : ''), clubId: g0.clubId,
         gender: genderOf(g0), category: g0.category, level: g0.level, memberIds: members.map(m => m.id) });
     }
   }
@@ -1683,7 +1870,7 @@ function catEditor() {
       <tr><td><input type="text" id="add-categories" placeholder="Categoria nova…" data-enter="listAdd" data-key="categories" style="width:100%"></td>
         <td><input type="number" id="add-cat-from" min="1900" max="2100" placeholder="—" style="width:96px"></td><td><input type="number" id="add-cat-to" min="1900" max="2100" placeholder="—" style="width:96px"></td>
         <td colspan="2"><button class="btn sm" data-act="listAdd" data-key="categories">Afegeix</button></td></tr></tbody></table></div>
-    ${wrong ? `<div class="note warn" style="margin-top:10px">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que els toca per l’any de naixement. <button class="btn sm" data-act="recalcCats">Posa a tothom la categoria que li toca</button></div>` : ''}
+    ${wrong ? `<div class="note warn" style="margin-top:10px">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que ${wrong === 1 ? 'li' : 'els'} toca per l’any de naixement. <button class="btn sm" data-act="recalcCats">Posa a tothom la categoria que li toca</button></div>` : ''}
   </div>`;
 }
 
@@ -1692,23 +1879,30 @@ function printHeader(c) {
   const s = S();
   return `<div class="ph"><div class="ph-logo">${s.logoL ? `<img src="${s.logoL}" alt="">` : ''}</div>
     <div class="ph-text"><div class="ph-org">${h(s.org)}</div>${s.line2 ? `<div>${h(s.line2)}</div>` : ''}${c.season ? `<div>CURS ${h(c.season)}</div>` : ''}
-      <div class="ph-name">${h(c.name)}</div><div>${h((c.place || '').toUpperCase())}${c.date ? ' · ' + fmtDate(c.date) : ''}</div></div>
+      <div class="ph-name">${h(c.name)}</div><div>${h((c.place || '').toUpperCase())}${c.date ? ' · ' + fmtDate(c.date) : ''}</div>
+      <div class="ph-date">Imprès el ${fmtDate(today())}</div></div>
     <div class="ph-logo">${s.logoR ? `<img src="${s.logoR}" alt="">` : ''}</div></div>`;
 }
-const sheet = (c, title, g, body, land = false) => `<section class="sheet ${land ? 'landscape' : ''}">${printHeader(c)}<h2>${h(title)}</h2>
-  ${g ? `<div class="sub">${h(groupLabelPrint(g))}</div>` : ''}${body}<div class="foot">Imprès el ${fmtDate(today())} amb NotesGim</div></section>`;
+// el títol i el grup van dins la capçalera de cada taula: el navegador la repeteix a cada pàgina,
+// així un full solt sempre diu què és
+const sheet = (c, title, g, body, land = false) => {
+  const label = h(title) + (g ? ' · ' + h(groupLabelPrint(g)) : '');
+  return `<section class="sheet ${land ? 'landscape' : ''}">${printHeader(c)}
+    ${body.replace(/<thead>/g, `<thead><tr class="rep"><th colspan="99">${label}</th></tr>`)}</section>`;
+};
 function judgeSheet(c, g, a) {
   const det = c.scoring === 'detailed', n = Math.max(1, a.attempts || 1);
   const cols = det ? ['D', 'E', 'Pen.', 'Nota'] : ['Nota'];
   const list = sortEntries(g.entries).filter(e => e.status !== 'np');
-  const head = `<tr><th>Ordre</th><th>Dorsal</th><th>Esportista</th><th>Entitat</th>${range(n).map(i => cols.map(cl => `<th>${n > 1 ? ordinal(i + 1) + ' ' : ''}${cl}</th>`).join('')).join('')}${n > 1 ? '<th>Final</th>' : ''}</tr>`;
+  const head = `<tr><th>Ordre</th><th>Dorsal</th><th>Esportista</th><th>Entitat</th>${range(n).map(i => cols.map(cl => `<th>${n > 1 ? ordHtml(i + 1) + ' ' : ''}${cl}</th>`).join('')).join('')}${n > 1 ? '<th>Final</th>' : ''}</tr>`;
   const rows = list.map((e, i) => `<tr class="judge"><td class="num">${i + 1}</td><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}</td><td>${h(clubName(e.clubId))}</td>${'<td></td>'.repeat(n * cols.length + (n > 1 ? 1 : 0))}</tr>`).join('');
-  return sheet(c, `Full de jutge · ${a.name}`, g, `<table><thead>${head}</thead><tbody>${rows}</tbody></table>
-    <div class="sign"><div>Jutge/ssa: ______________________________</div><div>Signatura: ____________________</div></div>`, n * cols.length > 4);
+  // la línia de signatura va al peu de la taula: surt a cada pàgina i no queda mai sola
+  return sheet(c, `Full de jutge · ${a.name}`, g, `<table><thead>${head}</thead><tbody>${rows}</tbody>
+    <tfoot><tr><td colspan="99" class="signrow">Tutor/a de joc: ______________________________     Signatura: ____________________</td></tr></tfoot></table>`, n * cols.length > 4);
 }
 function notesSheet(c, g) {
   const apps = Engine.enabledApps(c, g.gender), det = c.scoring === 'detailed';
-  const head = `<tr><th>Dors.</th><th>Esportista</th><th>Entitat</th><th>Equip</th>${apps.map(a => `<th>${h(a.name)}</th>`).join('')}<th>Total</th></tr>`;
+  const head = `<tr><th>Dors.</th><th>Esportista</th><th>Entitat / equip</th>${apps.map(a => `<th>${h(a.name)}${Engine.appMode(a, g.gender) === 'total' ? '' : ' <span class="lc">(a part)</span>'}</th>`).join('')}<th>Total</th></tr>`;
   const rows = sortEntries(g.entries).map(e => {
     const team = c.teams.find(t => t.id === e.teamId);
     const cell = a => {
@@ -1719,7 +1913,7 @@ function notesSheet(c, g) {
       }).filter(Boolean);
       return `<td class="num"><b>${fmt(r.value)}</b>${parts.length ? `<br><span class="small">${parts.join('<br>')}</span>` : ''}${(a.attempts || 1) > 1 ? `<br><span class="small">(${r.attempts.map(fmt).join(' / ')})</span>` : ''}</td>`;
     };
-    return `<tr><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}</td><td>${h(clubName(e.clubId))}</td><td>${team ? h(team.name) : ''}</td>${apps.map(cell).join('')}<td class="num"><b>${fmt(Engine.entryTotal(c, e))}</b></td></tr>`;
+    return `<tr><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}</td><td>${h(clubName(e.clubId))}${team && team.name !== clubName(e.clubId) ? `<br><span class="small">${h(team.name)}</span>` : ''}</td>${apps.map(cell).join('')}<td class="num"><b>${fmt(Engine.entryTotal(c, e))}</b></td></tr>`;
   }).join('');
   return sheet(c, 'Acta de notes', g, `<table><thead>${head}</thead><tbody>${rows}</tbody></table>`, apps.length > 3 || det);
 }
@@ -1733,9 +1927,12 @@ function listSheet(c, g) {
 function doPrint(c, types, keys) {
   const groups = groupsOf(c).filter(g => keys.includes(g.key));
   const out = [];
+  // el podi de tots els grups va seguit, per llegir-lo a l'entrega de medalles
+  if (types.includes('podium')) out.push(`<section class="sheet">${printHeader(c)}<h2>Podi</h2>${groups.map(g =>
+    `<div style="break-inside:avoid"><h3>${h(groupLabelPrint(g))}</h3>${htmlPodium(c, g)}</div>`).join('')}</section>`);
   for (const g of groups) {
     if (types.includes('general') && g.entries.length) out.push(sheet(c, 'Classificació individual', g, htmlIndividual(c, g, true)));
-    if (types.includes('apps') && g.entries.length) for (const a of Engine.enabledApps(c, g.gender)) out.push(sheet(c, `Classificació · ${a.name}`, g, htmlOneApp(c, g, a, true)));
+    if (types.includes('apps') && g.entries.length) for (const a of Engine.enabledApps(c, g.gender)) out.push(sheet(c, `Classificació · ${a.name}${Engine.appMode(a, g.gender) === 'apart' ? ' (a part)' : ''}`, g, htmlOneApp(c, g, a, true)));
     if (types.includes('teams') && compTeamsOf(c, g).length) out.push(sheet(c, 'Classificació per equips', g,
       htmlTeams(c, g, true) + `<p class="small">A cada aparell compten les ${c.teamCount} millors notes de l’equip (les ratllades no compten).</p>`));
     if (types.includes('notes') && g.entries.length) out.push(notesSheet(c, g));
@@ -1851,11 +2048,13 @@ function compWorkbook(c) {
     if (tr.rows.length) {
       rows.push([{ v: 'CLASSIFICACIÓ PER EQUIPS', s: 't' }], [{ v: `Compten les ${c.teamCount} millors notes de cada aparell (les ratllades no compten)`, s: 'm' }]);
       rows.push([H('Pos.'), '', H('Equip / esportista'), H('Entitat'), '', ...tr.apps.map(a => H(a.name)), H('Total')]);
-      for (const r of tr.rows) {
+      for (const r of tr.rows.filter(r => !r.undersize)) {
         rows.push([r.rank ? r.rank : (r.eligible ? '' : 'NC'), '', { v: r.team.name, s: 'b' }, clubName(r.team.clubId), teamWhy(c, r), ...tr.apps.map(a => bnum(r.perApp[a.id].value)), bnum(r.eligible ? r.total : r.rawTotal)]);
         for (const e of sortEntries(r.members)) rows.push(['', +e.bib || '', '   ' + entryName(e) + (e.status === 'np' ? ' (NP)' : ''), clubName(e.clubId), '',
           ...tr.apps.map(a => { const v = Engine.appScore(e, a, c); const cnt = r.counted[e.id] && r.counted[e.id][a.id]; return v === null ? '' : { v: v / 1000, s: cnt ? 'n' : 'mn' }; }), '']);
       }
+      const gone = tr.rows.filter(r => r.undersize);
+      if (gone.length) rows.push([{ v: `Equips anul·lats (menys de ${c.teamMin} gimnastes que hagin competit): ${gone.map(r => `${r.team.name} (${r.size})`).join(', ')}`, s: 'm' }]);
       rows.push([]);
     }
     // per aparells
@@ -1879,7 +2078,8 @@ function compWorkbook(c) {
         rows.push(r);
       }
     }
-    sheets.push({ name: `${g.category} ${genderPrint(g.gender)} ${g.level}`, rows, cols: [7, 8, 30, 26, 18, ...range(12).map(() => 12)] });
+    const suffix = ` ${genderPrint(g.gender)} ${g.level}`;
+    sheets.push({ name: g.category.slice(0, 31 - suffix.length).trim() + suffix, rows, cols: [7, 8, 30, 26, 18, ...range(12).map(() => 12)] });
   }
   return sheets;
 }
@@ -1952,6 +2152,39 @@ const actions = {
       <p class="small muted">S’inscriuen amb el gènere, la categoria, el nivell i l’entitat de la seva fitxa. Si el seu equip ja està inscrit, s’hi afegeixen soles.</p>
       <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Tanca</button><button class="btn primary">Inscriu les marcades</button></div></form>`, { wide: true });
   },
+  pickRkGroup: el => { ui.rkGroup = el.dataset.g; render(); },
+  pickRkType: el => { ui.rkType = el.dataset.t; render(); },
+  printRanking: () => {
+    const d = rankingData();
+    if (!d.comps.length) { toast('Marca alguna jornada.', 'bad'); return; }
+    const pseudo = { name: 'Rànquing de jornades', season: ui.rkSeason, place: '', date: '' };
+    const out = [];
+    for (const g of d.groups) {
+      out.push(sheet(pseudo, 'Rànquing individual', g, htmlSeasonInd(d, g).replace('class="tbl-wrap"', '') + jLegend(d)));
+      if (g.teams.length) out.push(sheet(pseudo, 'Rànquing per equips', g, htmlSeasonTeams(d, g).replace('class="tbl-wrap"', '') + jLegend(d)));
+    }
+    $('#print').innerHTML = out.join('');
+    setTimeout(() => window.print(), 50);
+  },
+  exportRanking: () => {
+    const d = rankingData();
+    if (!d.comps.length) { toast('Marca alguna jornada.', 'bad'); return; }
+    const H = x => ({ v: x, s: 'h' });
+    const js = d.comps.map(c => H(jLabel(d.comps, c)));
+    const sheets = d.groups.map(g => {
+      const rows = [[{ v: S().org, s: 'b' }], [`Rànquing de jornades · curs ${ui.rkSeason}`], [{ v: groupLabelPrint(g).toUpperCase(), s: 't' }],
+        [{ v: d.comps.map(c => `${jLabel(d.comps, c)}: ${c.name} (${fmtDate(c.date)})`).join(' · '), s: 'm' }], [],
+        [{ v: 'INDIVIDUAL', s: 't' }], [H('Pos.'), H('Esportista'), H('Entitat'), ...js, H('Total'), H('Jornades')]];
+      for (const r of g.rows) rows.push([r.rank || '', r.name, clubName(r.entry.clubId), ...d.comps.map(c => r.per[c.id] === 'np' ? 'NP' : num(r.per[c.id] === undefined ? null : r.per[c.id])), bnum(r.total), r.n]);
+      if (g.teams.length) {
+        rows.push([], [{ v: 'EQUIPS', s: 't' }], [H('Pos.'), H('Equip'), H('Entitat'), ...js, H('Total'), H('Jornades')]);
+        for (const r of g.teams) rows.push([r.rank || '', r.name, clubName(r.team.clubId), ...d.comps.map(c => num(r.per[c.id] === undefined ? null : r.per[c.id])), bnum(r.total), r.n]);
+      }
+      const suffix = ` ${genderPrint(g.gender)} ${g.level}`;
+      return { name: g.category.slice(0, 31 - suffix.length).trim() + suffix, rows, cols: [7, 30, 26, ...d.comps.map(() => 10), 11, 9] };
+    });
+    downloadBlob(XLSX.build(sheets), `ranquing ${ui.rkSeason}.xlsx`);
+  },
   autoCompTeams: () => {
     const c = curComp();
     let res;
@@ -1995,7 +2228,7 @@ const actions = {
     if (!(await confirmBox(`Treure l’equip <b>${h(t.name)}</b> d’aquesta competició? Les seves gimnastes hi continuaran com a individuals.`, { ok: 'Treu l’equip', danger: true }))) return;
     withUndo('Equip tret de la competició.', () => {
       c.teams = c.teams.filter(x => x.id !== t.id);
-      c.entries.forEach(e => { if (e.teamId === t.id) e.teamId = null; });
+      c.entries.forEach(e => { if (e.teamId === t.id) { e.teamId = null; e.noAuto = true; } });
     });
   },
 
@@ -2007,7 +2240,7 @@ const actions = {
   printDlg: el => {
     const c = curComp(); const groups = groupsOf(c);
     const def = (el.dataset.types || 'general,teams').split(',');
-    const types = [['general', 'Classificació individual (general)'], ['apps', 'Classificació per aparells'], ['teams', 'Classificació per equips'],
+    const types = [['podium', 'Podi (medalles), tots els grups junts'], ['general', 'Classificació individual (general)'], ['apps', 'Classificació per aparells'], ['teams', 'Classificació per equips'],
       ['notes', 'Acta amb totes les notes'], ['list', 'Llistat d’inscripcions i equips'], ['judge', 'Fulls de jutge en blanc (un per aparell)']];
     openDialog(`<form data-form="print"><h2>Imprimeix o desa en PDF</h2>
       <div class="grid2"><fieldset><legend>Què?</legend>${types.map(([k, l]) => `<label class="chk"><input type="checkbox" name="t" value="${k}" ${def.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</fieldset>
@@ -2029,8 +2262,16 @@ const actions = {
     const g = gymById(el.dataset.id);
     const used = db.competitions.filter(c => c.entries.some(e => e.gymnastId === g.id));
     if (used.length) {
-      const ok = await confirmBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}), i no es pot esborrar sense perdre’n les notes.<br><br>Vols <b>arxivar la fitxa</b>? Deixarà de sortir a les llistes però les competicions passades es mantenen.`, { ok: 'Arxiva la fitxa' });
-      if (ok) withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) gg.archived = true; });
+      const pick = await choiceBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}).<br><br>
+        <b>Arxivar</b>: deixa de sortir a les llistes, però les competicions passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
+        [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
+      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) gg.archived = true; });
+      if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes de ${h(gymName(g))} de ${plural(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
+        withUndo(`${gymName(g)} esborrada del tot.`, () => {
+          db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
+          db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => id !== g.id); });
+          db.competitions.forEach(c => { c.entries = c.entries.filter(e => e.gymnastId !== g.id); });
+        });
       return;
     }
     if (!(await confirmBox(`Esborrar <b>${h(gymName(g))}</b>?`, { ok: 'Esborra', danger: true }))) return;
@@ -2098,8 +2339,12 @@ const actions = {
   delClub: async el => {
     const c = clubById(el.dataset.id);
     const used = db.gymnasts.some(g => g.clubId === c.id) || db.teams.some(t => t.clubId === c.id) || db.competitions.some(x => x.entries.some(e => e.clubId === c.id) || x.teams.some(t => t.clubId === c.id));
-    if (used) { toast('Aquesta entitat té gimnastes, equips o inscripcions. Fusiona-la amb una altra en lloc d’esborrar-la.', 'bad'); return; }
-    withUndo('Entitat esborrada.', () => { db.clubs = db.clubs.filter(x => x.id !== c.id); });
+    if (used && !(await confirmBox(`<b>${h(c.name)}</b> té gimnastes, equips o inscripcions. Si l’esborres, es quedaran sense entitat.<br><br>Si és un duplicat d’una altra, millor fes servir «Fusiona amb…».`, { ok: 'Esborra igualment', danger: true }))) return;
+    withUndo('Entitat esborrada.', () => {
+      const fix = o => { if (o.clubId === c.id) o.clubId = null; };
+      db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+      db.clubs = db.clubs.filter(x => x.id !== c.id);
+    });
   },
 
   // configuració
@@ -2121,7 +2366,7 @@ const actions = {
       for (const c of S().categories) { if (c.from !== null) c.from += d; if (c.to !== null) c.to += d; }
     });
     const n = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
-    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. Les actualitzo ara?<br><span class="small muted">Les competicions ja fetes no canvien.</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
+    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">Les competicions ja fetes no canvien.</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
   },
   recalcCats: async (el, already) => {
     const list = db.gymnasts.filter(g => !g.archived && catMismatch(g));
@@ -2139,7 +2384,7 @@ const actions = {
     const key = el.dataset.key, i = +el.dataset.i, v = key === 'categories' ? S()[key][i].name : S()[key][i];
     const field = key === 'categories' ? 'category' : 'level';
     const n = db.gymnasts.filter(g => g[field] === v).length + db.teams.filter(t => t[field] === v).length + db.competitions.reduce((s, c) => s + c.entries.filter(e => e[field] === v).length, 0);
-    if (n && !(await confirmBox(`«${h(v)}» es fa servir (${n} vegades). Si l’esborres de la llista, les fitxes el conservaran però no el podràs triar. Continuar?`, { ok: 'Esborra', danger: true }))) return;
+    if (n && !(await confirmBox(`«${h(v)}» es fa servir (${plural(n, 'vegada', 'vegades')}). Si l’esborres de la llista, les fitxes el conservaran però no el podràs triar. Continuar?`, { ok: 'Esborra', danger: true }))) return;
     withUndo(`«${v}» esborrat de la llista.`, () => { S()[key].splice(i, 1); });
   },
   logoPick: el => {
@@ -2172,7 +2417,7 @@ const actions = {
   },
   appDel: async el => {
     const cfg = cfgTarget(el), a = cfg.apparatus[+el.dataset.i];
-    if (!(await confirmBox(`Esborrar l’aparell «${h(a.name)}»? Si només el vols amagar, desmarca «Actiu».`, { ok: 'Esborra', danger: true }))) return;
+    if (!(await confirmBox(`Esborrar l’aparell «${h(a.name)}»? Si només el vols amagar, tria «No es fa» a Noies i a Nois.`, { ok: 'Esborra', danger: true }))) return;
     withUndo('Aparell esborrat.', () => { cfg.apparatus.splice(+el.dataset.i, 1); });
   },
 };
@@ -2231,7 +2476,12 @@ const forms = {
     if (id) {
       const g = gymById(id);
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
-      commit(); closeDialog(); render(); return;
+      commit(); closeDialog(); render();
+      // si està inscrita en una competició oberta en un altre grup, ofereix canviar-ho també allà
+      const open = db.competitions.filter(c => !c.locked && c.entries.some(e => e.gymnastId === g.id && !sameGroup(e, g) && !hasScores(e)));
+      if (open.length && g.category && g.level) confirmBox(`${h(gymName(g))} està inscrita com a ${h(open.map(c => { const e = c.entries.find(x => x.gymnastId === g.id); return `${e.category} ${e.level}`; })[0])} a ${open.map(c => `<b>${h(c.name)}</b>`).join(', ')}. Ho canvio també allà a ${h(g.category)} ${genderWord(g.gender)} ${h(g.level)}?<br><span class="small muted">Només on encara no té notes.</span>`, { ok: 'Canvia-ho' })
+        .then(ok => { if (!ok) return; withUndo('Inscripcions actualitzades.', () => { for (const c of open) { const e = c.entries.find(x => x.gymnastId === g.id); if (e.teamId) e.teamId = null; e.category = g.category; e.gender = g.gender; e.level = g.level; autoAssignTeams(c, [e]); pruneAutoTeams(c); } }); });
+      return;
     }
     const dup = db.gymnasts.find(g => norm(gymName(g)) === norm(name + ' ' + vals.surname));
     db.gymnasts.push(Object.assign({ id: uid(), archived: false }, vals));
@@ -2251,7 +2501,7 @@ const forms = {
     db.teams.forEach(o => { if (o.id !== t.id && sameGroup(o, t)) o.memberIds = o.memberIds.filter(m => !t.memberIds.includes(m)); });
     commit(); closeDialog(); render();
     const n = t.memberIds.length, d = S().compDefaults;
-    toast(n < d.teamMin ? `Equip desat, però només té ${n} gimnastes (mínim ${d.teamMin}).` : n > d.teamMax ? `Equip desat, però té ${n} gimnastes (màxim ${d.teamMax}).` : 'Equip desat.', n < d.teamMin || n > d.teamMax ? 'bad' : 'ok');
+    toast(n < d.teamMin ? `Equip desat, però només té ${plural(n, 'gimnasta', 'gimnastes')} (mínim ${d.teamMin}).` : n > d.teamMax ? `Equip desat, però té ${n} gimnastes (màxim ${d.teamMax}).` : 'Equip desat.', n < d.teamMin || n > d.teamMax ? 'bad' : 'ok');
   },
   autoTeams: f => {
     const picks = new FormData(f).getAll('p').map(Number);
@@ -2277,16 +2527,21 @@ const forms = {
     withUndo(`${plural(ids.length, 'inscripció feta', 'inscripcions fetes')}.`, () => {
       const added = ids.map(id => { const e = newEntry(c, gymById(id)); c.entries.push(e); return e; });
       autoAssignTeams(c, added);
-      if (c.autoTeams) autoCompTeams(c);
+      if (c.autoTeams) autoCompTeams(c, added);
     });
     closeDialog();
   },
   entry: f => {
     const c = curComp(), e = c.entries.find(x => x.id === f.dataset.id), fd = new FormData(f);
     const cat = fd.get('category'), level = fd.get('level'), gender = fd.get('gender') === 'M' ? 'M' : 'F';
-    if (!sameGroup(e, { category: cat, gender, level }) && e.teamId) e.teamId = null;
+    let left = null;
+    if (!sameGroup(e, { category: cat, gender, level }) && e.teamId) { left = c.teams.find(t => t.id === e.teamId); e.teamId = null; }
     Object.assign(e, { category: cat, gender, level, clubId: fd.get('clubId') || null, bib: fd.get('bib') ? +fd.get('bib') : e.bib });
+    if (left) autoAssignTeams(c, [e]);
+    pruneAutoTeams(c);
     commit(); closeDialog(); render();
+    if (left) { const n = c.entries.filter(x => x.teamId === left.id).length;
+      toast(`${entryName(e)} ja no és a l’equip «${left.name}» (ara en té ${n})${n < c.teamMin ? ': no arriba al mínim i quedarà anul·lat' : ''}.`, n < c.teamMin ? 'bad' : ''); }
   },
   compTeam: f => {
     const c = curComp(), fd = new FormData(f), id = f.dataset.id;
@@ -2295,7 +2550,9 @@ const forms = {
     if (!t) { t = { id: uid(), category: f.dataset.cat, gender: f.dataset.gender === 'M' ? 'M' : 'F', level: f.dataset.level, sourceTeamId: null }; c.teams.push(t); }
     t.name = name; t.clubId = fd.get('clubId') || null;
     const members = new Set(fd.getAll('m'));
-    c.entries.forEach(e => { if (members.has(e.id)) e.teamId = t.id; else if (e.teamId === t.id) e.teamId = null; });
+    c.entries.forEach(e => { if (members.has(e.id)) { e.teamId = t.id; delete e.noAuto; } else if (e.teamId === t.id) { e.teamId = null; e.noAuto = true; } });
+    if (!c.entries.some(e => e.teamId === t.id)) c.teams = c.teams.filter(x => x.id !== t.id || !t.auto);
+    pruneAutoTeams(c);
     commit(); closeDialog(); render();
   },
   print: f => {
@@ -2337,7 +2594,11 @@ const changes = {
   },
   bib: el => { const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.bib = el.value ? +el.value : null; commit(); },
   entryTeam: el => {
-    const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.teamId = el.value || null; commit(); render();
+    const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id);
+    e.teamId = el.value || null;
+    if (e.teamId) delete e.noAuto; else e.noAuto = true;   // l'ha tret a mà: els equips automàtics no la tornaran a posar
+    pruneAutoTeams(c);
+    commit(); render();
     const n = e.teamId ? c.entries.filter(x => x.teamId === e.teamId).length : 0;
     if (n > c.teamMax) toast(`Aquest equip ara té ${n} gimnastes i el màxim és ${c.teamMax}: no classificarà fins que en tregueu.`, 'bad');
   },
@@ -2345,14 +2606,22 @@ const changes = {
   cfg: el => {
     const cfg = cfgTarget(el), k = el.dataset.k;
     let v = el.type === 'checkbox' ? el.checked : el.value;
-    if (el.type === 'number') {
+    if (el.dataset.dec) {
+      // com les notes: accepta coma o punt; fora de límits no es desa
+      const n = Engine.parseScore(v);
+      if (n === null || Number.isNaN(n) || n < +el.dataset.min || n > +el.dataset.max) {
+        toast(`«${v}» no val: ha de ser un número entre ${el.dataset.min} i ${el.dataset.max}.`, 'bad');
+        el.value = fmt(Engine.toM(cfg[k])); return;
+      }
+      v = n;
+    } else if (el.type === 'number') {
       const n = el.dataset.dec ? Math.round((+v || 0) * 1000) / 1000 : Math.round(+v || 0);
       v = Math.max(+el.min || 0, Math.min(+el.max || 100, n));
       if (!v && +el.min > 0) v = COMP_DEFAULTS()[k];
     }
     cfg[k] = v;
     if (cfg.teamMin > cfg.teamMax) { if (k === 'teamMin') cfg.teamMax = cfg.teamMin; else cfg.teamMin = cfg.teamMax; }
-    commit(); render();
+    commit(); renderKeepFocus();
   },
   app: el => {
     const cfg = cfgTarget(el), a = cfg.apparatus[+el.dataset.i], k = el.dataset.k;
@@ -2361,7 +2630,7 @@ const changes = {
     else if (k === 'attempts') a[k] = +el.value;
     else if (k === 'name') a[k] = el.value.trim() || a[k];
     else a[k] = el.value;
-    commit(); render();
+    commit(); renderKeepFocus();
   },
   gFilter: el => { ui[el.dataset.k] = el.value; $('#gymtable').innerHTML = gymTable(); },
   gArchived: el => { ui.gArchived = el.checked; $('#gymtable').innerHTML = gymTable(); },
@@ -2373,7 +2642,13 @@ const changes = {
     $('#teamcount').textContent = $$('#teampick input:checked').length;
   },
   teamCount: () => { $('#teamcount').textContent = $$('#teampick input:checked').length; },
-  impHeader: el => { ui.import.hasHeader = el.checked; if (el.checked) ui.import.map = range(ui.import.width).map(i => guessField(ui.import.rows[0][i]) || ui.import.map[i]); openDialog(importDialog(), { wide: true }); },
+  impHeader: el => {
+    const imp = ui.import;
+    imp.hasHeader = el.checked;
+    imp.map = el.checked ? range(imp.width).map(i => guessField(imp.rows[0][i]) || imp.map[i])
+      : ['name', 'surname', 'club', 'gender', 'category', 'level', 'birth', 'team'].slice(0, imp.width).concat(range(Math.max(0, imp.width - 8)).map(() => ''));
+    openDialog(importDialog(), { wide: true });
+  },
   impMap: el => { ui.import.map[+el.dataset.i] = el.value; openDialog(importDialog(), { wide: true }); },
   impDef: el => { ui.import[el.dataset.k] = el.value; openDialog(importDialog(), { wide: true }); },
   clubName: el => {
@@ -2394,6 +2669,8 @@ const changes = {
     });
   },
   setting: el => { S()[el.dataset.k] = el.value; commit(); },
+  rkSeason: el => { ui.rkSeason = el.value; ui.rkGroup = null; render(); },
+  rkComp: el => { ui.rkOff[el.dataset.id] = !el.checked; render(); },
   catField: el => {
     const i = +el.dataset.i, c = S().categories[i], k = el.dataset.k;
     if (k === 'name') {
@@ -2408,7 +2685,7 @@ const changes = {
       return;
     }
     c[k] = el.value === '' ? null : Math.round(+el.value);
-    commit(); render();
+    commit(); renderKeepFocus();
   },
   listRename: el => {
     const key = el.dataset.key, i = +el.dataset.i, old = S()[key][i], v = el.value.trim();
@@ -2477,7 +2754,7 @@ document.addEventListener('keydown', e => {
     const i = col.indexOf(el);
     if (changes.score(el) === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
     const next = col[i + (up ? -1 : 1)];
-    if (next) { next.focus(); next.select(); } else el.blur();
+    if (next) { next.focus(); next.select(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } else el.blur();
     return;
   }
   if (el.dataset && el.dataset.enter && e.key === 'Enter') { e.preventDefault(); actions[el.dataset.enter](el); }

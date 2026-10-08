@@ -26,10 +26,16 @@ internet.
    competició anterior. A *Inscripcions* hi apuntes les gimnastes i **els equips es fan sols**:
    les d'una mateixa entitat i grup formen equip si n'hi ha 3 o més (més de 6 → se'n fan dos).
    Si preferiu equips fixos, es poden preparar a *Equips* i inscriure'ls sencers.
-3. **Notes**: tria el grup i escriu les notes a la graella; **Intro** baixa a la següent (val
-   coma, punt o apòstrof). Tot es desa sol, també si es tanca la finestra sense prémer Intro.
-4. **Classificacions**: surten soles. *Imprimeix / PDF* i *Exporta a Excel* treuen els fulls
-   (classificacions, acta de notes, llistat d'inscrites i fulls de jutge en blanc).
+3. **Notes**: tria el grup i escriu la nota final de cada aparell que donen les tutores;
+   **Intro** baixa a la següent (val coma, punt o apòstrof). Tot es desa sol, també si es tanca
+   la finestra sense prémer Intro. Des de la mateixa graella es pot canviar una gimnasta d'equip.
+4. **Classificacions**: surten soles (general individual, per aparells, per equips i **podi**
+   per a les medalles). *Imprimeix / PDF* i *Exporta a Excel* treuen els fulls (classificacions,
+   podi, acta de notes, llistat d'inscripcions i fulls de jutge en blanc).
+5. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips.
+
+Tot es pot editar o esborrar: fitxes, entitats, equips, competicions, inscripcions, notes,
+categories, nivells i aparells.
 
 ## Categories
 
@@ -44,15 +50,18 @@ cada gimnasta. Les competicions ja fetes conserven la categoria d'aquell dia.
 Per defecte, les de la normativa UCEC de gimnàstica artística dels JEEC:
 
 - Cada **categoria + gènere + nivell** té les seves classificacions.
-- **Noies**: salt, barra i terra. **Nois**: salt, terra i minitramp. Es pot canviar per aparell
-  (que compti, que tingui classificació a part o que no es faci) a la configuració.
-- **Salt i minitramp: 2 intents, compta el millor.** Nota mínima de **3 punts** per a qui fa
-  l'exercici (un 0 vol dir que no l'ha fet).
+- Nivells **A** i **B**.
+- **Noies**: salt, barra i terra. **Nois**: salt, terra i minitramp (**2 salts, compta el
+  millor**). Es pot canviar per aparell (que compti, que tingui classificació a part o que no es
+  faci) a la configuració.
+- Nota mínima de **3 punts** per a qui fa l'exercici (un 0 vol dir que no l'ha fet).
 - **General individual** = suma dels aparells que compten.
 - **Equips** de 3 a 6 gimnastes: a cada aparell només compten les **3 millors notes**; la resta
-  surten ratllades. Un equip que no té entre 3 i 6 gimnastes que hagin competit surt com a NC.
-- **Empats**: per defecte mateixa posició (1, 1, 3). Es pot triar desempatar per la millor nota
-  d'aparell o, si s'entren D i E, com la FIG (primer E, després D).
+  surten ratllades. Una entitat amb 7 o més gimnastes en un grup en fa dos equips. Si un equip
+  es queda amb menys de 3 perquè algú no es presenta, **s'anul·la** (les gimnastes segueixen
+  comptant com a individuals).
+- **Empats**: mateixa posició (per exemple, dues segones i la següent és quarta). Es pot triar
+  desempatar per la millor nota d'aparell o, si s'entren D i E, com la FIG (primer E, després D).
 - **No presentada (NP)**: surt a baix, sense posició, i no suma per a l'equip.
 - Configurable per competició: aparells (minitramp o paral·leles com a classificació a part o
   dins la general), 1 o 2 intents (compta la millor, la mitjana o la suma), nota final o

@@ -128,12 +128,8 @@ await step('entra notes amb el teclat (Intro baixa a la següent)', async () => 
   const first = page.locator('#scoregrid input.sc').first();
   await first.focus();
   for (const v of salt) { await page.keyboard.type(v); await page.keyboard.press('Enter'); }
-  // 2n salt de la primera gimnasta, més alt: ha de comptar el millor
-  await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').first().fill('8,9');
-  await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').first().press('Enter');
-  assert.equal(await page.locator('#scoregrid td[data-out^="app:"]').first().textContent(), '8,90');
-  await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').first().fill('');
-  await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').first().press('Enter');
+  // el salt és una sola casella (la tutora dona la nota final)
+  assert.equal(await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').count(), 0);
   await page.click('button[data-act=pickApp][data-a=all]');
   // Totes: omplim barra i terra per columnes
   for (const app of ['barra', 'terra']) {
@@ -159,16 +155,16 @@ await step('nota no vàlida queda marcada i no es desa', async () => {
 });
 
 await step('nota escrita sense Intro es desa igualment si es tanca o es recarrega', async () => {
-  const inp = page.locator('#scoregrid input.sc[data-col="salt:1:v"]').nth(2);
+  const inp = page.locator('#scoregrid input.sc[data-col="salt:0:v"]').nth(2);
   await inp.click();
   await page.keyboard.type('7,6');
   await page.reload();
   await page.waitForSelector('#scoregrid');
-  assert.equal(await page.locator('#scoregrid input.sc[data-col="salt:1:v"]').nth(2).inputValue(), '7,60');
+  assert.equal(await page.locator('#scoregrid input.sc[data-col="salt:0:v"]').nth(2).inputValue(), '7,60');
 });
 
 await step('nota no vàlida + Intro: es queda a la mateixa casella', async () => {
-  const col = page.locator('#scoregrid input.sc[data-col="salt:1:v"]');
+  const col = page.locator('#scoregrid input.sc[data-col="salt:0:v"]');
   await col.nth(3).click();
   await page.keyboard.type('7..1');
   await page.keyboard.press('Enter');
@@ -177,6 +173,27 @@ await step('nota no vàlida + Intro: es queda a la mateixa casella', async () =>
   await page.keyboard.press('Enter');
   assert.ok(await col.nth(4).evaluate(el => el === document.activeElement));
   assert.equal(await col.nth(3).inputValue(), '7,10');
+});
+
+await step('minitramp dels nois: 2 salts, compta el millor', async () => {
+  await page.click('button[data-act=pickGroup]:has-text("masculí")');
+  const mini = page.locator('#scoregrid input.sc[data-col="mini:0:v"]');
+  await mini.first().fill('8,2'); await mini.first().press('Tab');
+  const mini2 = page.locator('#scoregrid input.sc[data-col="mini:1:v"]');
+  await mini2.first().fill('8,9'); await mini2.first().press('Tab');
+  assert.equal(await page.locator('#scoregrid td[data-out$=":mini"]').first().textContent(), '8,90');
+  await page.click('button[data-act=pickGroup]:has-text("Aleví femení · Nivell A")');
+});
+
+await step('canviar d’equip el mateix dia des de la graella de notes', async () => {
+  const sel = page.locator('#scoregrid select.teamsel').first();
+  const before = await sel.inputValue();
+  await sel.selectOption('');
+  await page.waitForSelector('#scoregrid');
+  assert.equal(await page.locator('#scoregrid select.teamsel').first().inputValue(), '');
+  await page.locator('#scoregrid select.teamsel').first().selectOption(before);
+  await page.waitForSelector('#scoregrid');
+  assert.equal(await page.locator('#scoregrid select.teamsel').first().inputValue(), before);
 });
 
 await step('classificacions: individual, per aparells i equips (3 millors)', async () => {
@@ -192,7 +209,26 @@ await step('classificacions: individual, per aparells i equips (3 millors)', asy
   await shot('classificacio-equips');
   await page.click('button[data-act=pickClsType][data-t=apps]');
   await page.waitForSelector('h3:has-text("Salt")');
+  await page.click('button[data-act=pickClsType][data-t=podium]');
+  await page.waitForSelector('table.podium');
+  assert.ok((await page.locator('table.podium').first().textContent()).includes('Or'));
+  await shot('podi');
   await page.click('button[data-act=pickClsType][data-t=general]');
+});
+
+await step('un equip que es queda amb 2 per una NP s’anul·la', async () => {
+  await page.click('.tabs a:has-text("Inscripcions")');
+  const row = page.locator('tr', { hasText: 'Laia Serra' });
+  await row.locator('select[data-chg=entryStatus]').selectOption('np');
+  await page.click('.tabs a:has-text("Classificacions")');
+  await page.click('button[data-act=pickClsType][data-t=teams]');
+  await page.waitForSelector('text=Equips anul·lats');
+  assert.equal(await page.locator('tr.team-row').count(), 2);
+  await page.click('.tabs a:has-text("Inscripcions")');
+  await page.locator('tr', { hasText: 'Laia Serra' }).locator('select[data-chg=entryStatus]').selectOption('');
+  await page.click('.tabs a:has-text("Classificacions")');
+  await page.waitForSelector('tr.team-row');
+  assert.equal(await page.locator('tr.team-row').count(), 3);
 });
 
 await step('les dades es mantenen després de tancar i tornar a obrir', async () => {
@@ -214,10 +250,36 @@ await step('competició nova amb inscripcions soltes: els equips es fan sols', a
   await page.click('#dlg button[data-act=checkAll]');
   await page.click('#dlg button.primary');
   await page.waitForSelector('text=Aleví femení · Nivell A');
-  // CG Lleida (4 noies), Pardinyes (3) i Balaguer (3) fan equip; l'Iris (nivell B) i el Pau sols no
+  // les que tenen equip fix (fet abans a «Equips») hi van soles; l'Iris (nivell B) i el Pau, sols, no fan equip
   const chips = await page.locator('.chip b').allTextContents();
-  assert.deepEqual(chips.sort(), ['CG Lleida', 'Club Balaguer', 'Escola Pardinyes']);
+  assert.deepEqual(chips.sort(), ['CG Lleida Aleví A femení', 'Club Balaguer Aleví A femení', 'Escola Pardinyes Aleví A femení']);
+  // treure una gimnasta d'un equip a mà i inscriure'n una altra no la torna a posar a l'equip
+  const row = page.locator('tr', { hasText: 'Dana Roca' });
+  await row.locator('select[data-chg=entryTeam]').selectOption('');
+  await page.waitForSelector('text=Aleví femení · Nivell A');
+  await page.click('button[data-act=enrollGyms]');
+  await page.waitForSelector('#dlg[open]');
+  assert.ok((await page.locator('#gympick').textContent()).includes('Ja està tothom inscrit'));
+  await page.click('#dlg button[data-act=closeDlg]');
+  await page.click('button[data-act=autoCompTeams]');
+  assert.equal(await page.locator('tr', { hasText: 'Dana Roca' }).locator('select[data-chg=entryTeam]').inputValue(), '');
   // tornem a la primera competició (la de gener, que surt la segona a la llista)
+  await page.goto(url + '#/competicions');
+  await page.locator('.comp-card', { hasText: '22/01/2027' }).locator('a.btn').click();
+  await page.waitForSelector('.tabs');
+});
+
+await step('rànquing de jornades: suma les competicions del curs', async () => {
+  await page.goto(url + '#/ranquing');
+  await page.waitForSelector('text=Rànquing de jornades');
+  await page.waitForSelector('table.tbl');
+  const first = page.locator('table.tbl tbody tr').first();
+  assert.equal((await first.locator('td').first().textContent()).trim(), '1');
+  // dues jornades al curs 2026-2027: J1 amb notes i J2 encara sense
+  assert.equal(await page.locator('input[data-chg=rkComp]').count(), 2);
+  await shot('ranquing');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button[data-act=exportRanking]')]);
+  await dl.saveAs(path.join(out, 'ranquing.xlsx'));
   await page.goto(url + '#/competicions');
   await page.locator('.comp-card', { hasText: '22/01/2027' }).locator('a.btn').click();
   await page.waitForSelector('.tabs');
@@ -231,7 +293,7 @@ await step('exporta a Excel (.xlsx)', async () => {
 await step('impressió: genera PDF de totes les classificacions', async () => {
   await page.evaluate(() => { window.print = () => {}; });
   await page.click('button[data-act=printDlg]');
-  for (const t of ['apps', 'notes', 'judge', 'list']) await page.check(`#dlg input[name=t][value=${t}]`);
+  for (const t of ['podium', 'apps', 'notes', 'judge', 'list']) await page.check(`#dlg input[name=t][value=${t}]`);
   await page.click('#dlg button.primary');
   await page.waitForFunction(() => document.querySelectorAll('#print .sheet').length > 0);
   const n = await page.locator('#print .sheet').count();

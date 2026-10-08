@@ -166,13 +166,36 @@ test('l’apòstrof també serveix de coma (tecla al costat del 0)', () => {
   assert.equal(E.parseScore("8'5"), 8.5);
 });
 
-test('la general marca incompleta qui només té el 1r de 2 intents', () => {
+test('amb 2 intents, una sola nota ja compta (les tutores poden donar només la final)', () => {
   const c = comp();
   c.apparatus[0] = { ...c.apparatus[0], attempts: 2, rule: 'best' };
-  c.entries.push({ id: 'x', name: 'X', category: 'Aleví', level: 'A', status: '', scores: { salt: [{ v: 9 }], barra: [{ v: 8 }], terra: [{ v: 8 }] } });
+  c.entries.push({ id: 'x', name: 'X', category: 'Aleví', level: 'A', status: '', scores: { salt: [{ v: 9 }], barra: [{ v: 8 }], terra: [{ v: 8 }] } },
+    { id: 'y', name: 'Y', category: 'Aleví', level: 'A', status: '', scores: { salt: [{ v: 9 }], barra: [{ v: 8 }] } });
   const { rows } = E.individualRanking(c, group(c), { nameOf });
   assert.equal(rows[0].total, 25000);
-  assert.equal(rows[0].complete, false);
+  assert.equal(rows[0].complete, true);
+  assert.equal(rows[1].complete, false);   // li falta el terra
+});
+
+test('rànquing de jornades: suma les notes de totes les competicions', () => {
+  const mk = (id, notes) => {
+    const c = comp({ id });
+    for (const [name, gid, s, team] of notes) c.entries.push(entry(name, { salt: s, barra: s, terra: s }, { gymnastId: gid, teamId: team || null }));
+    return c;
+  };
+  const j1 = mk('j1', [['Anna', 'g1', 8], ['Berta', 'g2', 9], ['Carla', 'g3', 7]]);
+  const j2 = mk('j2', [['Anna', 'g1', 9], ['Carla', 'g3', 7]]);       // la Berta no hi va
+  j1.teams.push({ id: 't', name: 'Club X', clubId: 'cx', category: 'Aleví', level: 'A' });
+  j2.teams.push({ id: 'u', name: 'Club X', clubId: 'cx', category: 'Aleví', level: 'A' });
+  for (const e of j1.entries) e.teamId = 't';
+  for (const e of j2.entries) e.teamId = 'u';
+  j2.entries.push(entry('Dana', { salt: 6, barra: 6, terra: 6 }, { gymnastId: 'g4', teamId: 'u' }));
+  const [g] = E.seasonRanking([j1, j2], { categories: CATS, levels: ['A'] }, { nameOf });
+  assert.deepEqual(plain(g.rows.map(r => [r.name, r.total, r.n, r.rank])),
+    [['Anna', 51000, 2, 1], ['Carla', 42000, 2, 2], ['Berta', 27000, 1, 3], ['Dana', 18000, 1, 4]]);
+  assert.equal(g.rows[0].per.j1, 24000);
+  // equip: jornada 1 = 8+9+7 per aparell (72), jornada 2 = 9+7+6 per aparell (66)
+  assert.deepEqual(plain(g.teams.map(t => [t.name, t.total, t.n])), [['Club X', 138000, 2]]);
 });
 
 test('equips: desempat per millor nota individual que compta', () => {

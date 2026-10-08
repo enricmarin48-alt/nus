@@ -1,12 +1,14 @@
-// Service worker de NUS: desa el joc al telèfon perquè funcioni sense cobertura.
-// Puja la versió cada cop que canviïs index.html i el telèfon es descarregarà el nou.
-const VERSION = 'nus-v4';
+// Service worker de NotesGim: desa l'app a l'ordinador perquè funcioni sense internet.
+// Puja la versió cada cop que canviïs index.html i els ordinadors es descarregaran la nova.
+// (Les dades no passen mai per aquí: són al localStorage del navegador.)
+const VERSION = 'notesgim-v1';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/maskable-512.png',
   './icons/apple-touch-icon.png',
 ];
 
@@ -21,8 +23,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      // només les nostres: al mateix domini hi ha altres apps (gimnastica/) amb la seva memòria cau
-      .then(keys => Promise.all(keys.filter(k => k.startsWith('nus-') && k !== VERSION).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k.startsWith('notesgim-') && k !== VERSION).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -30,7 +31,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then(hit => {
+    caches.match(e.request, { ignoreSearch: true }).then(hit => {
       if (hit) {
         // el tenim: el servim de seguida i mirem si n'hi ha un de nou per a la pròxima
         fetch(e.request)

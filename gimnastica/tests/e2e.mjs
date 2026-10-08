@@ -206,12 +206,23 @@ await step('classificacions: individual, per aparells i equips (3 millors)', asy
   assert.equal(await page.locator('tr.team-row').count(), 3);
   // CG Lleida té 4 gimnastes: a cada aparell n'hi ha una de ratllada
   assert.ok(await page.locator('td.disc').count() >= 3);
+  // les gimnastes de cada equip surten en un desplegable
+  const firstTeam = page.locator('tr.team-row').first();
+  assert.equal(await page.locator('tr.member:not(.hidden)').count(), 0);
+  await firstTeam.locator('button.tg').click();
+  assert.ok(await page.locator('tr.member:not(.hidden)').count() >= 3);
+  await page.click('button[data-act=toggleAllTeams][data-open="1"]');
+  assert.equal(await page.locator('tr.member.hidden').count(), 0);
   await shot('classificacio-equips');
   await page.click('button[data-act=pickClsType][data-t=apps]');
   await page.waitForSelector('h3:has-text("Salt")');
   await page.click('button[data-act=pickClsType][data-t=podium]');
   await page.waitForSelector('table.podium');
   assert.ok((await page.locator('table.podium').first().textContent()).includes('Or'));
+  // al podi d'equips, el desplegable diu qui cal cridar
+  const det = page.locator('details.mem').first();
+  await det.locator('summary').click();
+  assert.ok((await det.textContent()).includes('Anna Puig') || (await det.textContent()).includes('Elna Mas') || (await det.locator('li').count()) >= 3);
   await shot('podi');
   await page.click('button[data-act=pickClsType][data-t=general]');
 });

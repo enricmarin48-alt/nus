@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1d3f7a">
+<meta name="theme-color" content="#6d1a33">
 <meta name="description" content="Notes i classificacions de gimnàstica artística (individual, per aparells i per equips). Funciona sense internet.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d3f7a'/%3E%3Crect x='10' y='24' width='44' height='7' rx='3' fill='white'/%3E%3Cpath d='M20 31l-3 20M44 31l3 20' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='13' r='6' fill='%23ffc94d'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236d1a33'/%3E%3Crect x='10' y='24' width='44' height='7' rx='3' fill='white'/%3E%3Cpath d='M20 31l-3 20M44 31l3 20' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='13' r='6' fill='%23ffc94d'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>NotesGim · Gimnàstica artística</title>
 <style>
   :root{
     color-scheme: light;
     --bg:#f3f5f9; --panel:#fff; --ink:#1a2233; --muted:#667085; --line:#dde2ea; --line2:#eef1f5;
-    --pri:#1d3f7a; --pri2:#2c5cb0; --pri-soft:#e6eefb; --pri-ink:#fff;
+    --pri:#6d1a33; --pri2:#8f2445; --pri-soft:#f7e6ec; --pri-ink:#fff;
     --ok:#1e7b3a; --ok-soft:#e5f5ea; --warn:#a15c00; --warn-soft:#fff3dc; --bad:#c0262d; --bad-soft:#fdeaea;
     --gold:#fff1bf; --silver:#eceff4; --bronze:#f7e0cc;
     --r:10px;
@@ -38,10 +38,10 @@
   .brand{display:flex;align-items:center;gap:9px;color:#fff;text-decoration:none;font-weight:800;font-size:17px;letter-spacing:.02em}
   .brand svg{width:28px;height:28px}
   header.top nav{display:flex;gap:4px;flex-wrap:wrap}
-  header.top nav a{color:#dbe6fb;text-decoration:none;padding:7px 12px;border-radius:8px;font-weight:600}
+  header.top nav a{color:#f3dbe3;text-decoration:none;padding:7px 12px;border-radius:8px;font-weight:600}
   header.top nav a:hover{background:rgba(255,255,255,.1)}
   header.top nav a.on{background:#fff;color:var(--pri)}
-  .savestate{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12px;color:#dbe6fb}
+  .savestate{margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12px;color:#f3dbe3}
   .savestate button{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:7px;padding:4px 9px;cursor:pointer;font-size:12px}
   .savestate button.alert{background:#ffc94d;color:#3a2a00;border-color:#ffc94d;font-weight:700}
   .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#5fd38a;margin-right:5px}
@@ -70,7 +70,7 @@
   .icon-btn:hover{background:var(--line2);color:var(--ink)}
   input[type=text],input[type=number],input[type=date],input[type=search],select,textarea{
     border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;min-width:0}
-  input:focus,select:focus,textarea:focus{outline:2px solid #9bb8ec;outline-offset:0;border-color:#9bb8ec}
+  input:focus,select:focus,textarea:focus{outline:2px solid #dba3b6;outline-offset:0;border-color:#dba3b6}
   textarea{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:12px}
   label.f{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
   label.f > span{color:var(--muted);font-weight:600}
@@ -122,7 +122,7 @@
   .badge.pri{background:var(--pri-soft);color:var(--pri)}
   .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;padding:4px 6px 4px 10px;background:#fff;font-size:13px}
   .chips{display:flex;gap:6px;flex-wrap:wrap}
-  .note{padding:10px 12px;border-radius:8px;background:var(--pri-soft);color:#1c3260;margin-bottom:12px;font-size:13px}
+  .note{padding:10px 12px;border-radius:8px;background:var(--pri-soft);color:#561327;margin-bottom:12px;font-size:13px}
   .note.warn{background:var(--warn-soft);color:#6b3e00}
   .note.bad{background:var(--bad-soft);color:#7d1419}
   .steps{margin:0;padding-left:20px}.steps li{margin:4px 0}
@@ -144,6 +144,8 @@
   input.sc:disabled{background:#f6f7f9;color:#555}
   input.bib{width:62px;text-align:right}
   td.out{color:#26324a;font-weight:700}
+  .minhint{color:var(--warn);font-weight:700;margin-right:4px;font-size:12px}
+  .minhint:empty{display:none}
   .progress{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 10px}
   .ico{width:18px;height:18px;vertical-align:-4px;display:inline-block}
   .ico svg{width:100%;height:100%}
@@ -192,7 +194,7 @@
   .sheet .sub{text-align:center;font-weight:700;margin-bottom:10px;text-transform:uppercase}
   .sheet table{width:100%;border-collapse:collapse;font-size:10pt}
   .sheet th,.sheet td{border:1px solid #777;padding:3px 6px}
-  .sheet th{background:#e3e8f0;font-size:9pt;text-transform:uppercase}
+  .sheet th{background:#f1e3e8;font-size:9pt;text-transform:uppercase}
   .sheet tr.gold td{background:#fff1bf}.sheet tr.silver td{background:#eceff4}.sheet tr.bronze td{background:#f7e0cc}
   .sheet tr.team-row td{font-weight:700;background:#f2f4f8}
   .sheet tr.team-row.gold td{background:#fff1bf}.sheet tr.team-row.silver td{background:#eceff4}.sheet tr.team-row.bronze td{background:#f7e0cc}
@@ -208,7 +210,7 @@
 <body>
 <header class="top">
   <a class="brand" href="#/competicions" aria-label="NotesGim, inici">
-    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#fff"/><rect x="10" y="24" width="44" height="7" rx="3" fill="#1d3f7a"/><path d="M20 31l-3 20M44 31l3 20" stroke="#1d3f7a" stroke-width="5" stroke-linecap="round"/><circle cx="32" cy="13" r="6" fill="#e9a400"/></svg>
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#fff"/><rect x="10" y="24" width="44" height="7" rx="3" fill="#6d1a33"/><path d="M20 31l-3 20M44 31l3 20" stroke="#6d1a33" stroke-width="5" stroke-linecap="round"/><circle cx="32" cy="13" r="6" fill="#e9a400"/></svg>
     NotesGim
   </a>
   <nav>
@@ -249,7 +251,7 @@ const Engine = (() => {
   // el que escriu l'usuari → número (accepta coma o punt) · '' → null · brossa → NaN
   function parseScore(input) {
     if (input === null || input === undefined) return null;
-    const s = String(input).replace(/\s+/g, '').replace(',', '.');
+    const s = String(input).replace(/\s+/g, '').replace(/[,']/, '.');
     if (s === '') return null;
     if (!/^(\d+(\.\d*)?|\.\d+)$/.test(s)) return NaN;
     return Math.round(Number(s) * M) / M;
@@ -268,14 +270,17 @@ const Engine = (() => {
   const modeOf = cfg => (cfg && typeof cfg === 'object') ? cfg.scoring : cfg;
   const minOf = cfg => (cfg && typeof cfg === 'object') ? (toM(cfg.minScore) || 0) : 0;
 
-  // nota d'un intent. Mode 'simple': la nota tal qual. Mode 'detailed': D + E − penalització.
+  // nota d'un intent. Mode 'simple': la nota tal qual. Mode 'detailed': D + E − penalització; sense E encara
+  // no hi ha nota (així una E oblidada no passa per bona). Si només hi ha la nota final (entrada en mode
+  // simple abans de canviar de mode), compta aquesta menys la penalització.
   // Si hi ha nota mínima (p. ex. 3), qui fa l'exercici no en treu menys; un 0 vol dir que no l'ha fet.
   function attemptValue(att, cfg) {
     if (!att) return null;
     let v;
     if (modeOf(cfg) === 'detailed') {
-      const d = toM(att.d), e = toM(att.e), p = toM(att.p);
-      v = (d === null && e === null) ? toM(att.v) : Math.max(0, (d || 0) + (e || 0) - (p || 0));
+      const d = toM(att.d), e = toM(att.e), p = toM(att.p) || 0;
+      if (d === null && e === null) { const f = toM(att.v); v = f === null ? null : Math.max(0, f - (att.src === 'de' ? 0 : p)); }
+      else v = e === null ? null : Math.max(0, (d || 0) + e - p);
     } else v = toM(att.v);
     const min = minOf(cfg);
     return (v !== null && v > 0 && v < min) ? min : v;
@@ -312,34 +317,59 @@ const Engine = (() => {
     return { d: Math.round(sum('d') / done.length), e: Math.round(sum('e') / done.length) };
   }
 
-  const enabledApps = comp => (comp.apparatus || []).filter(a => a.enabled);
-  const totalApps = comp => enabledApps(comp).filter(a => a.inTotal);
-  const teamApps = comp => enabledApps(comp).filter(a => a.inTeam);
+  // gènere: 'F' (femení) o 'M' (masculí). Les dades antigues sense gènere són femení.
+  const genderOf = x => (x && x.gender === 'M') ? 'M' : 'F';
+
+  // cada aparell diu què és per a noies i per a nois: 'total' (compta a la general i per equips),
+  // 'apart' (només la seva classificació) o 'off' (no es fa). Accepta el format antic (enabled/inTotal).
+  function appMode(a, gender) {
+    if (a.modes) return a.modes[gender === 'M' ? 'M' : 'F'] || 'off';
+    if (!a.enabled) return 'off';
+    return a.inTotal ? 'total' : 'apart';
+  }
+  // sense gènere: els aparells que es fan per a algú
+  const enabledApps = (comp, gender) => (comp.apparatus || []).filter(a =>
+    gender ? appMode(a, gender) !== 'off' : (appMode(a, 'F') !== 'off' || appMode(a, 'M') !== 'off'));
+  const totalApps = (comp, gender) => (comp.apparatus || []).filter(a => appMode(a, gender || 'F') === 'total');
+  const teamApps = (comp, gender) => totalApps(comp, gender).filter(a => a.inTeam !== false || a.modes);
 
   // suma de la general individual d'una inscripció (null si no té cap nota)
   function entryTotal(comp, entry) {
     let t = 0, n = 0;
-    for (const a of totalApps(comp)) { const v = appScore(entry, a, comp); if (v !== null) { t += v; n++; } }
+    for (const a of totalApps(comp, genderOf(entry))) { const v = appScore(entry, a, comp); if (v !== null) { t += v; n++; } }
     return n ? t : null;
   }
 
-  const groupKey = (category, level) => String(category) + '||' + String(level);
+  const groupKey = (category, gender, level) => String(category) + '||' + (gender === 'M' ? 'M' : 'F') + '||' + String(level);
   const idx = (list, v) => { const i = (list || []).indexOf(v); return i < 0 ? 1e6 : i; };
+  const catName = c => (c && typeof c === 'object') ? c.name : c;
 
-  // grups = categoria + nivell (cada grup té la seva classificació)
+  // grups = categoria + gènere + nivell (cada grup té la seva classificació)
   function groupsOf(comp, settings) {
     const map = new Map();
-    const add = (category, level) => {
-      const key = groupKey(category, level);
-      if (!map.has(key)) map.set(key, { key, category, level, entries: [] });
+    const add = (category, gender, level) => {
+      const key = groupKey(category, gender, level);
+      if (!map.has(key)) map.set(key, { key, category, gender: gender === 'M' ? 'M' : 'F', level, entries: [] });
       return map.get(key);
     };
-    for (const e of comp.entries || []) add(e.category, e.level).entries.push(e);
-    for (const t of comp.teams || []) add(t.category, t.level);
-    const cats = settings && settings.categories, levels = settings && settings.levels;
+    for (const e of comp.entries || []) add(e.category, genderOf(e), e.level).entries.push(e);
+    for (const t of comp.teams || []) add(t.category, genderOf(t), t.level);
+    const cats = ((settings && settings.categories) || []).map(catName), levels = settings && settings.levels;
     return [...map.values()].sort((a, b) =>
       idx(cats, a.category) - idx(cats, b.category) || coll(a.category, b.category) ||
+      (a.gender === b.gender ? 0 : a.gender === 'F' ? -1 : 1) ||
       idx(levels, a.level) - idx(levels, b.level) || coll(a.level, b.level));
+  }
+
+  // categoria que toca segons l'any de naixement. defs: [{name, from, to}] (from/to buits = sense límit)
+  function categoryForYear(defs, year) {
+    const y = parseInt(year, 10);
+    if (!Number.isFinite(y)) return null;
+    const hit = (defs || []).find(c => c && typeof c === 'object' &&
+      (c.from === null || c.from === undefined || c.from === '' || y >= +c.from) &&
+      (c.to === null || c.to === undefined || c.to === '' || y <= +c.to) &&
+      !((c.from === null || c.from === undefined || c.from === '') && (c.to === null || c.to === undefined || c.to === '')));
+    return hit ? hit.name : null;
   }
 
   // compara dues llistes de notes de més gran a més petita: la primera diferència mana
@@ -377,18 +407,19 @@ const Engine = (() => {
 
   // CLASSIFICACIÓ GENERAL INDIVIDUAL: suma dels aparells que compten per al total
   function individualRanking(comp, group, opts = {}) {
-    const apps = totalApps(comp);
+    const apps = totalApps(comp, group.gender);
     const nameOf = opts.nameOf || (() => '');
     const rows = withOrder(group.entries.map(e => {
       const np = e.status === 'np';
-      const scores = {}; let total = 0, n = 0, eSum = 0, dSum = 0;
+      const scores = {}; let total = 0, n = 0, eSum = 0, dSum = 0, full = 0;
       for (const a of apps) {
-        const v = appScore(e, a, comp);
+        const r = appResult(e, a, comp), v = r.value;
         scores[a.id] = v;
+        if (r.complete) full++;
         if (v !== null) { total += v; n++; const de = appDE(e, a, comp); eSum += de.e || 0; dSum += de.d || 0; }
       }
       return { entry: e, name: nameOf(e), scores, total: (n && !np) ? total : null,
-        count: n, complete: n === apps.length, np, eSum, dSum };
+        count: n, complete: full === apps.length, np, eSum, dSum };
     }));
     let tie = null;
     if (comp.tieInd === 'bestApp') tie = (a, b) => cmpDesc(Object.values(a.scores), Object.values(b.scores));
@@ -413,9 +444,9 @@ const Engine = (() => {
 
   // CLASSIFICACIÓ PER EQUIPS: a cada aparell només compten les N millors notes (per defecte 3)
   function teamRanking(comp, group, opts = {}) {
-    const apps = teamApps(comp);
+    const apps = teamApps(comp, group.gender);
     const N = comp.teamCount || 3, min = comp.teamMin || 3, max = comp.teamMax || 6;
-    const teams = (comp.teams || []).filter(t => t.category === group.category && t.level === group.level);
+    const teams = (comp.teams || []).filter(t => t.category === group.category && genderOf(t) === genderOf(group) && t.level === group.level);
     const rows = withOrder(teams.map(t => {
       const members = (comp.entries || []).filter(e => e.teamId === t.id);
       const perApp = {}, counted = {};
@@ -432,11 +463,12 @@ const Engine = (() => {
         perApp[a.id] = { value: top.length ? sum : null, used: top.length, full: top.length >= N };
         if (top.length) { total += sum; any = true; }
       }
-      const size = members.length;
-      const eligible = size >= min;
+      // classifica si hi han competit (no NP) entre el mínim i el màxim de gimnastes
+      const size = members.filter(e => e.status !== 'np').length;
+      const eligible = size >= min && size <= max;
       return { team: t, name: t.name, members, perApp, counted, allCounted,
         total: (any && eligible) ? total : null, rawTotal: any ? total : null,
-        complete: apps.every(a => perApp[a.id].full), size, eligible, oversize: size > max };
+        complete: apps.every(a => perApp[a.id].full), size, eligible, undersize: size < min, oversize: size > max };
     }));
     let tie = null;
     if (comp.tieTeam === 'bestApp') tie = (a, b) => cmpDesc(apps.map(x => a.perApp[x.id].value), apps.map(x => b.perApp[x.id].value));
@@ -452,9 +484,9 @@ const Engine = (() => {
     return mo >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
   }
 
-  return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appDE, enabledApps, totalApps,
-    teamApps, entryTotal, groupKey, groupsOf, cmpDesc, assignRanks, individualRanking, apparatusRanking,
-    teamRanking, seasonFor };
+  return { M, coll, norm, toM, parseScore, fmt, attemptValue, appResult, appScore, appDE, genderOf, appMode, enabledApps,
+    totalApps, teamApps, entryTotal, groupKey, groupsOf, categoryForYear, cmpDesc, assignRanks, individualRanking,
+    apparatusRanking, teamRanking, seasonFor };
 })();
 /* ═══════════════════════════════════════════ ENGINE-END */
 </script>
@@ -485,16 +517,58 @@ const ICONS = {
 };
 const icon = a => `<span class="ico" aria-hidden="true">${ICONS[a.icon] || ICONS.altre}</span>`;
 
+// valors per defecte segons la normativa UCEC de gimnàstica artística dels JEEC: salt i minitramp amb
+// 2 intents (compta el millor) i nota mínima de 3 punts per a qui fa l'exercici.
+// per a cada aparell, què és per a noies (F) i per a nois (M): 'total' = compta a la general i per equips,
+// 'apart' = només té la seva classificació, 'off' = no es fa
 const DEFAULT_APPS = () => [
-  { id: 'salt', name: 'Salt', icon: 'salt', enabled: true, inTotal: true, inTeam: true, attempts: 1, rule: 'best' },
-  { id: 'barra', name: 'Barra', icon: 'barra', enabled: true, inTotal: true, inTeam: true, attempts: 1, rule: 'best' },
-  { id: 'terra', name: 'Terra', icon: 'terra', enabled: true, inTotal: true, inTeam: true, attempts: 1, rule: 'best' },
-  { id: 'mini', name: 'Minitramp', icon: 'mini', enabled: false, inTotal: false, inTeam: false, attempts: 1, rule: 'best' },
-  { id: 'paral', name: 'Paral·leles', icon: 'paral', enabled: false, inTotal: true, inTeam: true, attempts: 1, rule: 'best' },
+  { id: 'salt', name: 'Salt', icon: 'salt', modes: { F: 'total', M: 'total' }, attempts: 2, rule: 'best' },
+  { id: 'barra', name: 'Barra', icon: 'barra', modes: { F: 'total', M: 'off' }, attempts: 1, rule: 'best' },
+  { id: 'terra', name: 'Terra', icon: 'terra', modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' },
+  { id: 'mini', name: 'Minitramp', icon: 'mini', modes: { F: 'off', M: 'total' }, attempts: 2, rule: 'best' },
+  { id: 'paral', name: 'Paral·leles', icon: 'paral', modes: { F: 'off', M: 'off' }, attempts: 1, rule: 'best' },
 ];
+const APP_MODES = [['total', 'Compta (general i equips)'], ['apart', 'Classificació a part'], ['off', 'No es fa']];
+// categories del curs 2026-2027: cada curs es pot passar al següent (+1 any) des de Configuració
+const DEFAULT_CATEGORIES = () => [
+  { name: 'Prebenjamí', from: 2019, to: 2020 },
+  { name: 'Benjamí', from: 2017, to: 2018 },
+  { name: 'Aleví', from: 2015, to: 2016 },
+  { name: 'Infantil', from: 2013, to: 2014 },
+  { name: 'Cadet', from: 2011, to: 2012 },
+  { name: 'Juvenil', from: 2009, to: 2010 },
+  { name: 'Sènior', from: null, to: 2008 },
+];
+// aparells en format antic (enabled / inTotal / inTeam, només noies) → modes per gènere
+function normalizeApps(list) {
+  if (!Array.isArray(list) || !list.length) return DEFAULT_APPS();
+  for (const a of list) {
+    if (!a.modes || typeof a.modes !== 'object') {
+      const m = a.enabled === false ? 'off' : a.inTotal === false ? 'apart' : 'total';
+      const def = DEFAULT_APPS().find(d => d.id === a.id);
+      a.modes = { F: m, M: def ? def.modes.M : 'off' };
+    }
+    for (const g of ['F', 'M']) if (!['total', 'apart', 'off'].includes(a.modes[g])) a.modes[g] = 'off';
+    delete a.enabled; delete a.inTotal; delete a.inTeam;
+    a.attempts = a.attempts === 2 ? 2 : 1;
+    if (!['best', 'avg', 'sum'].includes(a.rule)) a.rule = 'best';
+    if (!a.name) a.name = 'Aparell';
+  }
+  return list;
+}
+function normalizeCategories(list) {
+  const defs = DEFAULT_CATEGORIES();
+  if (!Array.isArray(list)) return defs;
+  const yr = v => (v === '' || v === null || v === undefined || !Number.isFinite(+v)) ? null : Math.round(+v);
+  return list.map(c => {
+    if (c && typeof c === 'object') return { name: String(c.name || '').trim(), from: yr(c.from), to: yr(c.to) };
+    const d = defs.find(x => norm(x.name) === norm(c));
+    return { name: String(c ?? '').trim(), from: d ? d.from : null, to: d ? d.to : null };
+  }).filter(c => c.name);
+}
 const COMP_DEFAULTS = () => ({
-  scoring: 'simple', maxScore: 20, minScore: 0, apparatus: DEFAULT_APPS(),
-  teamCount: 3, teamMin: 3, teamMax: 6, tieInd: 'shared', tieTeam: 'shared', tieApp: 'shared',
+  scoring: 'simple', maxScore: 20, minScore: 3, apparatus: DEFAULT_APPS(),
+  teamCount: 3, teamMin: 3, teamMax: 6, tieInd: 'shared', tieTeam: 'shared', tieApp: 'shared', autoTeams: true,
 });
 const COMP_KEYS = Object.keys(COMP_DEFAULTS());
 
@@ -503,9 +577,9 @@ function defaultDb() {
     app: 'notesgim', version: 1,
     settings: {
       org: 'CONSELL ESPORTIU DEL SEGRIÀ', line2: 'JOCS ESPORTIUS ESCOLARS DE CATALUNYA',
-      compName: 'Fase comarcal de gim. artística', place: 'Lleida', suffix: 'FEM',
+      compName: 'Fase comarcal de gim. artística', place: 'Lleida',
       logoL: null, logoR: null,
-      categories: ['Prebenjamí', 'Benjamí', 'Aleví', 'Infantil', 'Cadet', 'Juvenil'],
+      categories: DEFAULT_CATEGORIES(),
       levels: ['A', 'B', 'F'],
       compDefaults: COMP_DEFAULTS(),
     },
@@ -521,20 +595,25 @@ function migrate(d) {
   d.app = 'notesgim'; d.version = 1;
   d.settings = Object.assign({}, base.settings, d.settings || {});
   d.settings.compDefaults = Object.assign(COMP_DEFAULTS(), d.settings.compDefaults || {});
-  for (const k of ['categories', 'levels']) if (!Array.isArray(d.settings[k])) d.settings[k] = base.settings[k];
+  if (!Array.isArray(d.settings.levels)) d.settings.levels = base.settings.levels;
+  d.settings.categories = normalizeCategories(d.settings.categories);
+  d.settings.compDefaults.apparatus = normalizeApps(d.settings.compDefaults.apparatus);
+  delete d.settings.suffix;
   for (const k of ['clubs', 'gymnasts', 'teams', 'competitions']) if (!Array.isArray(d[k])) d[k] = [];
   d.meta = Object.assign({}, base.meta, d.meta || {});
-  for (const t of d.teams) if (!Array.isArray(t.memberIds)) t.memberIds = [];
+  for (const g of d.gymnasts) g.gender = Engine.genderOf(g);
+  for (const t of d.teams) { if (!Array.isArray(t.memberIds)) t.memberIds = []; t.gender = Engine.genderOf(t); }
   for (const c of d.competitions) normalizeComp(c, d.settings.compDefaults);
   return d;
 }
 function normalizeComp(c, defs) {
   const D = Object.assign(COMP_DEFAULTS(), defs || {});
   for (const k of COMP_KEYS) if (c[k] === undefined || c[k] === null) c[k] = JSON.parse(JSON.stringify(D[k]));
-  if (!Array.isArray(c.apparatus) || !c.apparatus.length) c.apparatus = DEFAULT_APPS();
+  c.apparatus = normalizeApps(c.apparatus);
   if (!Array.isArray(c.entries)) c.entries = [];
   if (!Array.isArray(c.teams)) c.teams = [];
-  for (const e of c.entries) { if (!e.scores || typeof e.scores !== 'object') e.scores = {}; if (!e.status) e.status = ''; }
+  for (const e of c.entries) { if (!e.scores || typeof e.scores !== 'object') e.scores = {}; if (!e.status) e.status = ''; e.gender = Engine.genderOf(e); }
+  for (const t of c.teams) t.gender = Engine.genderOf(t);
   return c;
 }
 
@@ -570,14 +649,37 @@ function flush() {
   if (fileHandle) queueFileWrite();
   renderSaveState(false);
 }
-addEventListener('pagehide', () => { if (saveTimer) flush(); });
-addEventListener('beforeunload', () => { if (saveTimer) flush(); });
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) flush(); });
-// una altra pestanya ha desat: carreguem el que hi ha de nou
+// si es tanca la finestra amb una nota escrita però sense Intro, també es desa
+function commitTyping() {
+  const el = document.activeElement;
+  if (el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value) changes.score(el);
+}
+const leaving = () => { commitTyping(); if (saveTimer) flush(); };
+addEventListener('pagehide', leaving);
+addEventListener('beforeunload', leaving);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') leaving(); });
+// una altra finestra ha desat: carreguem el que hi ha de nou, però mai a sobre d'una nota a mig escriure
 addEventListener('storage', e => {
   if (e.key !== LS_KEY || !e.newValue) return;
+  const el = document.activeElement;
+  const typing = el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value;
+  if (saveTimer || typing || $('#dlg').open || $('#confirm').open) { otherWindowWarning(); return; }
   try { db = migrate(JSON.parse(e.newValue)); render(); toast('Dades actualitzades des d’una altra finestra.'); } catch (_) {}
 });
+// avís si l'app està oberta en més d'una finestra (cada una pot trepitjar el que desa l'altra)
+let others = 0;
+const bc = typeof BroadcastChannel === 'function' ? new BroadcastChannel('notesgim') : null;
+if (bc) {
+  bc.onmessage = ev => {
+    if (ev.data === 'hola') { bc.postMessage('soc-aqui'); otherWindowWarning(); }
+    if (ev.data === 'soc-aqui') otherWindowWarning();
+  };
+  bc.postMessage('hola');
+}
+function otherWindowWarning() {
+  if (others++) return;
+  toast('NotesGim està obert en una altra finestra o pestanya. Treballa només en una perquè no es trepitgin les dades.', 'bad');
+}
 
 // IndexedDB mínima, només per recordar el fitxer vinculat entre sessions
 function idb(mode, fn) {
@@ -614,15 +716,34 @@ async function writeFileNow() {
   } catch (e) { console.error(e); fileState = 'err'; fileDirty = true; }
   renderSaveState(false);
 }
-async function linkFile() {
+const FILE_TYPES = [{ description: 'Dades de NotesGim', accept: { 'application/json': ['.json'] } }];
+const isNotesGim = d => d && typeof d === 'object' && Array.isArray(d.gymnasts) && Array.isArray(d.competitions);
+async function readHandle(handle) {
+  try { const f = await handle.getFile(); if (!f.size) return null; const d = JSON.parse(await f.text()); return isNotesGim(d) ? d : null; }
+  catch (_) { return null; }
+}
+async function attachHandle(handle) {
+  fileHandle = handle; await idbSet('fileHandle', handle);
+  fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue;
+  toast('A partir d’ara cada canvi també es desa a «' + handle.name + '».', 'ok');
+  render();
+}
+// vincula un fitxer: si ja té dades de NotesGim, primer es pregunta què se'n fa (mai s'esborra sense avisar)
+async function linkFile(mode) {
   if (!fsSupported()) { toast('Aquest navegador no pot desar directament a un fitxer. Fes servir «Descarrega còpia».', 'bad'); return; }
   try {
-    const handle = await window.showSaveFilePicker({ suggestedName: 'notesgim-dades.json',
-      types: [{ description: 'Dades de NotesGim', accept: { 'application/json': ['.json'] } }] });
-    fileHandle = handle; await idbSet('fileHandle', handle);
-    fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue;
-    toast('A partir d’ara cada canvi també es desa a «' + handle.name + '».', 'ok');
-    render();
+    const handle = mode === 'open'
+      ? (await window.showOpenFilePicker({ types: FILE_TYPES }))[0]
+      : await window.showSaveFilePicker({ suggestedName: 'notesgim-dades.json', types: FILE_TYPES });
+    if ((await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') { toast('Sense permís per escriure al fitxer.', 'bad'); return; }
+    const inFile = await readHandle(handle);
+    const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
+    if (inFile && (inFile.gymnasts.length || inFile.competitions.length)) {
+      const load = !hasData() || await confirmBox(`El fitxer «${h(handle.name)}» ja té dades (${info(inFile)}).<br><br>Vols <b>fer servir les dades del fitxer</b>? Les d’aquest navegador (${info(db)}) se substituiran (pots desfer-ho just després).<br><br>Si cancel·les, no es toca res.`, { ok: 'Fes servir les del fitxer' });
+      if (!load) return;
+      withUndo('Dades carregades de «' + handle.name + '».', () => { db = migrate(inFile); });
+    }
+    await attachHandle(handle);
   } catch (e) { if (e.name !== 'AbortError') toast('No s’ha pogut vincular el fitxer: ' + e.message, 'bad'); }
 }
 async function regrantFile() {
@@ -674,15 +795,30 @@ function restorePick() {
 const clubById = id => db.clubs.find(c => c.id === id);
 const clubName = id => (clubById(id) || {}).name || '';
 const gymById = id => db.gymnasts.find(g => g.id === id);
-const gymName = g => g ? [g.name, g.surname].filter(Boolean).join(' ') : '(gimnasta esborrada)';
+const gymName = g => g ? [g.name, g.surname].filter(Boolean).join(' ') : '(fitxa esborrada)';
 const entryName = e => gymName(gymById(e.gymnastId));
 const compById = id => db.competitions.find(c => c.id === id);
 const teamById = id => db.teams.find(t => t.id === id);
 const curComp = () => compById(ui.compId);
 const S = () => db.settings;
-const catLabel = c => c + (S().suffix ? ' ' + S().suffix : '');
-const groupLabel = g => `${g.category} · Nivell ${g.level}`;
-const groupLabelPrint = g => `${catLabel(g.category)} · Nivell ${g.level}`;
+const GENDERS = [['F', 'Femení'], ['M', 'Masculí']];
+const genderOf = Engine.genderOf;
+const genderWord = g => genderOf({ gender: g }) === 'M' ? 'masculí' : 'femení';
+const genderShort = g => genderOf({ gender: g }) === 'M' ? 'Masc.' : 'Fem.';
+const genderPrint = g => genderOf({ gender: g }) === 'M' ? 'MASC' : 'FEM';
+const catNames = () => S().categories.map(c => c.name);
+const catDef = name => S().categories.find(c => c.name === name);
+const yearsTxt = c => !c ? '' : (c.from && c.to) ? (c.from === c.to ? `${c.from}` : `${c.from}-${c.to}`) : c.to ? `${c.to} i abans` : c.from ? `${c.from} i després` : '';
+const catOption = (name, selected) => { const d = catDef(name); return `<option value="${h(name)}" ${selected ? 'selected' : ''}>${h(name)}${d && yearsTxt(d) ? ` (${yearsTxt(d)})` : ''}</option>`; };
+const catOptions = (v, extraIfMissing = true) => catNames().map(n => catOption(n, v === n)).join('') + (extraIfMissing && v && !catNames().includes(v) ? `<option selected>${h(v)}</option>` : '');
+const genderOptions = v => GENDERS.map(([k, l]) => `<option value="${k}" ${genderOf({ gender: v }) === k ? 'selected' : ''}>${l}</option>`).join('');
+const catForYear = y => Engine.categoryForYear(S().categories, y);
+const levelOptions = v => S().levels.map(l => `<option ${v === l ? 'selected' : ''}>${h(l)}</option>`).join('') + (v && !S().levels.includes(v) ? `<option selected>${h(v)}</option>` : '');
+// la categoria guardada no és la que toca per l'any de naixement (p. ex. després de passar de curs)
+const catMismatch = g => { const c = g.birthYear ? catForYear(g.birthYear) : null; return c && c !== g.category ? c : null; };
+const groupLabel = g => `${g.category} ${genderWord(g.gender)} · Nivell ${g.level}`;
+const groupLabelPrint = g => `${g.category} ${genderPrint(g.gender)} · Nivell ${g.level}`;
+const sameGroup = (a, b) => a.category === b.category && genderOf(a) === genderOf(b) && a.level === b.level;
 const groupsOf = c => Engine.groupsOf(c, S());
 const sortEntries = list => [...list].sort((a, b) => (a.bib || 1e9) - (b.bib || 1e9) || coll(entryName(a), entryName(b)));
 function ensureClub(name) {
@@ -698,11 +834,11 @@ function matchFromList(list, value) {
   return list.find(x => norm(x) === v) || null;
 }
 function nextBib(c) { return c.entries.reduce((m, e) => Math.max(m, +e.bib || 0), 0) + 1; }
-function compTeamsOf(c, cat, level) { return c.teams.filter(t => t.category === cat && t.level === level); }
+function compTeamsOf(c, g) { return c.teams.filter(t => sameGroup(t, g)); }
 
 /* ═══════════════════════════════════════════ estat de pantalla i rutes */
 const ui = { view: 'competicions', compId: null, tab: null, group: null, app: 'all', clsGroup: null, clsType: 'general',
-  gSearch: '', gClub: '', gCat: '', gLevel: '', gArchived: false, tCat: '', import: null };
+  gSearch: '', gClub: '', gGender: '', gCat: '', gLevel: '', gArchived: false, gWrong: false, tCat: '', import: null };
 
 function route() {
   const parts = location.hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
@@ -748,14 +884,20 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
       res(d.returnValue === 'ok' && typedOk);
     };
     d.showModal();
-    const inp = d.querySelector('input'); if (inp) inp.focus();
+    const inp = d.querySelector('input');
+    if (inp) inp.focus(); else if (danger) d.querySelector('button[value=no]').focus();
   });
 }
+// Desfés torna a l'estat d'abans, però només si després no s'ha canviat res més (si no, es perdria)
 function withUndo(label, fn) {
   const snap = JSON.stringify(db);
   fn();
   commit(); render();
-  toast(label, 'ok', { action: 'Desfés', onAction: () => { db = migrate(JSON.parse(snap)); commit(); render(); toast('Desfet.'); } });
+  const stamp = db.meta.updated;
+  toast(label, 'ok', { action: 'Desfés', onAction: () => {
+    if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
+    db = migrate(JSON.parse(snap)); commit(); render(); toast('Desfet.');
+  } });
 }
 
 /* ═══════════════════════════════════════════ render general */
@@ -774,11 +916,13 @@ function renderSaveState(busy) {
   const parts = [];
   if (saveError) parts.push(`<span><span class="dot err"></span>No s’ha pogut desar</span>`);
   else parts.push(`<span title="Les dades es desen automàticament en aquest navegador"><span class="dot ${busy ? 'busy' : ''}"></span>${busy ? 'Desant…' : 'Desat'}</span>`);
+  const fileOk = fileHandle && fileState === 'ok';
   if (fileHandle) {
-    if (fileState === 'perm') parts.push(`<button class="alert" data-act="regrantFile" title="El navegador demana permís per tornar a escriure al fitxer">Reactiva el fitxer ${h(fileHandle.name)}</button>`);
-    else if (fileState === 'err') parts.push(`<button class="alert" data-act="regrantFile">Error desant a ${h(fileHandle.name)}</button>`);
+    if (fileState === 'perm') parts.push(`<button class="alert" data-act="regrantFile" title="El navegador demana permís per tornar a escriure al fitxer. Fins llavors només es desa al navegador.">⚠ Clica per tornar a desar a ${h(fileHandle.name)}</button>`);
+    else if (fileState === 'err') parts.push(`<button class="alert" data-act="regrantFile">⚠ Error desant a ${h(fileHandle.name)}</button>`);
     else parts.push(`<span title="També es desa en aquest fitxer">+ ${h(fileHandle.name)}</span>`);
-  } else if (hasData() && backupDue()) {
+  }
+  if (!fileOk && hasData() && backupDue()) {
     parts.push(`<button class="alert" data-act="backup" title="No hi ha cap còpia recent de les dades fora del navegador">Fes una còpia</button>`);
   }
   el.innerHTML = parts.join('');
@@ -792,11 +936,10 @@ function backupDue() {
 
 /* ═══════════════════════════════════════════ COMPETICIONS (llista) */
 function compStats(c) {
-  const apps = Engine.enabledApps(c);
   const active = c.entries.filter(e => e.status !== 'np');
-  let done = 0;
-  for (const e of active) for (const a of apps) if (Engine.appScore(e, a, c) !== null) done++;
-  return { entries: c.entries.length, teams: c.teams.length, done, total: active.length * apps.length };
+  let done = 0, total = 0;
+  for (const e of active) for (const a of Engine.enabledApps(c, genderOf(e))) { total++; if (Engine.appResult(e, a, c).complete) done++; }
+  return { entries: c.entries.length, teams: c.teams.length, done, total };
 }
 views.competicions = () => {
   const comps = [...db.competitions].sort((a, b) => (b.date || '').localeCompare(a.date || '') || coll(a.name, b.name));
@@ -880,14 +1023,15 @@ function tabInscripcions(c) {
   const tools = `<div class="toolbar">
     <button class="btn primary" data-act="enrollTeams" ${dis}>＋ Inscriu equips</button>
     <button class="btn primary" data-act="enrollGyms" ${dis}>＋ Inscriu gimnastes</button>
+    <button class="btn" data-act="autoCompTeams" ${dis} title="Les gimnastes d’una mateixa entitat sense equip formen equip si n’hi ha ${c.teamMin} o més al mateix grup">Fes els equips automàticament</button>
     <div class="right">
       <button class="btn" data-act="renumber" ${dis} title="Torna a numerar els dorsals per categoria, nivell, entitat i nom">Renumera dorsals</button>
-      <button class="btn" data-act="printDlg" data-types="list">Llistat d’inscrites</button>
+      <button class="btn" data-act="printDlg" data-types="list">Llistat d’inscripcions</button>
       <button class="btn" data-act="printDlg" data-types="judge">Fulls de jutge</button>
     </div></div>`;
   if (!groups.length) return tools + `<div class="empty">Encara no hi ha cap gimnasta inscrita.<br>Inscriu-hi equips sencers (s’hi apunten totes les seves gimnastes) o gimnastes soltes.</div>`;
   return tools + groups.map(g => {
-    const teams = compTeamsOf(c, g.category, g.level);
+    const teams = compTeamsOf(c, g);
     const teamChips = teams.map(t => {
       const n = c.entries.filter(e => e.teamId === t.id).length;
       const cls = n < c.teamMin ? 'bad' : n > c.teamMax ? 'warn' : 'ok';
@@ -904,49 +1048,82 @@ function tabInscripcions(c) {
         <td>${h(clubName(e.clubId))}</td>
         <td><select data-chg="entryTeam" data-id="${e.id}" ${dis} aria-label="Equip"><option value="">— Només individual —</option>
           ${teams.map(t => `<option value="${t.id}" ${e.teamId === t.id ? 'selected' : ''}>${h(t.name)}</option>`).join('')}</select></td>
-        <td><select data-chg="entryStatus" data-id="${e.id}" ${dis} aria-label="Estat"><option value="">Participa</option><option value="np" ${e.status === 'np' ? 'selected' : ''}>No presentada</option></select></td>
+        <td><select data-chg="entryStatus" data-id="${e.id}" ${dis} aria-label="Estat"><option value="">Participa</option><option value="np" ${e.status === 'np' ? 'selected' : ''}>No es presenta (NP)</option></select></td>
         <td class="num"><button class="icon-btn" data-act="delEntry" data-id="${e.id}" title="Treu-la de la competició" ${dis}>✕</button></td></tr>`;
     }).join('');
     return `<div class="card">
       <div class="card-head"><h3>${h(groupLabel(g))}</h3><span class="muted">${plural(g.entries.length, 'gimnasta', 'gimnastes')} · ${plural(teams.length, 'equip', 'equips')}</span>
-        <div class="actions"><button class="btn sm" data-act="newCompTeam" data-cat="${h(g.category)}" data-level="${h(g.level)}" ${dis}>＋ Equip en aquesta categoria</button></div></div>
+        <div class="actions"><button class="btn sm" data-act="newCompTeam" data-g="${h(g.key)}" ${dis}>＋ Equip en aquesta categoria</button></div></div>
       ${teams.length ? `<div class="chips" style="margin-bottom:10px">${teamChips}</div>` : ''}
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Dorsal</th><th>Gimnasta</th><th>Entitat</th><th>Equip</th><th>Estat</th><th></th></tr></thead>
       <tbody>${rows || `<tr><td colspan="6" class="muted">Cap gimnasta en aquest grup.</td></tr>`}</tbody></table></div></div>`;
   }).join('');
 }
 
-function newEntry(c, g, cat, level) {
-  return { id: uid(), gymnastId: g.id, category: cat ?? g.category ?? '', level: level ?? g.level ?? '', clubId: g.clubId || null,
-    teamId: null, bib: nextBib(c), status: '', scores: {} };
+function newEntry(c, g, grp) {
+  return { id: uid(), gymnastId: g.id, category: (grp ? grp.category : g.category) ?? '', gender: genderOf(grp || g),
+    level: (grp ? grp.level : g.level) ?? '', clubId: g.clubId || null, teamId: null, bib: nextBib(c), status: '', scores: {} };
 }
 const hasScores = e => Object.values(e.scores || {}).some(arr => (arr || []).some(a => a && ['v', 'd', 'e', 'p'].some(k => a[k] !== undefined && a[k] !== null)));
 // inscriu un equip de la llista general: crea l'equip a la competició i hi apunta les seves gimnastes
 function enrollTeam(c, team) {
   let ct = c.teams.find(t => t.sourceTeamId === team.id);
   if (!ct) {
-    ct = { id: uid(), name: team.name, clubId: team.clubId || null, category: team.category, level: team.level, sourceTeamId: team.id };
+    ct = { id: uid(), name: team.name, clubId: team.clubId || null, category: team.category, gender: genderOf(team), level: team.level, sourceTeamId: team.id };
     c.teams.push(ct);
   }
-  const problems = [];
+  const problems = [], moved = [];
   for (const gid of team.memberIds) {
     const g = gymById(gid);
     if (!g) continue;
+    if (!sameGroup(g, ct)) moved.push(`${gymName(g)} (fitxa: ${g.category} ${g.level})`);
     let e = c.entries.find(x => x.gymnastId === gid);
-    if (!e) { e = newEntry(c, g, ct.category, ct.level); c.entries.push(e); }
-    if (e.category !== ct.category || e.level !== ct.level) {
+    if (!e) { e = newEntry(c, g, ct); c.entries.push(e); }
+    if (!sameGroup(e, ct)) {
       if (hasScores(e)) { problems.push(gymName(g)); continue; }
-      e.category = ct.category; e.level = ct.level;
+      e.category = ct.category; e.gender = ct.gender; e.level = ct.level;
     }
     e.teamId = ct.id;
   }
-  return problems;
+  return { problems, moved };
+}
+// EQUIPS AUTOMÀTICS: a cada grup, les gimnastes d'una mateixa entitat que no tenen equip en formen un
+// si n'hi ha prou (mínim 3). Primer s'omplen els equips automàtics que ja hi ha i tenen lloc; si en
+// sobren més del màxim (6), es reparteixen en diversos equips. Les que ja tenen equip no es toquen.
+function autoCompTeams(c) {
+  const min = c.teamMin || 3, max = c.teamMax || 6;
+  let made = 0, placed = 0;
+  for (const g of groupsOf(c)) {
+    const byClub = new Map();
+    for (const e of sortEntries(g.entries)) {
+      if (e.teamId || !e.clubId || e.status === 'np') continue;
+      if (!byClub.has(e.clubId)) byClub.set(e.clubId, []);
+      byClub.get(e.clubId).push(e);
+    }
+    for (const [clubId, free] of byClub) {
+      const size = t => c.entries.filter(e => e.teamId === t.id).length;
+      for (const t of compTeamsOf(c, g).filter(t => t.auto && t.clubId === clubId)) {
+        while (free.length && size(t) < max) { free.shift().teamId = t.id; placed++; }
+      }
+      if (free.length < min) continue;
+      const existing = compTeamsOf(c, g).filter(t => t.clubId === clubId).length;
+      const sizes = splitSizes(free.length, min, max), k = sizes.length;
+      for (let i = 0; i < k; i++) {
+        const n = sizes[i];
+        const num = existing + k > 1 ? ' ' + (existing + i + 1) : '';
+        const t = { id: uid(), name: clubName(clubId) + num, clubId, category: g.category, gender: g.gender, level: g.level, sourceTeamId: null, auto: true };
+        c.teams.push(t); made++;
+        free.splice(0, n).forEach(e => { e.teamId = t.id; placed++; });
+      }
+    }
+  }
+  return { made, placed };
 }
 // després d'inscriure gimnastes soltes: si el seu equip ja hi és, les hi posem
 function autoAssignTeams(c, entries) {
   for (const e of entries) {
     if (e.teamId) continue;
-    const t = db.teams.find(t => t.memberIds.includes(e.gymnastId) && t.category === e.category && t.level === e.level);
+    const t = db.teams.find(t => t.memberIds.includes(e.gymnastId) && sameGroup(t, e));
     if (!t) continue;
     const ct = c.teams.find(x => x.sourceTeamId === t.id);
     if (ct) e.teamId = ct.id;
@@ -959,50 +1136,61 @@ function tabNotes(c) {
   if (!groups.length) return `<div class="empty">Primer cal inscriure gimnastes a la pestanya <a href="#/competicio/${c.id}/inscripcions">Inscripcions</a>.</div>`;
   if (!groups.find(g => g.key === ui.group)) ui.group = groups[0].key;
   const g = groups.find(x => x.key === ui.group);
-  const apps = Engine.enabledApps(c);
+  const apps = Engine.enabledApps(c, g.gender);
   if (ui.app !== 'all' && !apps.find(a => a.id === ui.app)) ui.app = 'all';
   const gp = groups.map(x => `<button class="pill ${x.key === ui.group ? 'on' : ''}" data-act="pickGroup" data-g="${h(x.key)}">${h(groupLabel(x))} <span class="n">${x.entries.length}</span></button>`).join('');
   const ap = `<button class="pill ${ui.app === 'all' ? 'on' : ''}" data-act="pickApp" data-a="all">Totes les notes</button>` +
     apps.map(a => `<button class="pill ${ui.app === a.id ? 'on' : ''}" data-act="pickApp" data-a="${a.id}">${icon(a)} ${h(a.name)}</button>`).join('');
   const help = `<p class="small muted">Escriu la nota i prem <b>Intro</b> per baixar a la gimnasta següent. Es pot fer servir coma o punt (8,35 o 8.35). Tot es desa sol.
-    ${c.scoring === 'detailed' ? 'Nota = D + E − Penalització.' : ''}</p>`;
+    ${c.scoring === 'detailed' ? 'Nota = D + E − Penalització.' : ''} ${Engine.toM(c.minScore) ? `Qui fa l’exercici té com a mínim ${fmt(Engine.toM(c.minScore))} punts (un 0 vol dir que no l’ha fet).` : ''}</p>`;
   const table = ui.app === 'all' ? notesAllTable(c, g, apps) : notesAppTable(c, g, apps.find(a => a.id === ui.app));
   return `<div class="pills">${gp}</div><div class="pills">${ap}</div>
     <div class="progress" id="progress">${progressHtml(c, g)}</div>${help}${table}`;
 }
 function progressHtml(c, g) {
   const active = g.entries.filter(e => e.status !== 'np');
-  return Engine.enabledApps(c).map(a => {
+  return Engine.enabledApps(c, g.gender).map(a => {
     const n = active.filter(e => Engine.appResult(e, a, c).complete).length;
-    return `<span>${icon(a)} ${h(a.name)}: <b>${n}/${active.length}</b></span>`;
+    const some = active.filter(e => Engine.appScore(e, a, c) !== null).length;
+    const tip = (a.attempts || 1) > 1 && some > n ? ` <span class="badge warn" title="Algunes només tenen el 1r intent. Si només feu un intent, canvia-ho a Configuració → Aparells.">${some - n} amb 1 intent</span>` : '';
+    return `<span>${icon(a)} ${h(a.name)}: <b>${n}/${active.length}</b>${tip}</span>`;
   }).join('');
+}
+function minHint(c, raw) {
+  const m = Engine.toM(raw), min = Engine.toM(c.minScore) || 0;
+  return (c.scoring !== 'detailed' && m !== null && m > 0 && m < min) ? `→ ${fmt(min)}` : '';
 }
 function scoreInput(c, e, a, i, f, val, cls = '') {
   const m = Engine.toM(val);
   const high = m !== null && f !== 'p' && c.maxScore && m > c.maxScore * 1000;
-  return `<input type="text" inputmode="decimal" autocomplete="off" class="sc ${cls} ${high ? 'high' : ''}" value="${m === null ? '' : fmt(m)}" data-last="${m === null ? '' : fmt(m)}"
+  const hint = f === 'v' ? `<small class="minhint" data-out="min:${e.id}:${a.id}:${i}" title="Nota mínima per a qui fa l’exercici">${minHint(c, val)}</small>` : '';
+  return hint + `<input type="text" inputmode="decimal" autocomplete="off" class="sc ${cls} ${high ? 'high' : ''}" value="${m === null ? '' : fmt(m)}" data-last="${m === null ? '' : fmt(m)}"
     data-chg="score" data-e="${e.id}" data-a="${a.id}" data-i="${i}" data-f="${f}" data-col="${a.id}:${i}:${f}"
     aria-label="${h(a.name)} ${f.toUpperCase()} ${h(entryName(e))}" ${c.locked || e.status === 'np' ? 'disabled' : ''}>`;
 }
 const att = (e, a, i) => ((e.scores || {})[a.id] || [])[i] || {};
 function notesAllTable(c, g, apps) {
   const det = c.scoring === 'detailed';
-  const head = `<tr><th class="num">Dors.</th><th>Gimnasta</th><th>Entitat</th><th>Equip</th>
-    ${apps.map(a => `<th class="num sep">${icon(a)} ${h(a.name)}${a.inTotal ? '' : ' <span class="badge" title="No compta per a la general">a part</span>'}</th>`).join('')}
-    <th class="num sep">Total</th></tr>`;
+  const n = a => Math.max(1, a.attempts || 1);
+  const span = a => det ? 1 : n(a) + (n(a) > 1 ? 1 : 0);
+  const apart = a => Engine.appMode(a, g.gender) === 'total' ? '' : ' <span class="badge" title="No compta per a la general">a part</span>';
+  const multi = !det && apps.some(a => n(a) > 1);
+  const head = `<tr><th class="num" ${multi ? 'rowspan="2"' : ''}>Dors.</th><th ${multi ? 'rowspan="2"' : ''}>Gimnasta</th><th ${multi ? 'rowspan="2"' : ''}>Entitat</th><th ${multi ? 'rowspan="2"' : ''}>Equip</th>
+    ${apps.map(a => `<th class="num sep ${multi && span(a) > 1 ? 'grp' : ''}" colspan="${span(a)}" ${multi && span(a) === 1 ? 'rowspan="2"' : ''}>${icon(a)} ${h(a.name)}${apart(a)}</th>`).join('')}
+    <th class="num sep" ${multi ? 'rowspan="2"' : ''}>Total</th></tr>
+    ${multi ? `<tr>${apps.filter(a => span(a) > 1).map(a => range(n(a)).map(i => `<th class="num ${i === 0 ? 'sep' : ''}">${ordinal(i + 1)}</th>`).join('') + `<th class="num">${{ best: 'Millor', avg: 'Mitjana', sum: 'Suma' }[a.rule] || 'Millor'}</th>`).join('')}</tr>` : ''}`;
   const rows = sortEntries(g.entries).map(e => {
     const team = c.teams.find(t => t.id === e.teamId);
     const cells = apps.map(a => {
-      const direct = !det && (a.attempts || 1) === 1;
-      return direct ? `<td class="num sep">${scoreInput(c, e, a, 0, 'v', att(e, a, 0).v)}</td>`
-        : `<td class="num sep out" data-out="app:${e.id}:${a.id}">${fmt(Engine.appScore(e, a, c))}</td>`;
+      if (det) return `<td class="num sep out" data-out="app:${e.id}:${a.id}">${fmt(Engine.appScore(e, a, c))}</td>`;
+      const ins = range(n(a)).map(i => `<td class="num ${i === 0 ? 'sep' : ''}">${scoreInput(c, e, a, i, 'v', att(e, a, i).v, n(a) > 1 ? 'sm' : '')}</td>`).join('');
+      return ins + (n(a) > 1 ? `<td class="num out" data-out="app:${e.id}:${a.id}">${fmt(Engine.appScore(e, a, c))}</td>` : '');
     }).join('');
     return `<tr class="${e.status === 'np' ? 'np' : ''}"><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}</td>
       <td>${h(clubName(e.clubId))}</td><td class="small">${team ? h(team.name) : '<span class="muted">—</span>'}</td>${cells}
       <td class="num sep out total" data-out="tot:${e.id}">${fmt(Engine.entryTotal(c, e))}</td></tr>`;
   }).join('');
-  const note = (det || apps.some(a => (a.attempts || 1) > 1))
-    ? `<div class="note">En aquesta vista es veuen les notes finals. Per entrar-les (${det ? 'D, E i penalització' : 'cada intent'}) tria un aparell a dalt.</div>` : '';
+  const note = det ? `<div class="note">En aquesta vista es veuen les notes finals. Per entrar D, E i penalització, tria un aparell a dalt.</div>` : '';
   return note + `<div class="tbl-wrap"><table class="tbl" id="scoregrid"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 function notesAppTable(c, g, a) {
@@ -1035,17 +1223,23 @@ function setAttemptField(e, appId, i, f, val) {
   while (arr.length <= i) arr.push({});
   const at = arr[i] || (arr[i] = {});
   if (val === null) delete at[f]; else at[f] = val;
-  if (f !== 'v') {
-    // mode detallat: guardem també la nota resultant, perquè si es passa a mode simple no es perdi
-    const v = Engine.attemptValue({ d: at.d, e: at.e, p: at.p }, 'detailed');
-    if (v === null) delete at.v; else at.v = v / 1000;
+  if (f === 'v') {
+    // nota final escrita a mà (mode simple): mana sobre qualsevol D/E d'abans
+    delete at.d; delete at.e; delete at.p; delete at.src;
+    return;
   }
+  // mode detallat: guardem també la nota resultant (src 'de'), perquè si es passa a mode simple no es perdi.
+  // Si no hi ha ni D ni E, una nota final d'abans (entrada en mode simple) es conserva.
+  const hasDE = (at.d !== undefined && at.d !== null) || (at.e !== undefined && at.e !== null);
+  const v = Engine.attemptValue({ d: at.d, e: at.e, p: at.p }, 'detailed');
+  if (hasDE) { if (v !== null) { at.v = v / 1000; at.src = 'de'; } else if (at.src === 'de') { delete at.v; delete at.src; } }
+  else if (at.src === 'de') { delete at.v; delete at.src; }
 }
 function refreshScoreRow(c, e) {
   const set = (k, v) => $$(`[data-out="${k}"]`).forEach(el => { el.textContent = v; });
-  for (const a of Engine.enabledApps(c)) {
+  for (const a of Engine.enabledApps(c, genderOf(e))) {
     const r = Engine.appResult(e, a, c);
-    r.attempts.forEach((v, i) => set(`att:${e.id}:${a.id}:${i}`, fmt(v)));
+    r.attempts.forEach((v, i) => { set(`att:${e.id}:${a.id}:${i}`, fmt(v)); set(`min:${e.id}:${a.id}:${i}`, minHint(c, att(e, a, i).v)); });
     set(`app:${e.id}:${a.id}`, fmt(r.value));
   }
   set(`tot:${e.id}`, fmt(Engine.entryTotal(c, e)));
@@ -1094,15 +1288,19 @@ function htmlOneApp(c, g, a, print = false) {
   return `<div class="${print ? '' : 'tbl-wrap'}"><table class="tbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
 }
 function htmlApps(c, g) {
-  return Engine.enabledApps(c).map(a => `<h3 style="margin:10px 0 6px">${icon(a)} ${h(a.name)}</h3>${htmlOneApp(c, g, a)}`).join('');
+  return Engine.enabledApps(c, g.gender).map(a => `<h3 style="margin:10px 0 6px">${icon(a)} ${h(a.name)}${Engine.appMode(a, g.gender) === 'apart' ? ' <span class="badge">classificació a part</span>' : ''}</h3>${htmlOneApp(c, g, a)}`).join('');
 }
+// per què un equip no classifica (NC)
+const teamWhy = (c, r) => r.undersize ? `no classifica: ${plural(r.size, 'gimnasta', 'gimnastes')} (mínim ${c.teamMin})`
+  : r.oversize ? `no classifica: ${r.size} gimnastes (màxim ${c.teamMax})` : '';
 function htmlTeams(c, g, print = false) {
   const { apps, rows } = Engine.teamRanking(c, g);
   if (!rows.length) return `<p class="muted">No hi ha equips en aquesta categoria i nivell.</p>`;
   const head = `<tr><th class="num">Pos.</th><th>Equip / esportista</th><th>Entitat</th>${apps.map(a => `<th class="num">${icon(a)} ${h(a.name)}</th>`).join('')}<th class="num">Total</th></tr>`;
   const body = rows.map(r => {
-    const warn = !r.eligible ? ` <span class="badge bad">només ${r.size} gimnastes: no classifica</span>` : r.oversize ? ` <span class="badge warn">${r.size} gimnastes (màx. ${c.teamMax})</span>` : (!r.complete && r.total !== null ? ' <span class="badge warn">incompleta</span>' : '');
-    const top = `<tr class="team-row ${medal(r.rank)}"><td class="num pos">${posTxt(r)}</td><td>${h(r.team.name)}${print ? '' : warn}</td>
+    const why = teamWhy(c, r);
+    const warn = why ? ` <span class="badge bad">${h(why)}</span>` : (!r.complete && r.total !== null ? ' <span class="badge warn">incompleta</span>' : '');
+    const top = `<tr class="team-row ${medal(r.rank)}"><td class="num pos">${r.eligible ? posTxt(r) : 'NC'}</td><td>${h(r.team.name)}${print ? (why ? ` <span class="small">(${h(why)})</span>` : '') : warn}</td>
       <td>${h(clubName(r.team.clubId))}</td>${apps.map(a => `<td class="num">${fmt(r.perApp[a.id].value)}</td>`).join('')}
       <td class="num total">${fmt(r.eligible ? r.total : r.rawTotal)}</td></tr>`;
     const mem = sortEntries(r.members).map(e => `<tr class="member"><td></td><td>${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}</td><td>${h(clubName(e.clubId))}</td>
@@ -1125,18 +1323,18 @@ function configForm(cfg, scope) {
   const D = `data-scope="${scope}"`;
   const sel = (k, opts) => `<select data-chg="cfg" data-k="${k}" ${D} ${dis}>${opts.map(([v, l]) => `<option value="${v}" ${String(cfg[k]) === String(v) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const numIn = (k, min, max, dec = false) => `<input type="number" min="${min}" max="${max}" ${dec ? 'step="0.01"' : ''} value="${h(cfg[k])}" data-chg="cfg" data-k="${k}" ${dec ? 'data-dec="1"' : ''} ${D} ${dis} style="width:90px">`;
+  const modeSel = (a, i, g) => `<select data-chg="app" data-i="${i}" data-k="mode${g}" ${D} ${dis} aria-label="${h(a.name)} ${g === 'F' ? 'noies' : 'nois'}">${APP_MODES.map(([v, l]) => `<option value="${v}" ${Engine.appMode(a, g) === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const appRows = cfg.apparatus.map((a, i) => `<tr>
-    <td><input type="checkbox" ${a.enabled ? 'checked' : ''} data-chg="app" data-i="${i}" data-k="enabled" ${D} ${dis} aria-label="Actiu"></td>
     <td>${icon(a)} <input type="text" value="${h(a.name)}" data-chg="app" data-i="${i}" data-k="name" ${D} ${dis} style="width:140px"></td>
-    <td class="center"><input type="checkbox" ${a.inTotal ? 'checked' : ''} data-chg="app" data-i="${i}" data-k="inTotal" ${D} ${dis} aria-label="Compta per a la general"></td>
-    <td class="center"><input type="checkbox" ${a.inTeam ? 'checked' : ''} data-chg="app" data-i="${i}" data-k="inTeam" ${D} ${dis} aria-label="Compta per equips"></td>
+    <td>${modeSel(a, i, 'F')}</td>
+    <td>${modeSel(a, i, 'M')}</td>
     <td><select data-chg="app" data-i="${i}" data-k="attempts" ${D} ${dis}>${[1, 2].map(n => `<option value="${n}" ${(a.attempts || 1) === n ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
     <td><select data-chg="app" data-i="${i}" data-k="rule" ${D} ${dis || ((a.attempts || 1) === 1 ? 'disabled' : '')}>${[['best', 'La millor'], ['avg', 'La mitjana'], ['sum', 'La suma']].map(([v, l]) => `<option value="${v}" ${a.rule === v ? 'selected' : ''}>${l}</option>`).join('')}</select></td>
     <td class="nowrap"><button class="icon-btn" data-act="appMove" data-i="${i}" data-d="-1" ${D} ${dis} title="Puja">↑</button><button class="icon-btn" data-act="appMove" data-i="${i}" data-d="1" ${D} ${dis} title="Baixa">↓</button>
       ${DEFAULT_APPS().some(x => x.id === a.id) ? '' : `<button class="icon-btn" data-act="appDel" data-i="${i}" ${D} ${dis} title="Esborra">✕</button>`}</td></tr>`).join('');
   return `<div class="card"><h3 style="margin-bottom:10px">Aparells</h3>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Actiu</th><th>Aparell</th><th class="center">Compta a la general</th><th class="center">Compta per equips</th><th>Intents</th><th>Si n’hi ha 2, compta…</th><th></th></tr></thead><tbody>${appRows}</tbody></table></div>
-    <p class="small muted">Per exemple, el minitramp es pot activar com a classificació a part: actiu, però sense comptar a la general ni per equips.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Aparell</th><th>Noies</th><th>Nois</th><th>Intents</th><th>Si n’hi ha 2, compta…</th><th></th></tr></thead><tbody>${appRows}</tbody></table></div>
+    <p class="small muted">«Compta» vol dir que suma per a la general individual i per equips. «Classificació a part» vol dir que té la seva classificació però no suma (per exemple, el minitramp de les noies a l’Excel antic).</p>
     <button class="btn sm" data-act="appAdd" ${D} ${dis}>＋ Afegeix un altre aparell</button></div>
   <div class="card"><h3 style="margin-bottom:10px">Notes i classificacions</h3><div class="grid2">
     <label class="f"><span>Com s’entren les notes</span>${sel('scoring', [['simple', 'Només la nota final de cada aparell'], ['detailed', 'Nota D + nota E − penalització']])}</label>
@@ -1149,6 +1347,7 @@ function configForm(cfg, scope) {
   <div class="card"><h3 style="margin-bottom:10px">Equips</h3><div class="grid2">
     <label class="f"><span>Notes que compten per aparell</span>${numIn('teamCount', 1, 10)}</label>
     <label class="f"><span>Empats per equips</span>${sel('tieTeam', [['shared', 'Mateixa posició (ex aequo)'], ['bestApp', 'Desempata el millor total d’aparell'], ['bestScore', 'Desempata la millor nota individual que compta']])}</label>
+    <label class="chk" style="grid-column:1/-1"><input type="checkbox" data-chg="cfg" data-k="autoTeams" ${D} ${dis} ${cfg.autoTeams ? 'checked' : ''}> Fes els equips sols en inscriure gimnastes (entitats amb ${cfg.teamMin} o més gimnastes al mateix grup)</label>
     <label class="f"><span>Mínim de gimnastes per equip</span>${numIn('teamMin', 1, 20)}</label>
     <label class="f"><span>Màxim de gimnastes per equip</span>${numIn('teamMax', 1, 20)}</label>
   </div></div>`;
@@ -1160,21 +1359,26 @@ function filteredGyms() {
   const q = norm(ui.gSearch);
   return db.gymnasts.filter(g => (ui.gArchived || !g.archived) &&
     (!ui.gClub || g.clubId === ui.gClub) && (!ui.gCat || g.category === ui.gCat) && (!ui.gLevel || g.level === ui.gLevel) &&
+    (!ui.gGender || genderOf(g) === ui.gGender) && (!ui.gWrong || catMismatch(g)) &&
     (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)))
     .sort((a, b) => coll(a.surname || a.name, b.surname || b.name) || coll(a.name, b.name));
 }
 views.gimnastes = () => {
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
+  const wrong = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
   return `<section>
     <div class="page-head"><h1>Gimnastes</h1><span class="muted">${plural(db.gymnasts.filter(g => !g.archived).length, 'gimnasta', 'gimnastes')}</span>
-      <div class="actions"><button class="btn primary" data-act="newGym">＋ Nova gimnasta</button>
+      <div class="actions"><button class="btn primary" data-act="newGym">＋ Afegeix gimnasta</button>
       <button class="btn" data-act="importGyms">Enganxa des d’Excel…</button><button class="btn" data-act="exportGyms">Exporta a Excel</button></div></div>
+    ${wrong ? `<div class="note warn">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que els toca per l’any de naixement (per exemple, perquè s’ha passat de curs).
+      <button class="btn sm" data-act="recalcCats">Posa a tothom la categoria que li toca</button> <button class="btn sm ghost" data-act="toggleWrong">${ui.gWrong ? 'Mostra-les totes' : 'Mostra només aquestes'}</button></div>` : ''}
     <div class="toolbar">
       <input type="search" class="grow" placeholder="Cerca per nom o entitat…" value="${h(ui.gSearch)}" data-inp="gSearch" aria-label="Cerca">
       <select data-chg="gFilter" data-k="gClub" aria-label="Entitat"><option value="">Totes les entitats</option>${clubs.map(c => `<option value="${c.id}" ${ui.gClub === c.id ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select>
-      <select data-chg="gFilter" data-k="gCat" aria-label="Categoria"><option value="">Totes les categories</option>${S().categories.map(c => `<option ${ui.gCat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>
+      <select data-chg="gFilter" data-k="gGender" aria-label="Gènere"><option value="">Noies i nois</option>${GENDERS.map(([k, l]) => `<option value="${k}" ${ui.gGender === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select data-chg="gFilter" data-k="gCat" aria-label="Categoria"><option value="">Totes les categories</option>${catNames().map(c => catOption(c, ui.gCat === c)).join('')}</select>
       <select data-chg="gFilter" data-k="gLevel" aria-label="Nivell"><option value="">Tots els nivells</option>${S().levels.map(c => `<option ${ui.gLevel === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select>
-      <label class="chk"><input type="checkbox" data-chg="gArchived" ${ui.gArchived ? 'checked' : ''}> Mostra les arxivades</label>
+      <label class="chk"><input type="checkbox" data-chg="gArchived" ${ui.gArchived ? 'checked' : ''}> Mostra les fitxes arxivades</label>
     </div>
     <div id="gymtable">${gymTable()}</div></section>`;
 };
@@ -1184,29 +1388,33 @@ function gymTable() {
   if (!list.length) return `<div class="empty">Cap gimnasta coincideix amb la cerca.</div>`;
   const usage = {};
   for (const c of db.competitions) for (const e of c.entries) usage[e.gymnastId] = (usage[e.gymnastId] || 0) + 1;
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th>Cognoms</th><th>Entitat</th><th>Categoria</th><th>Nivell</th><th>Any</th><th>Equip</th><th class="num">Compet.</th><th></th></tr></thead><tbody>
+  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th>Cognoms</th><th>Entitat</th><th>Gènere</th><th>Categoria</th><th>Nivell</th><th>Any</th><th>Equip</th><th class="num">Compet.</th><th></th></tr></thead><tbody>
     ${list.map(g => {
       const teams = db.teams.filter(t => t.memberIds.includes(g.id)).map(t => h(t.name)).join(', ');
+      const wrong = catMismatch(g);
       return `<tr class="${g.archived ? 'np' : ''}"><td><a href="#" data-act="editGym" data-id="${g.id}">${h(g.name)}</a>${g.archived ? ' <span class="badge">arxivada</span>' : ''}</td><td>${h(g.surname)}</td>
-      <td>${h(clubName(g.clubId))}</td><td>${h(g.category)}</td><td>${h(g.level)}</td><td>${h(g.birthYear)}</td><td class="small">${teams || '<span class="muted">—</span>'}</td>
+      <td>${h(clubName(g.clubId))}</td><td>${genderShort(g.gender)}</td>
+      <td>${h(g.category)}${wrong ? ` <span class="badge warn" title="Per l’any de naixement li toca ${h(wrong)}">→ ${h(wrong)}</span>` : ''}</td><td>${h(g.level)}</td><td>${h(g.birthYear)}</td><td class="small">${teams || '<span class="muted">—</span>'}</td>
       <td class="num">${usage[g.id] || 0}</td>
       <td class="num nowrap"><button class="icon-btn" data-act="editGym" data-id="${g.id}" title="Edita">✎</button><button class="icon-btn" data-act="delGym" data-id="${g.id}" title="Esborra">✕</button></td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
 function gymForm(g, keep = {}) {
-  const v = Object.assign({ name: '', surname: '', clubName: '', category: '', level: '', birthYear: '', notes: '' }, keep, g ? {
-    name: g.name, surname: g.surname, clubName: clubName(g.clubId), category: g.category, level: g.level, birthYear: g.birthYear || '', notes: g.notes || '' } : {});
+  const v = Object.assign({ name: '', surname: '', clubName: '', gender: 'F', category: '', level: '', birthYear: '', notes: '' }, keep, g ? {
+    name: g.name, surname: g.surname, clubName: clubName(g.clubId), gender: genderOf(g), category: g.category, level: g.level, birthYear: g.birthYear || '', notes: g.notes || '' } : {});
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
-  return `<form data-form="gym" data-id="${g ? g.id : ''}"><h2>${g ? 'Edita la gimnasta' : 'Nova gimnasta'}</h2>
+  return `<form data-form="gym" data-id="${g ? g.id : ''}"><h2>${g ? 'Edita la fitxa' : 'Afegeix gimnasta'}</h2>
     <div class="grid2">
       <label class="f"><span>Nom</span><input type="text" name="name" required value="${h(v.name)}" autofocus></label>
       <label class="f"><span>Cognoms</span><input type="text" name="surname" value="${h(v.surname)}"></label>
       <label class="f"><span>Entitat (club o escola)</span><input type="text" name="club" list="clublist" value="${h(v.clubName)}" placeholder="Escriu-la o tria-la"></label>
-      <label class="f"><span>Any de naixement</span><input type="number" name="birthYear" min="1990" max="2100" value="${h(v.birthYear)}"></label>
-      <label class="f"><span>Categoria</span><select name="category"><option value="">—</option>${S().categories.map(c => `<option ${v.category === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>
-      <label class="f"><span>Nivell</span><select name="level"><option value="">—</option>${S().levels.map(c => `<option ${v.level === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>
-      <label class="f" style="grid-column:1/-1"><span>Observacions</span><input type="text" name="notes" value="${h(v.notes)}"></label>
+      <label class="f"><span>Gènere</span><select name="gender">${genderOptions(v.gender)}</select></label>
+      <label class="f"><span>Any de naixement <span class="small">(posa la categoria sola)</span></span><input type="number" name="birthYear" min="1950" max="2100" value="${h(v.birthYear)}" data-inp="gymYear"></label>
+      <label class="f"><span>Categoria</span><select name="category"><option value="">—</option>${catOptions(v.category)}</select></label>
+      <label class="f"><span>Nivell</span><select name="level"><option value="">—</option>${levelOptions(v.level)}</select></label>
+      <label class="f"><span>Observacions</span><input type="text" name="notes" value="${h(v.notes)}"></label>
     </div>
+    <p class="small muted" id="yearhint">${v.birthYear && !catForYear(v.birthYear) ? `Cap categoria no inclou l’any ${h(v.birthYear)}. Revisa els anys a Configuració → Categories.` : ''}</p>
     <datalist id="clublist">${clubs.map(c => `<option value="${h(c.name)}">`).join('')}</datalist>
     ${g ? `<label class="chk" style="margin-top:10px"><input type="checkbox" name="archived" ${g.archived ? 'checked' : ''}> Arxivada (ja no competeix; no surt a les llistes per inscriure)</label>` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
@@ -1215,10 +1423,19 @@ function gymForm(g, keep = {}) {
 
 /* ─── Importació des d'Excel (enganxar) */
 const IMPORT_FIELDS = [['', '— no l’importis —'], ['name', 'Nom'], ['surname', 'Cognoms'], ['full', 'Nom i cognoms'], ['club', 'Entitat'],
-  ['category', 'Categoria'], ['level', 'Nivell'], ['birth', 'Any / data de naixement'], ['team', 'Equip']];
+  ['gender', 'Gènere'], ['category', 'Categoria'], ['level', 'Nivell'], ['birth', 'Any / data de naixement'], ['team', 'Equip']];
+// F / M / Femení / Masculí / noia / noi / dona / home… → 'F' | 'M' | null
+function parseGender(v) {
+  const x = norm(v).replace(/\.$/, '');
+  if (!x) return null;
+  if (/^(f|fem|femeni|femenina|femenino|noia|nena|dona|d|mujer|chica|nina|girl|female|w)$/.test(x)) return 'F';
+  if (/^(m|masc|masculi|masculino|noi|nen|home|h|hombre|chico|nino|boy|male)$/.test(x)) return 'M';
+  return null;
+}
 function guessField(header) {
   const x = norm(header);
   if (!x) return '';
+  if (/^(genere|sexe|sexo|genero|gender|noi\/noia|noia\/noi)$/.test(x)) return 'gender';
   if (/^(nom i cognoms|nom complet|esportista|gimnasta|alumne|alumna|nombre y apellidos|nombre completo)$/.test(x)) return 'full';
   if (/^(cognoms?|apellidos?)/.test(x)) return 'surname';
   if (/^(nom|nombre|name)$/.test(x)) return 'name';
@@ -1252,7 +1469,7 @@ function importAnalyze(text) {
   const guessed = range(width).map(i => guessField(rows[0][i]));
   const hasHeader = guessed.filter(Boolean).length >= 1;
   const map = hasHeader ? guessed : ['name', 'surname', 'club', 'category', 'level', 'birth', 'team'].slice(0, width).concat(range(Math.max(0, width - 7)).map(() => ''));
-  return { rows, width, hasHeader, map, defCat: '', defLevel: '' };
+  return { rows, width, hasHeader, map, defCat: '', defLevel: '', defGender: 'F' };
 }
 function importResolve(imp) {
   const data = imp.hasHeader ? imp.rows.slice(1) : imp.rows;
@@ -1267,10 +1484,12 @@ function importResolve(imp) {
       else name = full;
     }
     const club = get(r, 'club');
-    const catRaw = get(r, 'category') || imp.defCat, levelRaw = get(r, 'level') || imp.defLevel;
-    const category = matchFromList(S().categories, catRaw) || catRaw;
-    const level = matchFromList(S().levels, levelRaw) || levelRaw.toUpperCase();
     const by = (/(19|20)\d{2}/.exec(get(r, 'birth')) || [])[0] || '';
+    const gender = parseGender(get(r, 'gender')) || imp.defGender || 'F';
+    // categoria: la de la columna; si no n'hi ha, la que toca per l'any; si tampoc, la triada per defecte
+    const catRaw = get(r, 'category') || (by && catForYear(by)) || imp.defCat, levelRaw = get(r, 'level') || imp.defLevel;
+    const category = matchFromList(catNames(), catRaw) || catRaw;
+    const level = matchFromList(S().levels, levelRaw) || levelRaw.toUpperCase();
     const team = get(r, 'team');
     const key = norm(name + ' ' + surname) + '|' + norm(club);
     let status = 'new';
@@ -1278,8 +1497,8 @@ function importResolve(imp) {
     else if (seen.has(key)) status = 'dupfile';
     else if (db.gymnasts.some(g => norm(gymName(g)) === norm(name + ' ' + surname) && norm(clubName(g.clubId)) === norm(club))) status = 'exists';
     seen.add(key);
-    return { name, surname, club, category, level, birthYear: by, team, status,
-      newCat: category && !S().categories.includes(category), newLevel: level && !S().levels.includes(level) };
+    return { name, surname, club, gender, category, level, birthYear: by, team, status,
+      newCat: category && !catNames().includes(category), newLevel: level && !S().levels.includes(level) };
   });
 }
 function importDialog() {
@@ -1290,15 +1509,16 @@ function importDialog() {
   const newCats = [...new Set(ok.filter(p => p.newCat).map(p => p.category))], newLevels = [...new Set(ok.filter(p => p.newLevel).map(p => p.level))];
   const newClubs = [...new Set(ok.map(p => p.club).filter(cl => cl && !db.clubs.some(c => norm(c.name) === norm(cl))).map(norm))];
   return `<h2>Enganxa gimnastes des d’Excel</h2>
-    <p class="small muted">Selecciona les cel·les a l’Excel (amb la fila de títols, si en té), copia (Ctrl+C) i enganxa-les aquí (Ctrl+V). Columnes que s’entenen: Nom, Cognoms (o «Esportista» amb el nom sencer), Entitat, Categoria, Nivell, Any de naixement i Equip.</p>
+    <p class="small muted">Selecciona les cel·les a l’Excel (amb la fila de títols, si en té), copia (Ctrl+C) i enganxa-les aquí (Ctrl+V). Columnes que s’entenen: Nom, Cognoms (o «Esportista» amb el nom sencer), Entitat, Gènere, Categoria, Nivell, Any de naixement i Equip. Si no hi ha categoria però sí any de naixement, la categoria es posa sola.</p>
     <textarea rows="7" id="imptext" placeholder="Nom&#9;Cognoms&#9;Entitat&#9;Categoria&#9;Nivell">${imp ? h(imp.rows.map(r => r.join('\t')).join('\n')) : ''}</textarea>
     <div class="toolbar" style="margin-top:8px"><button class="btn" data-act="impAnalyze">Analitza</button>
       ${imp ? `<label class="chk"><input type="checkbox" data-chg="impHeader" ${imp.hasHeader ? 'checked' : ''}> La primera fila són títols</label>
-      <label class="small">Categoria si no n’hi ha: <select data-chg="impDef" data-k="defCat"><option value="">—</option>${S().categories.map(c => `<option ${imp.defCat === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>
+      <label class="small">Gènere si no n’hi ha: <select data-chg="impDef" data-k="defGender">${genderOptions(imp.defGender)}</select></label>
+      <label class="small">Categoria si no n’hi ha: <select data-chg="impDef" data-k="defCat"><option value="">—</option>${catOptions(imp.defCat, false)}</select></label>
       <label class="small">Nivell si no n’hi ha: <select data-chg="impDef" data-k="defLevel"><option value="">—</option>${S().levels.map(c => `<option ${imp.defLevel === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>` : ''}</div>
     ${imp ? `<div class="tbl-wrap" style="max-height:40vh"><table class="tbl"><thead><tr><th>Columna</th>${range(imp.width).map(i => `<th><select data-chg="impMap" data-i="${i}">${IMPORT_FIELDS.map(([v, l]) => `<option value="${v}" ${imp.map[i] === v ? 'selected' : ''}>${l}</option>`).join('')}</select></th>`).join('')}</tr></thead>
       <tbody>${(imp.hasHeader ? imp.rows.slice(1) : imp.rows).slice(0, 200).map((r, k) => `<tr><td>${stLbl[preview[k].status]}</td>${range(imp.width).map(i => `<td class="small">${h(r[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-      <p class="small">${plural(ok.length, 'gimnasta nova', 'gimnastes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} s’ometran` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · categories noves: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · nivells nous: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
+      <p class="small">${plural(ok.length, 'fitxa nova', 'fitxes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} s’ometran` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · categories noves: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · nivells nous: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       <button class="btn primary" data-act="impDo" ${ok.length ? '' : 'disabled'}>Importa ${ok.length || ''}</button></div>`;
 }
@@ -1310,30 +1530,33 @@ views.equips = () => {
   return `<section>
     <div class="page-head"><h1>Equips</h1><span class="muted">${plural(db.teams.length, 'equip', 'equips')}</span>
       <div class="actions"><button class="btn primary" data-act="newTeam">＋ Nou equip</button>
-      <button class="btn" data-act="autoTeams" title="Proposa equips amb les gimnastes de cada entitat, categoria i nivell">Proposa equips automàticament</button></div></div>
-    <div class="note">Els equips són de ${S().compDefaults.teamMin} a ${S().compDefaults.teamMax} gimnastes de la mateixa categoria i nivell. Aquí els prepares un cop; a cada competició els inscrius i, si aquell dia canvia alguna gimnasta, ho pots ajustar dins la competició sense tocar l’equip d’aquí.</div>
+      <button class="btn" data-act="autoTeams" title="Proposa equips amb les gimnastes de cada entitat, gènere, categoria i nivell">Proposa equips automàticament</button></div></div>
+    <div class="note">Els equips són de ${S().compDefaults.teamMin} a ${S().compDefaults.teamMax} gimnastes del mateix gènere, categoria i nivell. Aquí els prepares un cop; a cada competició els inscrius i, si aquell dia canvia alguna gimnasta, ho pots ajustar dins la competició sense tocar l’equip d’aquí.</div>
     ${cats.length > 1 ? `<div class="pills"><button class="pill ${!ui.tCat ? 'on' : ''}" data-act="pickTCat" data-c="">Totes</button>${cats.map(c => `<button class="pill ${ui.tCat === c ? 'on' : ''}" data-act="pickTCat" data-c="${h(c)}">${h(c)}</button>`).join('')}</div>` : ''}
     ${!db.teams.length ? `<div class="empty">Encara no hi ha cap equip.</div>` : groups.filter(g => !ui.tCat || g.category === ui.tCat).map(g => {
-      const teams = db.teams.filter(t => t.category === g.category && t.level === g.level).sort((a, b) => coll(a.name, b.name));
+      const teams = db.teams.filter(t => sameGroup(t, g)).sort((a, b) => coll(a.name, b.name));
       return `<div class="card"><div class="card-head"><h3>${h(groupLabel(g))}</h3><span class="muted">${plural(teams.length, 'equip', 'equips')}</span></div>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Equip</th><th>Entitat</th><th>Gimnastes</th><th></th></tr></thead><tbody>
         ${teams.map(t => {
           const n = t.memberIds.length, mn = S().compDefaults.teamMin, mx = S().compDefaults.teamMax;
+          const off = t.memberIds.map(gymById).filter(m => m && !sameGroup(m, t));
           return `<tr><td><a href="#" data-act="editTeam" data-id="${t.id}"><b>${h(t.name)}</b></a></td><td>${h(clubName(t.clubId))}</td>
-          <td><span class="badge ${n < mn ? 'bad' : n > mx ? 'warn' : 'ok'}">${n}</span> <span class="small">${t.memberIds.map(id => h(gymName(gymById(id)))).join(', ')}</span></td>
+          <td><span class="badge ${n < mn ? 'bad' : n > mx ? 'warn' : 'ok'}">${n}</span> <span class="small">${t.memberIds.map(id => h(gymName(gymById(id)))).join(', ')}</span>
+            ${off.length ? `<br><span class="badge warn" title="Ara tenen una altra categoria, gènere o nivell a la fitxa">No són d’aquest grup: ${off.map(m => h(gymName(m)) + ' (' + h(m.category) + ')').join(', ')}</span>` : ''}</td>
           <td class="num nowrap"><button class="icon-btn" data-act="editTeam" data-id="${t.id}" title="Edita">✎</button><button class="icon-btn" data-act="delTeam" data-id="${t.id}" title="Esborra">✕</button></td></tr>`;
         }).join('')}</tbody></table></div></div>`;
     }).join('')}</section>`;
 };
 function teamForm(t, preset = {}) {
-  const v = Object.assign({ name: '', clubId: '', category: '', level: '', memberIds: [] }, preset, t || {});
+  const v = Object.assign({ name: '', clubId: '', gender: 'F', category: '', level: '', memberIds: [] }, preset, t || {});
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
   return `<form data-form="team" data-id="${t ? t.id : ''}"><h2>${t ? 'Edita l’equip' : 'Nou equip'}</h2>
     <div class="grid2">
       <label class="f" style="grid-column:1/-1"><span>Nom de l’equip</span><input type="text" name="name" required value="${h(v.name)}" autofocus placeholder="p. ex. CG Lleida Aleví A"></label>
       <label class="f"><span>Entitat</span><select name="clubId" data-chg="teamFormRefresh"><option value="">— Diverses / cap —</option>${clubs.map(c => `<option value="${c.id}" ${v.clubId === c.id ? 'selected' : ''}>${h(c.name)}</option>`).join('')}</select></label>
-      <div class="grid2"><label class="f"><span>Categoria</span><select name="category" required data-chg="teamFormRefresh"><option value="">—</option>${S().categories.map(c => `<option ${v.category === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label>
-      <label class="f"><span>Nivell</span><select name="level" required data-chg="teamFormRefresh"><option value="">—</option>${S().levels.map(c => `<option ${v.level === c ? 'selected' : ''}>${h(c)}</option>`).join('')}</select></label></div>
+      <label class="f"><span>Gènere</span><select name="gender" data-chg="teamFormRefresh">${genderOptions(v.gender)}</select></label>
+      <label class="f"><span>Categoria</span><select name="category" required data-chg="teamFormRefresh"><option value="">—</option>${catOptions(v.category)}</select></label>
+      <label class="f"><span>Nivell</span><select name="level" required data-chg="teamFormRefresh"><option value="">—</option>${levelOptions(v.level)}</select></label>
     </div>
     <h3 style="margin:14px 0 6px">Gimnastes <span class="badge" id="teamcount">${v.memberIds.length}</span> <span class="small muted">(de ${S().compDefaults.teamMin} a ${S().compDefaults.teamMax})</span></h3>
     <label class="chk small"><input type="checkbox" name="showAll" data-chg="teamFormRefresh"> Mostra també gimnastes d’altres entitats</label>
@@ -1343,23 +1566,32 @@ function teamForm(t, preset = {}) {
 function teamPickList(v, showAll, teamId) {
   if (!v.category || !v.level) return `<p class="muted" style="padding:10px">Tria la categoria i el nivell per veure les gimnastes.</p>`;
   const list = db.gymnasts.filter(g => (!g.archived || v.memberIds.includes(g.id)) &&
-    ((g.category === v.category && g.level === v.level && (showAll || !v.clubId || g.clubId === v.clubId)) || v.memberIds.includes(g.id)))
+    ((sameGroup(g, v) && (showAll || !v.clubId || g.clubId === v.clubId)) || v.memberIds.includes(g.id)))
     .sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(gymName(a), gymName(b)));
-  if (!list.length) return `<p class="muted" style="padding:10px">No hi ha gimnastes de ${h(v.category)} · nivell ${h(v.level)}${v.clubId && !showAll ? ' en aquesta entitat' : ''}. Revisa la categoria i el nivell de les gimnastes.</p>`;
+  if (!list.length) return `<p class="muted" style="padding:10px">No hi ha gimnastes de ${h(v.category)} ${genderWord(v.gender)} · nivell ${h(v.level)}${v.clubId && !showAll ? ' en aquesta entitat' : ''}. Revisa el gènere, la categoria i el nivell de les fitxes.</p>`;
   return list.map(g => {
-    const other = db.teams.find(t => t.id !== teamId && t.memberIds.includes(g.id) && t.category === v.category && t.level === v.level);
+    const other = db.teams.find(t => t.id !== teamId && t.memberIds.includes(g.id) && sameGroup(t, v));
     return `<label><input type="checkbox" name="m" value="${g.id}" ${v.memberIds.includes(g.id) ? 'checked' : ''} data-chg="teamCount"> ${h(gymName(g))}
-      <span class="muted">${h(clubName(g.clubId))}${other ? ` · ara a «${h(other.name)}»` : ''}</span></label>`;
+      <span class="muted">${h(clubName(g.clubId))}${!sameGroup(g, v) ? ` · ara és ${h(g.category)} ${genderWord(g.gender)} ${h(g.level)}` : ''}${other ? ` · ara a «${h(other.name)}»` : ''}</span></label>`;
   }).join('');
 }
-// proposta automàtica: gimnastes de la mateixa entitat + categoria + nivell que no tenen equip
+// reparteix n gimnastes en equips de min a max: el mínim d'equips possible i el més igualats possible.
+// Si no hi ha manera que tots els equips tinguin el mínim, se'n fan menys i les que sobren queden soles.
+function splitSizes(n, min, max) {
+  if (n < min) return [];
+  let k = Math.ceil(n / max);
+  while (k > 1 && Math.floor(n / k) < min) k--;
+  const used = Math.min(n, k * max), base = Math.floor(used / k), extra = used % k;
+  return range(k).map(i => base + (i < extra ? 1 : 0));
+}
+// proposta automàtica: gimnastes de la mateixa entitat + gènere + categoria + nivell que no tenen equip
 function proposeTeams() {
   const min = S().compDefaults.teamMin, max = S().compDefaults.teamMax;
   const taken = new Set(db.teams.flatMap(t => t.memberIds));
   const buckets = new Map();
   for (const g of db.gymnasts) {
     if (g.archived || taken.has(g.id) || !g.clubId || !g.category || !g.level) continue;
-    const k = g.clubId + '||' + g.category + '||' + g.level;
+    const k = g.clubId + '||' + genderOf(g) + '||' + g.category + '||' + g.level;
     if (!buckets.has(k)) buckets.set(k, []);
     buckets.get(k).push(g);
   }
@@ -1367,15 +1599,14 @@ function proposeTeams() {
   for (const list of buckets.values()) {
     if (list.length < min) continue;
     list.sort((a, b) => coll(gymName(a), gymName(b)));
-    const k = Math.ceil(list.length / max);
-    const base = Math.floor(list.length / k), extra = list.length % k;
+    const sizes = splitSizes(list.length, min, max), k = sizes.length;
     let p = 0;
     for (let i = 0; i < k; i++) {
-      const size = base + (i < extra ? 1 : 0);
+      const size = sizes[i];
       const members = list.slice(p, p + size); p += size;
       const g0 = members[0];
-      out.push({ name: `${clubName(g0.clubId)} ${g0.category} ${g0.level}${k > 1 ? ' ' + (i + 1) : ''}`, clubId: g0.clubId,
-        category: g0.category, level: g0.level, memberIds: members.map(m => m.id) });
+      out.push({ name: `${clubName(g0.clubId)} ${g0.category} ${g0.level} ${genderWord(g0.gender)}${k > 1 ? ' ' + (i + 1) : ''}`, clubId: g0.clubId,
+        gender: genderOf(g0), category: g0.category, level: g0.level, memberIds: members.map(m => m.id) });
     }
   }
   return out;
@@ -1407,13 +1638,15 @@ views.configuracio = () => {
     <div class="toolbar" style="margin-top:6px"><button class="btn sm" data-act="logoPick" data-k="${k}">Tria imatge…</button>${s[k] ? `<button class="btn sm danger" data-act="logoDel" data-k="${k}">Treu</button>` : ''}</div></div>`;
   const fileBox = fsSupported()
     ? (fileHandle ? `<p>Cada canvi també es desa a <b>${h(fileHandle.name)}</b>. ${fileState === 'perm' ? '<button class="btn sm" data-act="regrantFile">Reactiva’l</button>' : ''} <button class="btn sm" data-act="unlinkFile">Desvincula</button></p>`
-      : `<p>Recomanat: tria un fitxer (per exemple a l’escriptori o a un USB) i cada canvi s’hi desarà automàticament, a més de desar-se al navegador.</p><button class="btn primary" data-act="linkFile">Desa també a un fitxer…</button>`)
+      : `<p>Recomanat: tria un fitxer (per exemple a l’escriptori o a un USB) i cada canvi s’hi desarà automàticament, a més de desar-se al navegador.</p>
+        <div class="toolbar"><button class="btn primary" data-act="linkFile">Crea un fitxer de dades nou…</button><button class="btn" data-act="openLinkFile">Fes servir un fitxer de dades que ja tinc…</button></div>`)
     : `<p class="muted small">Aquest navegador no pot desar directament a un fitxer (ho fan Chrome i Edge). Fes servir «Descarrega còpia de seguretat» de tant en tant.</p>`;
   return `<section><div class="page-head"><h1>Configuració</h1></div>
     <div class="card"><h3 style="margin-bottom:10px">Dades i còpies de seguretat</h3>
       <div class="note">Les dades es desen soles en <b>aquest navegador d’aquest ordinador</b>. Si fas servir un altre ordinador o un altre navegador no hi seran: porta-hi una còpia.
       ${db.meta.lastBackup ? `Última còpia descarregada: <b>${fmtDate(db.meta.lastBackup.slice(0, 10))}</b>.` : '<b>Encara no has descarregat cap còpia.</b>'}</div>
       ${fileBox}
+      <p class="small muted">Espai fet servir al navegador: ${Math.max(1, Math.round(JSON.stringify(db).length / 1024))} kB de ~5.000 kB.</p>
       <div class="toolbar" style="margin-top:10px"><button class="btn" data-act="backup">Descarrega còpia de seguretat</button><button class="btn" data-act="restore">Restaura una còpia…</button>
         <div class="right"><button class="btn danger" data-act="wipe">Esborra totes les dades</button></div></div></div>
     <div class="card"><h3 style="margin-bottom:10px">Capçalera dels impresos</h3><div class="grid2">
@@ -1421,16 +1654,38 @@ views.configuracio = () => {
       <label class="f"><span>2a línia</span><input type="text" value="${h(s.line2)}" data-chg="setting" data-k="line2"></label>
       <label class="f"><span>Nom per defecte de les competicions noves</span><input type="text" value="${h(s.compName)}" data-chg="setting" data-k="compName"></label>
       <label class="f"><span>Lloc per defecte</span><input type="text" value="${h(s.place)}" data-chg="setting" data-k="place"></label>
-      <label class="f"><span>Text després de la categoria als impresos (p. ex. FEM)</span><input type="text" value="${h(s.suffix)}" data-chg="setting" data-k="suffix"></label>
     </div><div class="toolbar" style="margin-top:12px;gap:30px">${logo('logoL', 'Logo de l’esquerra')}${logo('logoR', 'Logo de la dreta')}</div></div>
-    <div class="grid2"><div class="card"><h3 style="margin-bottom:10px">Categories</h3>${listEd('categories', 'Categoria')}
-      <p class="small muted">Si canvies un nom, es canvia a totes les gimnastes, equips i competicions.</p></div>
-      <div class="card"><h3 style="margin-bottom:10px">Nivells</h3>${listEd('levels', 'Nivell')}</div></div>
+    ${catEditor()}
+    <div class="card"><h3 style="margin-bottom:10px">Nivells</h3>${listEd('levels', 'Nivell')}</div>
     <h2 style="margin-top:8px">Configuració per defecte de les competicions noves</h2>
     <p class="muted small">Cada competició en guarda una còpia i la pots canviar a la seva pestanya «Configuració».</p>
     ${configForm(s.compDefaults, 'defaults')}
     <p class="muted small">NotesGim ${APP_VERSION} · funciona sense internet · les dades no surten mai d’aquest ordinador.</p></section>`;
 };
+
+// categories amb els anys de naixement (iguals per a noies i nois)
+function catEditor() {
+  const cats = S().categories;
+  const wrong = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
+  const yr = v => (v === null || v === undefined) ? '' : v;
+  const rows = cats.map((c, i) => `<tr>
+    <td><input type="text" value="${h(c.name)}" data-chg="catField" data-i="${i}" data-k="name" aria-label="Nom de la categoria" style="width:100%;min-width:140px"></td>
+    <td><input type="number" value="${yr(c.from)}" min="1900" max="2100" placeholder="—" data-chg="catField" data-i="${i}" data-k="from" aria-label="Nascuts des de" style="width:96px"></td>
+    <td><input type="number" value="${yr(c.to)}" min="1900" max="2100" placeholder="—" data-chg="catField" data-i="${i}" data-k="to" aria-label="Nascuts fins a" style="width:96px"></td>
+    <td class="muted small">${h(yearsTxt(c)) || '<span class="badge warn">sense anys</span>'}</td>
+    <td class="num nowrap"><button class="icon-btn" data-act="listMove" data-key="categories" data-i="${i}" data-d="-1" title="Puja">↑</button><button class="icon-btn" data-act="listMove" data-key="categories" data-i="${i}" data-d="1" title="Baixa">↓</button>
+      <button class="icon-btn" data-act="listDel" data-key="categories" data-i="${i}" title="Esborra">✕</button></td></tr>`).join('');
+  return `<div class="card"><div class="card-head"><h3>Categories i anys de naixement</h3>
+      <div class="actions"><button class="btn sm" data-act="shiftYears" data-d="1" title="Suma 1 a tots els anys: la gimnasta que era aleví de segon any passa a infantil">Passa al curs següent (+1 any)</button>
+      <button class="btn sm ghost" data-act="shiftYears" data-d="-1">Desfés un curs (−1)</button></div></div>
+    <p class="small muted">Les mateixes categories serveixen per a noies i nois. Deixa un any en blanc si no té límit (per exemple, Sènior: fins al 2008). Si canvies un nom, es canvia a totes les fitxes, equips i competicions. Les competicions ja fetes conserven la categoria amb què s’hi va participar.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th>Nascuts des de</th><th>fins a</th><th>Anys</th><th></th></tr></thead><tbody>${rows}
+      <tr><td><input type="text" id="add-categories" placeholder="Categoria nova…" data-enter="listAdd" data-key="categories" style="width:100%"></td>
+        <td><input type="number" id="add-cat-from" min="1900" max="2100" placeholder="—" style="width:96px"></td><td><input type="number" id="add-cat-to" min="1900" max="2100" placeholder="—" style="width:96px"></td>
+        <td colspan="2"><button class="btn sm" data-act="listAdd" data-key="categories">Afegeix</button></td></tr></tbody></table></div>
+    ${wrong ? `<div class="note warn" style="margin-top:10px">${plural(wrong, 'gimnasta té', 'gimnastes tenen')} una categoria que no és la que els toca per l’any de naixement. <button class="btn sm" data-act="recalcCats">Posa a tothom la categoria que li toca</button></div>` : ''}
+  </div>`;
+}
 
 /* ═══════════════════════════════════════════ IMPRESSIÓ */
 function printHeader(c) {
@@ -1452,7 +1707,7 @@ function judgeSheet(c, g, a) {
     <div class="sign"><div>Jutge/ssa: ______________________________</div><div>Signatura: ____________________</div></div>`, n * cols.length > 4);
 }
 function notesSheet(c, g) {
-  const apps = Engine.enabledApps(c), det = c.scoring === 'detailed';
+  const apps = Engine.enabledApps(c, g.gender), det = c.scoring === 'detailed';
   const head = `<tr><th>Dors.</th><th>Esportista</th><th>Entitat</th><th>Equip</th>${apps.map(a => `<th>${h(a.name)}</th>`).join('')}<th>Total</th></tr>`;
   const rows = sortEntries(g.entries).map(e => {
     const team = c.teams.find(t => t.id === e.teamId);
@@ -1471,8 +1726,8 @@ function notesSheet(c, g) {
 function listSheet(c, g) {
   const rows = sortEntries(g.entries).map(e => { const t = c.teams.find(x => x.id === e.teamId);
     return `<tr><td class="num">${h(e.bib)}</td><td>${h(entryName(e))}</td><td>${h(clubName(e.clubId))}</td><td>${t ? h(t.name) : '—'}</td></tr>`; }).join('');
-  const teams = compTeamsOf(c, g.category, g.level);
-  return sheet(c, 'Llistat d’inscrites', g, `<table><thead><tr><th>Dorsal</th><th>Esportista</th><th>Entitat</th><th>Equip</th></tr></thead><tbody>${rows}</tbody></table>
+  const teams = compTeamsOf(c, g);
+  return sheet(c, 'Llistat d’inscrits', g, `<table><thead><tr><th>Dorsal</th><th>Esportista</th><th>Entitat</th><th>Equip</th></tr></thead><tbody>${rows}</tbody></table>
     ${teams.length ? `<h3>Equips</h3><table><thead><tr><th>Equip</th><th>Entitat</th><th>Gimnastes</th></tr></thead><tbody>${teams.map(t => `<tr><td>${h(t.name)}</td><td>${h(clubName(t.clubId))}</td><td>${c.entries.filter(e => e.teamId === t.id).map(e => h(entryName(e))).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}`);
 }
 function doPrint(c, types, keys) {
@@ -1480,12 +1735,12 @@ function doPrint(c, types, keys) {
   const out = [];
   for (const g of groups) {
     if (types.includes('general') && g.entries.length) out.push(sheet(c, 'Classificació individual', g, htmlIndividual(c, g, true)));
-    if (types.includes('apps') && g.entries.length) for (const a of Engine.enabledApps(c)) out.push(sheet(c, `Classificació · ${a.name}`, g, htmlOneApp(c, g, a, true)));
-    if (types.includes('teams') && compTeamsOf(c, g.category, g.level).length) out.push(sheet(c, 'Classificació per equips', g,
+    if (types.includes('apps') && g.entries.length) for (const a of Engine.enabledApps(c, g.gender)) out.push(sheet(c, `Classificació · ${a.name}`, g, htmlOneApp(c, g, a, true)));
+    if (types.includes('teams') && compTeamsOf(c, g).length) out.push(sheet(c, 'Classificació per equips', g,
       htmlTeams(c, g, true) + `<p class="small">A cada aparell compten les ${c.teamCount} millors notes de l’equip (les ratllades no compten).</p>`));
     if (types.includes('notes') && g.entries.length) out.push(notesSheet(c, g));
     if (types.includes('list')) out.push(listSheet(c, g));
-    if (types.includes('judge') && g.entries.length) for (const a of Engine.enabledApps(c)) out.push(judgeSheet(c, g, a));
+    if (types.includes('judge') && g.entries.length) for (const a of Engine.enabledApps(c, g.gender)) out.push(judgeSheet(c, g, a));
   }
   if (!out.length) { toast('No hi ha res per imprimir amb aquesta selecció.', 'bad'); return; }
   $('#print').innerHTML = out.join('');
@@ -1544,7 +1799,7 @@ const XLSX = (() => {
   const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.00#"/></numFmts>
 <fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><name val="Calibri"/></font><font><i/><strike/><sz val="11"/><color rgb="FF888888"/><name val="Calibri"/></font></fonts>
-<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDDE5F2"/><bgColor indexed="64"/></patternFill></fill></fills>
+<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF1E3E8"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF999999"/></left><right style="thin"><color rgb="FF999999"/></right><top style="thin"><color rgb="FF999999"/></top><bottom style="thin"><color rgb="FF999999"/></bottom><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
 <cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="164" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="164" fontId="3" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs>
@@ -1581,7 +1836,7 @@ function compWorkbook(c) {
     const rows = [];
     const H = s => ({ v: s, s: 'h' });
     rows.push([{ v: S().org, s: 'b' }], [c.name + ' · ' + fmtDate(c.date) + (c.place ? ' · ' + c.place : '')], [{ v: groupLabelPrint(g).toUpperCase(), s: 't' }], []);
-    const allApps = Engine.enabledApps(c);
+    const allApps = Engine.enabledApps(c, g.gender);
     // classificació individual
     const ind = Engine.individualRanking(c, g, { nameOf: entryName });
     rows.push([{ v: 'CLASSIFICACIÓ INDIVIDUAL', s: 't' }]);
@@ -1597,7 +1852,7 @@ function compWorkbook(c) {
       rows.push([{ v: 'CLASSIFICACIÓ PER EQUIPS', s: 't' }], [{ v: `Compten les ${c.teamCount} millors notes de cada aparell (les ratllades no compten)`, s: 'm' }]);
       rows.push([H('Pos.'), '', H('Equip / esportista'), H('Entitat'), '', ...tr.apps.map(a => H(a.name)), H('Total')]);
       for (const r of tr.rows) {
-        rows.push([r.rank ? r.rank : (r.eligible ? '' : 'NC'), '', { v: r.team.name, s: 'b' }, clubName(r.team.clubId), r.eligible ? '' : `només ${r.size} gimnastes`, ...tr.apps.map(a => bnum(r.perApp[a.id].value)), bnum(r.eligible ? r.total : r.rawTotal)]);
+        rows.push([r.rank ? r.rank : (r.eligible ? '' : 'NC'), '', { v: r.team.name, s: 'b' }, clubName(r.team.clubId), teamWhy(c, r), ...tr.apps.map(a => bnum(r.perApp[a.id].value)), bnum(r.eligible ? r.total : r.rawTotal)]);
         for (const e of sortEntries(r.members)) rows.push(['', +e.bib || '', '   ' + entryName(e) + (e.status === 'np' ? ' (NP)' : ''), clubName(e.clubId), '',
           ...tr.apps.map(a => { const v = Engine.appScore(e, a, c); const cnt = r.counted[e.id] && r.counted[e.id][a.id]; return v === null ? '' : { v: v / 1000, s: cnt ? 'n' : 'mn' }; }), '']);
       }
@@ -1624,7 +1879,7 @@ function compWorkbook(c) {
         rows.push(r);
       }
     }
-    sheets.push({ name: `${g.category} ${g.level}`, rows, cols: [7, 8, 30, 26, 18, ...range(12).map(() => 12)] });
+    sheets.push({ name: `${g.category} ${genderPrint(g.gender)} ${g.level}`, rows, cols: [7, 8, 30, 26, 18, ...range(12).map(() => 12)] });
   }
   return sheets;
 }
@@ -1639,10 +1894,13 @@ const actions = {
         .then(async ([hd]) => restoreFromText(await (await hd.getFile()).text(), hd.name)).catch(e => { if (e.name !== 'AbortError') restorePick(); });
     } else restorePick();
   },
-  linkFile: () => linkFile(), unlinkFile: () => unlinkFile(), regrantFile: () => regrantFile(),
+  linkFile: () => linkFile('new'), openLinkFile: () => linkFile('open'), unlinkFile: () => unlinkFile(), regrantFile: () => regrantFile(),
   wipe: async () => {
-    const ok = await confirmBox('Segur que vols <b>esborrar totes les dades</b> (gimnastes, equips, competicions i notes)?<br>Abans descarrega una còpia de seguretat si no en tens.', { ok: 'Esborra-ho tot', danger: true, typed: 'ESBORRA' });
-    if (ok) withUndo('S’han esborrat totes les dades.', () => { const s = db.settings; db = defaultDb(); db.settings = s; });
+    const ok = await confirmBox(`Segur que vols <b>esborrar totes les dades</b> (gimnastes, equips, competicions i notes)?<br>Abans es descarregarà una còpia de seguretat${fileHandle ? ` i el fitxer «${h(fileHandle.name)}» es desvincularà (no es tocarà)` : ''}.`, { ok: 'Esborra-ho tot', danger: true, typed: 'ESBORRA' });
+    if (!ok) return;
+    backupDownload();
+    if (fileHandle) await unlinkFile();
+    withUndo('S’han esborrat totes les dades (s’ha descarregat una còpia abans).', () => { const s = db.settings; db = defaultDb(); db.settings = s; });
   },
 
   // competicions
@@ -1670,43 +1928,55 @@ const actions = {
   // inscripcions
   enrollTeams: () => {
     const c = curComp();
-    const list = db.teams.filter(t => !c.teams.some(ct => ct.sourceTeamId === t.id)).sort((a, b) => coll(a.category, b.category) || coll(a.level, b.level) || coll(a.name, b.name));
+    const order = catNames();
+    const list = db.teams.filter(t => !c.teams.some(ct => ct.sourceTeamId === t.id))
+      .sort((a, b) => (order.indexOf(a.category) - order.indexOf(b.category)) || genderOf(a).localeCompare(genderOf(b)) || coll(a.level, b.level) || coll(a.name, b.name));
     openDialog(`<form data-form="enrollTeams"><h2>Inscriu equips</h2>
       ${list.length ? `<p class="small muted">S’hi apuntaran l’equip i totes les seves gimnastes.</p>
       <div class="toolbar"><button type="button" class="btn sm" data-act="checkAll">Marca’ls tots</button></div>
-      <div class="pick-list">${list.map(t => `<label><input type="checkbox" name="t" value="${t.id}"> <b>${h(t.name)}</b> <span class="muted">${h(t.category)} · ${h(t.level)} · ${plural(t.memberIds.length, 'gimnasta', 'gimnastes')}</span></label>`).join('')}</div>`
+      <div class="pick-list">${list.map(t => `<label><input type="checkbox" name="t" value="${t.id}"> <b>${h(t.name)}</b> <span class="muted">${h(groupLabel(t))} · ${plural(t.memberIds.length, 'gimnasta', 'gimnastes')}</span></label>`).join('')}</div>`
       : `<p class="muted">${db.teams.length ? 'Tots els equips ja estan inscrits.' : 'Encara no hi ha equips. Crea’ls a la pestanya <a href="#/equips">Equips</a>.'}</p>`}
       <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Tanca</button>${list.length ? '<button class="btn primary">Inscriu</button>' : ''}</div></form>`);
   },
   enrollGyms: () => {
     const c = curComp();
-    ui.pick = { q: '', club: '', cat: '', level: '' };
+    ui.pick = { q: '', club: '', gender: '', cat: '', level: '' };
     openDialog(`<form data-form="enrollGyms"><h2>Inscriu gimnastes</h2>
       <div class="toolbar"><input type="search" class="grow" placeholder="Cerca…" data-inp="pickFilter" data-k="q" autofocus aria-label="Cerca">
         <select data-chg="pickFilter" data-k="club" aria-label="Entitat"><option value="">Totes les entitats</option>${[...db.clubs].sort((a, b) => coll(a.name, b.name)).map(cl => `<option value="${cl.id}">${h(cl.name)}</option>`).join('')}</select>
-        <select data-chg="pickFilter" data-k="cat" aria-label="Categoria"><option value="">Categoria</option>${S().categories.map(x => `<option>${h(x)}</option>`).join('')}</select>
+        <select data-chg="pickFilter" data-k="gender" aria-label="Gènere"><option value="">Noies i nois</option>${GENDERS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+        <select data-chg="pickFilter" data-k="cat" aria-label="Categoria"><option value="">Categoria</option>${catOptions('', false)}</select>
         <select data-chg="pickFilter" data-k="level" aria-label="Nivell"><option value="">Nivell</option>${S().levels.map(x => `<option>${h(x)}</option>`).join('')}</select>
         <button type="button" class="btn sm" data-act="checkAll">Marca les que es veuen</button></div>
       <div class="pick-list" id="gympick">${gymPickList(c)}</div>
-      <p class="small muted">S’inscriuen amb la categoria, el nivell i l’entitat de la seva fitxa. Si el seu equip ja està inscrit, s’hi afegeixen soles.</p>
+      <p class="small muted">S’inscriuen amb el gènere, la categoria, el nivell i l’entitat de la seva fitxa. Si el seu equip ja està inscrit, s’hi afegeixen soles.</p>
       <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Tanca</button><button class="btn primary">Inscriu les marcades</button></div></form>`, { wide: true });
+  },
+  autoCompTeams: () => {
+    const c = curComp();
+    let res;
+    withUndo('Equips fets.', () => { res = autoCompTeams(c); });
+    if (!res.made && !res.placed) toast(`No hi ha cap entitat amb ${c.teamMin} o més gimnastes sense equip al mateix grup.`);
+    else toast(`${plural(res.made, 'equip nou', 'equips nous')} · ${plural(res.placed, 'gimnasta col·locada', 'gimnastes col·locades')} en equips.`, 'ok');
   },
   checkAll: el => { const f = el.closest('form'); $$('.pick-list label:not(.hidden) input[type=checkbox]', f).forEach(i => { i.checked = true; }); },
   renumber: async () => {
     const c = curComp();
-    if (!(await confirmBox('Tornar a numerar tots els dorsals (per categoria, nivell, entitat i nom)?', { ok: 'Renumera' }))) return;
+    if (!(await confirmBox('Tornar a numerar tots els dorsals (per categoria, gènere, nivell, entitat i nom)?', { ok: 'Renumera' }))) return;
     withUndo('Dorsals renumerats.', () => {
       let n = 1;
-      for (const g of groupsOf(c)) for (const e of [...g.entries].sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(entryName(a), entryName(b)))) e.bib = n++;
+      const c2 = compById(c.id);
+      for (const g of groupsOf(c2)) for (const e of [...g.entries].sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(entryName(a), entryName(b)))) e.bib = n++;
     });
   },
   editEntry: el => {
     const c = curComp(), e = c.entries.find(x => x.id === el.dataset.id);
     const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
     openDialog(`<form data-form="entry" data-id="${e.id}"><h2>${h(entryName(e))}</h2>
-      <p class="small muted">Aquests canvis només afecten aquesta competició. Per canviar el nom, ves a <a href="#" data-act="editGym" data-id="${e.gymnastId}">la fitxa de la gimnasta</a>.</p>
+      <p class="small muted">Aquests canvis només afecten aquesta competició. Per canviar el nom, ves a <a href="#" data-act="editGym" data-id="${e.gymnastId}">la fitxa</a>.</p>
       <div class="grid2">
-        <label class="f"><span>Categoria</span><select name="category">${S().categories.map(x => `<option ${e.category === x ? 'selected' : ''}>${h(x)}</option>`).join('')}${S().categories.includes(e.category) ? '' : `<option selected>${h(e.category)}</option>`}</select></label>
+        <label class="f"><span>Gènere</span><select name="gender">${genderOptions(e.gender)}</select></label>
+        <label class="f"><span>Categoria</span><select name="category">${catOptions(e.category)}</select></label>
         <label class="f"><span>Nivell</span><select name="level">${S().levels.map(x => `<option ${e.level === x ? 'selected' : ''}>${h(x)}</option>`).join('')}${S().levels.includes(e.level) ? '' : `<option selected>${h(e.level)}</option>`}</select></label>
         <label class="f"><span>Entitat</span><select name="clubId"><option value="">—</option>${clubs.map(cl => `<option value="${cl.id}" ${e.clubId === cl.id ? 'selected' : ''}>${h(cl.name)}</option>`).join('')}</select></label>
         <label class="f"><span>Dorsal</span><input type="number" name="bib" min="1" value="${h(e.bib)}"></label>
@@ -1715,11 +1985,11 @@ const actions = {
   },
   delEntry: async el => {
     const c = curComp(), e = c.entries.find(x => x.id === el.dataset.id);
-    if (hasScores(e) && !(await confirmBox(`<b>${h(entryName(e))}</b> ja té notes. Segur que la vols treure de la competició?`, { ok: 'Treu-la', danger: true }))) return;
-    withUndo(`${entryName(e)} treta de la competició.`, () => { c.entries = c.entries.filter(x => x.id !== e.id); });
+    if (hasScores(e) && !(await confirmBox(`<b>${h(entryName(e))}</b> ja té notes. Segur que la vols treure de la competició?`, { ok: 'Treu de la competició', danger: true }))) return;
+    withUndo(`${entryName(e)}: fora de la competició.`, () => { const cc = compById(c.id); cc.entries = cc.entries.filter(x => x.id !== e.id); });
   },
-  newCompTeam: el => openCompTeamForm(curComp(), null, el.dataset.cat, el.dataset.level),
-  editCompTeam: el => { const c = curComp(); const t = c.teams.find(x => x.id === el.dataset.id); openCompTeamForm(c, t, t.category, t.level); },
+  newCompTeam: el => { const c = curComp(); const g = groupsOf(c).find(x => x.key === el.dataset.g); if (g) openCompTeamForm(c, null, g); },
+  editCompTeam: el => { const c = curComp(); const t = c.teams.find(x => x.id === el.dataset.id); openCompTeamForm(c, t, t); },
   delCompTeam: async el => {
     const c = curComp(), t = c.teams.find(x => x.id === el.dataset.id);
     if (!(await confirmBox(`Treure l’equip <b>${h(t.name)}</b> d’aquesta competició? Les seves gimnastes hi continuaran com a individuals.`, { ok: 'Treu l’equip', danger: true }))) return;
@@ -1738,7 +2008,7 @@ const actions = {
     const c = curComp(); const groups = groupsOf(c);
     const def = (el.dataset.types || 'general,teams').split(',');
     const types = [['general', 'Classificació individual (general)'], ['apps', 'Classificació per aparells'], ['teams', 'Classificació per equips'],
-      ['notes', 'Acta amb totes les notes'], ['list', 'Llistat d’inscrites i equips'], ['judge', 'Fulls de jutge en blanc (un per aparell)']];
+      ['notes', 'Acta amb totes les notes'], ['list', 'Llistat d’inscripcions i equips'], ['judge', 'Fulls de jutge en blanc (un per aparell)']];
     openDialog(`<form data-form="print"><h2>Imprimeix o desa en PDF</h2>
       <div class="grid2"><fieldset><legend>Què?</legend>${types.map(([k, l]) => `<label class="chk"><input type="checkbox" name="t" value="${k}" ${def.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</fieldset>
       <fieldset><legend>Categories i nivells</legend>${groups.map(g => `<label class="chk"><input type="checkbox" name="g" value="${h(g.key)}" ${!el.dataset.group || el.dataset.group === g.key ? 'checked' : ''}> ${h(groupLabel(g))}</label>`).join('') || '<p class="muted">Cap.</p>'}</fieldset></div>
@@ -1759,12 +2029,12 @@ const actions = {
     const g = gymById(el.dataset.id);
     const used = db.competitions.filter(c => c.entries.some(e => e.gymnastId === g.id));
     if (used.length) {
-      const ok = await confirmBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}), i no es pot esborrar sense perdre’n les notes.<br><br>Vols <b>arxivar-la</b>? Deixarà de sortir a les llistes però les competicions passades es mantenen.`, { ok: 'Arxiva-la' });
-      if (ok) withUndo(`${gymName(g)} arxivada.`, () => { g.archived = true; });
+      const ok = await confirmBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}), i no es pot esborrar sense perdre’n les notes.<br><br>Vols <b>arxivar la fitxa</b>? Deixarà de sortir a les llistes però les competicions passades es mantenen.`, { ok: 'Arxiva la fitxa' });
+      if (ok) withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) gg.archived = true; });
       return;
     }
     if (!(await confirmBox(`Esborrar <b>${h(gymName(g))}</b>?`, { ok: 'Esborra', danger: true }))) return;
-    withUndo(`${gymName(g)} esborrada.`, () => {
+    withUndo(`Fitxa de ${gymName(g)} esborrada.`, () => {
       db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
       db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => id !== g.id); });
     });
@@ -1778,15 +2048,15 @@ const actions = {
   impDo: () => {
     const imp = ui.import; if (!imp) return;
     const rows = importResolve(imp).filter(p => p.status === 'new');
-    withUndo(`${plural(rows.length, 'gimnasta importada', 'gimnastes importades')}.`, () => {
+    withUndo(`${plural(rows.length, 'fitxa importada', 'fitxes importades')}.`, () => {
       for (const p of rows) {
-        if (p.category && !S().categories.includes(p.category)) S().categories.push(p.category);
+        if (p.category && !catNames().includes(p.category)) S().categories.push({ name: p.category, from: null, to: null });
         if (p.level && !S().levels.includes(p.level)) S().levels.push(p.level);
-        const g = { id: uid(), name: p.name, surname: p.surname, clubId: ensureClub(p.club), category: p.category, level: p.level, birthYear: p.birthYear, notes: '', archived: false };
+        const g = { id: uid(), name: p.name, surname: p.surname, clubId: ensureClub(p.club), gender: p.gender, category: p.category, level: p.level, birthYear: p.birthYear, notes: '', archived: false };
         db.gymnasts.push(g);
         if (p.team) {
-          let t = db.teams.find(t => norm(t.name) === norm(p.team) && t.category === g.category && t.level === g.level);
-          if (!t) { t = { id: uid(), name: p.team, clubId: g.clubId, category: g.category, level: g.level, memberIds: [] }; db.teams.push(t); }
+          let t = db.teams.find(t => norm(t.name) === norm(p.team) && sameGroup(t, g));
+          if (!t) { t = { id: uid(), name: p.team, clubId: g.clubId, gender: g.gender, category: g.category, level: g.level, memberIds: [] }; db.teams.push(t); }
           t.memberIds.push(g.id);
         }
       }
@@ -1795,10 +2065,10 @@ const actions = {
   },
   exportGyms: () => {
     const H = s => ({ v: s, s: 'h' });
-    const rows = [[H('Nom'), H('Cognoms'), H('Entitat'), H('Categoria'), H('Nivell'), H('Any naixement'), H('Equip'), H('Arxivada')]];
+    const rows = [[H('Nom'), H('Cognoms'), H('Entitat'), H('Gènere'), H('Categoria'), H('Nivell'), H('Any naixement'), H('Equip'), H('Arxivada')]];
     for (const g of [...db.gymnasts].sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(a.surname, b.surname)))
-      rows.push([g.name, g.surname, clubName(g.clubId), g.category, g.level, g.birthYear ? +g.birthYear : '', db.teams.filter(t => t.memberIds.includes(g.id)).map(t => t.name).join(', '), g.archived ? 'sí' : '']);
-    downloadBlob(XLSX.build([{ name: 'Gimnastes', rows, cols: [16, 24, 26, 14, 8, 10, 26, 9] }]), `gimnastes ${today()}.xlsx`);
+      rows.push([g.name, g.surname, clubName(g.clubId), genderOf(g) === 'M' ? 'Masculí' : 'Femení', g.category, g.level, g.birthYear ? +g.birthYear : '', db.teams.filter(t => t.memberIds.includes(g.id)).map(t => t.name).join(', '), g.archived ? 'sí' : '']);
+    downloadBlob(XLSX.build([{ name: 'Gimnastes', rows, cols: [16, 24, 26, 10, 14, 8, 10, 26, 9] }]), `gimnastes ${today()}.xlsx`);
   },
 
   // equips
@@ -1836,17 +2106,37 @@ const actions = {
   listAdd: el => {
     const key = el.dataset.key, inp = $('#add-' + key), v = inp.value.trim();
     if (!v) return;
-    if (S()[key].some(x => norm(x) === norm(v))) { toast('Ja existeix.', 'bad'); return; }
-    S()[key].push(v); commit(); render();
+    const names = key === 'categories' ? catNames() : S()[key];
+    if (names.some(x => norm(x) === norm(v))) { toast('Ja existeix.', 'bad'); return; }
+    if (key === 'categories') {
+      const yr = id => { const x = $(id); return x && x.value ? Math.round(+x.value) : null; };
+      S().categories.push({ name: v, from: yr('#add-cat-from'), to: yr('#add-cat-to') });
+    } else S()[key].push(v);
+    commit(); render();
     const again = $('#add-' + key); if (again) again.focus();
   },
+  shiftYears: async el => {
+    const d = +el.dataset.d;
+    withUndo(d > 0 ? 'Anys de les categories avançats un curs.' : 'Anys de les categories endarrerits un curs.', () => {
+      for (const c of S().categories) { if (c.from !== null) c.from += d; if (c.to !== null) c.to += d; }
+    });
+    const n = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
+    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. Les actualitzo ara?<br><span class="small muted">Les competicions ja fetes no canvien.</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
+  },
+  recalcCats: async (el, already) => {
+    const list = db.gymnasts.filter(g => !g.archived && catMismatch(g));
+    if (!list.length) { toast('Totes les gimnastes ja tenen la categoria que els toca.'); return; }
+    if (!already && !(await confirmBox(`Canviar la categoria de ${plural(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien. Els equips que quedin barrejats sortiran marcats a «Equips».`, { ok: 'Canvia-les' }))) return;
+    withUndo(`${plural(list.length, 'gimnasta ha', 'gimnastes han')} canviat de categoria.`, () => { for (const g of list) g.category = catMismatch(g); });
+  },
+  toggleWrong: () => { ui.gWrong = !ui.gWrong; render(); },
   listMove: el => {
     const arr = S()[el.dataset.key], i = +el.dataset.i, j = i + +el.dataset.d;
     if (j < 0 || j >= arr.length) return;
     [arr[i], arr[j]] = [arr[j], arr[i]]; commit(); render();
   },
   listDel: async el => {
-    const key = el.dataset.key, i = +el.dataset.i, v = S()[key][i];
+    const key = el.dataset.key, i = +el.dataset.i, v = key === 'categories' ? S()[key][i].name : S()[key][i];
     const field = key === 'categories' ? 'category' : 'level';
     const n = db.gymnasts.filter(g => g[field] === v).length + db.teams.filter(t => t[field] === v).length + db.competitions.reduce((s, c) => s + c.entries.filter(e => e[field] === v).length, 0);
     if (n && !(await confirmBox(`«${h(v)}» es fa servir (${n} vegades). Si l’esborres de la llista, les fitxes el conservaran però no el podràs triar. Continuar?`, { ok: 'Esborra', danger: true }))) return;
@@ -1877,7 +2167,7 @@ const actions = {
   },
   appAdd: el => {
     const cfg = cfgTarget(el);
-    cfg.apparatus.push({ id: 'a' + uid(), name: 'Aparell nou', icon: 'altre', enabled: true, inTotal: false, inTeam: false, attempts: 1, rule: 'best' });
+    cfg.apparatus.push({ id: 'a' + uid(), name: 'Aparell nou', icon: 'altre', modes: { F: 'apart', M: 'off' }, attempts: 1, rule: 'best' });
     commit(); render();
   },
   appDel: async el => {
@@ -1894,23 +2184,23 @@ function gymPickList(c) {
   const inComp = new Set(c.entries.map(e => e.gymnastId));
   const list = db.gymnasts.filter(g => !g.archived && !inComp.has(g.id))
     .sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(gymName(a), gymName(b)));
-  if (!list.length) return `<p class="muted" style="padding:10px">${db.gymnasts.length ? 'Totes les gimnastes ja estan inscrites.' : 'Encara no hi ha gimnastes. Afegeix-les a <a href="#/gimnastes">Gimnastes</a>.'}</p>`;
+  if (!list.length) return `<p class="muted" style="padding:10px">${db.gymnasts.length ? 'Ja està tothom inscrit.' : 'Encara no hi ha gimnastes. Afegeix-les a <a href="#/gimnastes">Gimnastes</a>.'}</p>`;
   return list.map(g => {
-    const show = (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)) && (!p.club || g.clubId === p.club) && (!p.cat || g.category === p.cat) && (!p.level || g.level === p.level);
+    const show = (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)) && (!p.club || g.clubId === p.club) && (!p.gender || genderOf(g) === p.gender) && (!p.cat || g.category === p.cat) && (!p.level || g.level === p.level);
     return `<label class="${show ? '' : 'hidden'}"><input type="checkbox" name="g" value="${g.id}"> ${h(gymName(g))}
-      <span class="muted">${h(clubName(g.clubId))} · ${h(g.category || '¿categoria?')} · ${h(g.level || '¿nivell?')}</span></label>`;
+      <span class="muted">${h(clubName(g.clubId))} · ${genderShort(g.gender)} · ${h(g.category || '¿categoria?')} · ${h(g.level || '¿nivell?')}</span></label>`;
   }).join('');
 }
-function openCompTeamForm(c, t, cat, level) {
-  const entries = sortEntries(c.entries.filter(e => e.category === cat && e.level === level));
+function openCompTeamForm(c, t, g) {
+  const entries = sortEntries(c.entries.filter(e => sameGroup(e, g)));
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
-  openDialog(`<form data-form="compTeam" data-id="${t ? t.id : ''}" data-cat="${h(cat)}" data-level="${h(level)}">
-    <h2>${t ? 'Equip a la competició' : 'Nou equip a la competició'}</h2><p class="small muted">${h(cat)} · Nivell ${h(level)}. ${t && t.sourceTeamId ? 'Els canvis només afecten aquesta competició.' : ''}</p>
+  openDialog(`<form data-form="compTeam" data-id="${t ? t.id : ''}" data-cat="${h(g.category)}" data-gender="${genderOf(g)}" data-level="${h(g.level)}">
+    <h2>${t ? 'Equip a la competició' : 'Nou equip a la competició'}</h2><p class="small muted">${h(groupLabel(g))}. ${t && t.sourceTeamId ? 'Els canvis només afecten aquesta competició.' : ''}</p>
     <div class="grid2"><label class="f"><span>Nom</span><input type="text" name="name" required value="${h(t ? t.name : '')}" autofocus></label>
     <label class="f"><span>Entitat</span><select name="clubId"><option value="">— Diverses / cap —</option>${clubs.map(cl => `<option value="${cl.id}" ${t && t.clubId === cl.id ? 'selected' : ''}>${h(cl.name)}</option>`).join('')}</select></label></div>
     <h3 style="margin:14px 0 6px">Gimnastes</h3>
     <div class="pick-list">${entries.map(e => { const other = e.teamId && (!t || e.teamId !== t.id) ? c.teams.find(x => x.id === e.teamId) : null;
-      return `<label><input type="checkbox" name="m" value="${e.id}" ${t && e.teamId === t.id ? 'checked' : ''}> ${h(entryName(e))} <span class="muted">${h(clubName(e.clubId))}${other ? ` · ara a «${h(other.name)}»` : ''}</span></label>`; }).join('') || '<p class="muted" style="padding:10px">Cap gimnasta inscrita en aquest grup.</p>'}</div>
+      return `<label><input type="checkbox" name="m" value="${e.id}" ${t && e.teamId === t.id ? 'checked' : ''}> ${h(entryName(e))} <span class="muted">${h(clubName(e.clubId))}${other ? ` · ara a «${h(other.name)}»` : ''}</span></label>`; }).join('') || '<p class="muted" style="padding:10px">No hi ha ningú inscrit en aquest grup.</p>'}</div>
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn primary">Desa</button></div></form>`);
 }
 
@@ -1927,7 +2217,7 @@ const forms = {
       const map = {};
       c.teams = src.teams.map(t => { const n = Object.assign({}, t, { id: uid() }); map[t.id] = n.id; return n; });
       c.entries = src.entries.filter(e => { const g = gymById(e.gymnastId); return g && !g.archived; })
-        .map(e => ({ id: uid(), gymnastId: e.gymnastId, category: e.category, level: e.level, clubId: e.clubId, teamId: map[e.teamId] || null, bib: e.bib, status: '', scores: {} }));
+        .map(e => ({ id: uid(), gymnastId: e.gymnastId, category: e.category, gender: genderOf(e), level: e.level, clubId: e.clubId, teamId: map[e.teamId] || null, bib: e.bib, status: '', scores: {} }));
     }
     db.competitions.push(normalizeComp(c, S().compDefaults));
     commit(); closeDialog();
@@ -1936,8 +2226,8 @@ const forms = {
   gym: (f, submitter) => {
     const fd = new FormData(f), id = f.dataset.id;
     const name = fd.get('name').trim(); if (!name) return;
-    const vals = { name, surname: fd.get('surname').trim(), clubId: ensureClub(fd.get('club')), category: fd.get('category'), level: fd.get('level'),
-      birthYear: fd.get('birthYear') ? String(fd.get('birthYear')) : '', notes: fd.get('notes').trim() };
+    const vals = { name, surname: fd.get('surname').trim(), clubId: ensureClub(fd.get('club')), gender: fd.get('gender') === 'M' ? 'M' : 'F',
+      category: fd.get('category'), level: fd.get('level'), birthYear: fd.get('birthYear') ? String(fd.get('birthYear')) : '', notes: fd.get('notes').trim() };
     if (id) {
       const g = gymById(id);
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
@@ -1945,20 +2235,20 @@ const forms = {
     }
     const dup = db.gymnasts.find(g => norm(gymName(g)) === norm(name + ' ' + vals.surname));
     db.gymnasts.push(Object.assign({ id: uid(), archived: false }, vals));
-    ui.lastGym = { clubName: clubName(vals.clubId), category: vals.category, level: vals.level };
+    ui.lastGym = { clubName: clubName(vals.clubId), gender: vals.gender, category: vals.category, level: vals.level };
     commit();
-    toast(`${name} ${vals.surname} afegida.${dup ? ' Compte: ja n’hi havia una amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
+    toast(`${name} ${vals.surname}: desat.${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
     if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym)); else closeDialog();
     render();
   },
   team: f => {
     const fd = new FormData(f), id = f.dataset.id;
-    const vals = { name: fd.get('name').trim(), clubId: fd.get('clubId') || null, category: fd.get('category'), level: fd.get('level'), memberIds: fd.getAll('m') };
+    const vals = { name: fd.get('name').trim(), clubId: fd.get('clubId') || null, gender: fd.get('gender') === 'M' ? 'M' : 'F', category: fd.get('category'), level: fd.get('level'), memberIds: fd.getAll('m') };
     if (!vals.name || !vals.category || !vals.level) { toast('Cal el nom, la categoria i el nivell.', 'bad'); return; }
     const t = id ? teamById(id) : (db.teams.push({ id: uid() }), db.teams[db.teams.length - 1]);
     Object.assign(t, vals);
-    // una gimnasta no pot ser a dos equips de la mateixa categoria i nivell
-    db.teams.forEach(o => { if (o.id !== t.id && o.category === t.category && o.level === t.level) o.memberIds = o.memberIds.filter(m => !t.memberIds.includes(m)); });
+    // una gimnasta no pot ser a dos equips del mateix grup (categoria, gènere i nivell)
+    db.teams.forEach(o => { if (o.id !== t.id && sameGroup(o, t)) o.memberIds = o.memberIds.filter(m => !t.memberIds.includes(m)); });
     commit(); closeDialog(); render();
     const n = t.memberIds.length, d = S().compDefaults;
     toast(n < d.teamMin ? `Equip desat, però només té ${n} gimnastes (mínim ${d.teamMin}).` : n > d.teamMax ? `Equip desat, però té ${n} gimnastes (màxim ${d.teamMax}).` : 'Equip desat.', n < d.teamMin || n > d.teamMax ? 'bad' : 'ok');
@@ -1973,32 +2263,36 @@ const forms = {
   enrollTeams: f => {
     const c = curComp(), ids = new FormData(f).getAll('t');
     if (!ids.length) { closeDialog(); return; }
-    let problems = [];
-    withUndo(`${plural(ids.length, 'equip inscrit', 'equips inscrits')}.`, () => { for (const id of ids) problems = problems.concat(enrollTeam(c, teamById(id))); });
+    let problems = [], moved = [];
+    withUndo(`${plural(ids.length, 'equip inscrit', 'equips inscrits')}.`, () => {
+      for (const id of ids) { const r = enrollTeam(c, teamById(id)); problems = problems.concat(r.problems); moved = moved.concat(r.moved); }
+    });
     closeDialog();
-    if (problems.length) toast(`No s’han pogut moure de categoria (ja tenen notes): ${problems.join(', ')}`, 'bad');
+    if (moved.length) toast(`Competeixen amb l’equip en un grup diferent del de la seva fitxa: ${moved.join(', ')}. Revisa-ho a Inscripcions si no és correcte.`, 'bad');
+    if (problems.length) toast(`No s’han pogut moure de grup (ja tenen notes): ${problems.join(', ')}`, 'bad');
   },
   enrollGyms: f => {
     const c = curComp(), ids = new FormData(f).getAll('g');
     if (!ids.length) { toast('No has marcat cap gimnasta.', 'bad'); return; }
-    withUndo(`${plural(ids.length, 'gimnasta inscrita', 'gimnastes inscrites')}.`, () => {
+    withUndo(`${plural(ids.length, 'inscripció feta', 'inscripcions fetes')}.`, () => {
       const added = ids.map(id => { const e = newEntry(c, gymById(id)); c.entries.push(e); return e; });
       autoAssignTeams(c, added);
+      if (c.autoTeams) autoCompTeams(c);
     });
     closeDialog();
   },
   entry: f => {
     const c = curComp(), e = c.entries.find(x => x.id === f.dataset.id), fd = new FormData(f);
-    const cat = fd.get('category'), level = fd.get('level');
-    if ((cat !== e.category || level !== e.level) && e.teamId) e.teamId = null;
-    Object.assign(e, { category: cat, level, clubId: fd.get('clubId') || null, bib: fd.get('bib') ? +fd.get('bib') : e.bib });
+    const cat = fd.get('category'), level = fd.get('level'), gender = fd.get('gender') === 'M' ? 'M' : 'F';
+    if (!sameGroup(e, { category: cat, gender, level }) && e.teamId) e.teamId = null;
+    Object.assign(e, { category: cat, gender, level, clubId: fd.get('clubId') || null, bib: fd.get('bib') ? +fd.get('bib') : e.bib });
     commit(); closeDialog(); render();
   },
   compTeam: f => {
     const c = curComp(), fd = new FormData(f), id = f.dataset.id;
     const name = fd.get('name').trim(); if (!name) return;
     let t = id && c.teams.find(x => x.id === id);
-    if (!t) { t = { id: uid(), category: f.dataset.cat, level: f.dataset.level, sourceTeamId: null }; c.teams.push(t); }
+    if (!t) { t = { id: uid(), category: f.dataset.cat, gender: f.dataset.gender === 'M' ? 'M' : 'F', level: f.dataset.level, sourceTeamId: null }; c.teams.push(t); }
     t.name = name; t.clubId = fd.get('clubId') || null;
     const members = new Set(fd.getAll('m'));
     c.entries.forEach(e => { if (members.has(e.id)) e.teamId = t.id; else if (e.teamId === t.id) e.teamId = null; });
@@ -2021,13 +2315,13 @@ const changes = {
   score: el => {
     const c = curComp(); if (!c || c.locked) return;
     const e = c.entries.find(x => x.id === el.dataset.e); if (!e) return;
-    if (el.dataset.last === el.value) return;   // ja processat (Intro i després blur)
+    if (el.dataset.last === el.value) return !el.classList.contains('invalid');   // ja processat (Intro i després blur)
     el.dataset.last = el.value;
     const val = Engine.parseScore(el.value);
     if (Number.isNaN(val)) {
       el.classList.add('invalid');
       toast(`«${el.value}» no és una nota vàlida. Escriu un número, per exemple 8,35.`, 'bad');
-      return;
+      return false;
     }
     el.classList.remove('invalid');
     setAttemptField(e, el.dataset.a, +el.dataset.i, el.dataset.f, val);
@@ -2039,15 +2333,18 @@ const changes = {
     const minM = Engine.toM(c.minScore) || 0;
     if (el.dataset.f !== 'p' && minM && m !== null && m > 0 && m < minM && c.scoring !== 'detailed') toast(`S’aplica la nota mínima: compta com a ${fmt(minM)}.`);
     commit(); refreshScoreRow(c, e);
+    return true;
   },
   bib: el => { const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.bib = el.value ? +el.value : null; commit(); },
   entryTeam: el => {
     const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.teamId = el.value || null; commit(); render();
+    const n = e.teamId ? c.entries.filter(x => x.teamId === e.teamId).length : 0;
+    if (n > c.teamMax) toast(`Aquest equip ara té ${n} gimnastes i el màxim és ${c.teamMax}: no classificarà fins que en tregueu.`, 'bad');
   },
   entryStatus: el => { const c = curComp(); const e = c.entries.find(x => x.id === el.dataset.id); e.status = el.value; commit(); render(); },
   cfg: el => {
     const cfg = cfgTarget(el), k = el.dataset.k;
-    let v = el.value;
+    let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.type === 'number') {
       const n = el.dataset.dec ? Math.round((+v || 0) * 1000) / 1000 : Math.round(+v || 0);
       v = Math.max(+el.min || 0, Math.min(+el.max || 100, n));
@@ -2059,7 +2356,8 @@ const changes = {
   },
   app: el => {
     const cfg = cfgTarget(el), a = cfg.apparatus[+el.dataset.i], k = el.dataset.k;
-    if (el.type === 'checkbox') a[k] = el.checked;
+    if (k === 'modeF' || k === 'modeM') { a.modes = Object.assign({ F: Engine.appMode(a, 'F'), M: Engine.appMode(a, 'M') }, a.modes); a.modes[k.slice(4)] = el.value; }
+    else if (el.type === 'checkbox') a[k] = el.checked;
     else if (k === 'attempts') a[k] = +el.value;
     else if (k === 'name') a[k] = el.value.trim() || a[k];
     else a[k] = el.value;
@@ -2070,7 +2368,7 @@ const changes = {
   pickFilter: el => { ui.pick[el.dataset.k] = el.value; refreshPick(); },
   teamFormRefresh: el => {
     const f = el.closest('form'), fd = new FormData(f);
-    const v = { clubId: fd.get('clubId'), category: fd.get('category'), level: fd.get('level'), memberIds: fd.getAll('m') };
+    const v = { clubId: fd.get('clubId'), gender: fd.get('gender'), category: fd.get('category'), level: fd.get('level'), memberIds: fd.getAll('m') };
     $('#teampick').innerHTML = teamPickList(v, fd.get('showAll') === 'on', f.dataset.id);
     $('#teamcount').textContent = $$('#teampick input:checked').length;
   },
@@ -2096,6 +2394,22 @@ const changes = {
     });
   },
   setting: el => { S()[el.dataset.k] = el.value; commit(); },
+  catField: el => {
+    const i = +el.dataset.i, c = S().categories[i], k = el.dataset.k;
+    if (k === 'name') {
+      const old = c.name, v = el.value.trim();
+      if (!v || v === old) { el.value = old; return; }
+      if (catNames().some((x, j) => j !== i && norm(x) === norm(v))) { toast('Ja n’hi ha una amb aquest nom.', 'bad'); el.value = old; return; }
+      c.name = v;
+      const fix = o => { if (o.category === old) o.category = v; };
+      db.gymnasts.forEach(fix); db.teams.forEach(fix);
+      db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+      commit(); toast(`«${old}» ara es diu «${v}».`, 'ok');
+      return;
+    }
+    c[k] = el.value === '' ? null : Math.round(+el.value);
+    commit(); render();
+  },
   listRename: el => {
     const key = el.dataset.key, i = +el.dataset.i, old = S()[key][i], v = el.value.trim();
     if (!v || v === old) { el.value = old; return; }
@@ -2110,13 +2424,21 @@ const changes = {
 };
 const inputs = {
   gSearch: el => { ui.gSearch = el.value; $('#gymtable').innerHTML = gymTable(); },
+  // en escriure l'any de naixement, la categoria es posa sola
+  gymYear: el => {
+    const f = el.closest('form'), sel = f && f.querySelector('select[name=category]'), hint = $('#yearhint');
+    if (!/^\d{4}$/.test(el.value)) { if (hint) hint.textContent = ''; return; }
+    const cat = catForYear(el.value);
+    if (cat && sel) sel.value = cat;
+    if (hint) hint.textContent = cat ? `Per l’any ${el.value} li toca ${cat}.` : `Cap categoria no inclou l’any ${el.value}. Revisa els anys a Configuració → Categories.`;
+  },
   pickFilter: el => { ui.pick[el.dataset.k] = el.value; refreshPick(); },
 };
 function refreshPick() {
   const p = ui.pick, q = norm(p.q);
   $$('#gympick label').forEach(l => {
     const g = gymById(l.querySelector('input').value);
-    const show = (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)) && (!p.club || g.clubId === p.club) && (!p.cat || g.category === p.cat) && (!p.level || g.level === p.level);
+    const show = (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)) && (!p.club || g.clubId === p.club) && (!p.gender || genderOf(g) === p.gender) && (!p.cat || g.category === p.cat) && (!p.level || g.level === p.level);
     l.classList.toggle('hidden', !show);
   });
 }
@@ -2153,7 +2475,7 @@ document.addEventListener('keydown', e => {
     const up = e.key === 'ArrowUp' || (e.key === 'Enter' && e.shiftKey);
     const col = $$(`#scoregrid input.sc[data-col="${el.dataset.col}"]:not(:disabled)`);
     const i = col.indexOf(el);
-    changes.score(el);
+    if (changes.score(el) === false) { el.select(); return; }   // nota no vàlida: no es passa a la següent
     const next = col[i + (up ? -1 : 1)];
     if (next) { next.focus(); next.select(); } else el.blur();
     return;
@@ -2166,6 +2488,9 @@ const isSc = el => el && el.matches && el.matches('input.sc');
 document.addEventListener('focusin', e => { if (isSc(e.target)) { e.target.select(); e.target._fresh = true; } });
 document.addEventListener('mouseup', e => { if (isSc(e.target) && e.target._fresh) e.preventDefault(); if (e.target) e.target._fresh = false; });
 document.addEventListener('keydown', e => { if (e.target) e.target._fresh = false; }, true);
+
+// el primer clic de la sessió torna a demanar permís per al fitxer vinculat (el navegador ho exigeix així)
+document.addEventListener('click', () => { if (fileHandle && fileState === 'perm') regrantFile(); }, { once: true, capture: true });
 
 /* ═══════════════════════════════════════════ arrencada */
 async function start() {

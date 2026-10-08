@@ -19,23 +19,38 @@ internet.
 ## Com es fa servir
 
 1. **Gimnastes**: entra-les una a una o *Enganxa des d'Excel* (copia les cel·les amb la fila de
-   títols: Nom, Cognoms, Entitat, Categoria, Nivell, Any, i si vols Equip). Es queden guardades
-   per a totes les competicions.
-2. **Equips**: crea'ls a mà o amb *Proposa equips automàticament* (agrupa per entitat,
-   categoria i nivell, de 3 a 6).
-3. **Competicions → Nova competició**: nom, data i lloc. Pots copiar les inscripcions d'una
-   competició anterior. A *Inscripcions* hi afegeixes equips sencers o gimnastes soltes.
-4. **Notes**: tria categoria/nivell i aparell. Escriu la nota i prem **Intro** per baixar a la
-   següent (val coma o punt). Tot es desa sol.
-5. **Classificacions**: surten soles. *Imprimeix / PDF* i *Exporta a Excel* treuen els fulls
+   títols: Nom, Cognoms, Entitat, Gènere, Any de naixement, Nivell, i si vols Categoria i Equip).
+   Amb l'any de naixement la **categoria es posa sola**. Es queden guardades per a totes les
+   competicions.
+2. **Competicions → Nova competició**: nom, data i lloc. Pots copiar les inscripcions d'una
+   competició anterior. A *Inscripcions* hi apuntes les gimnastes i **els equips es fan sols**:
+   les d'una mateixa entitat i grup formen equip si n'hi ha 3 o més (més de 6 → se'n fan dos).
+   Si preferiu equips fixos, es poden preparar a *Equips* i inscriure'ls sencers.
+3. **Notes**: tria el grup i escriu les notes a la graella; **Intro** baixa a la següent (val
+   coma, punt o apòstrof). Tot es desa sol, també si es tanca la finestra sense prémer Intro.
+4. **Classificacions**: surten soles. *Imprimeix / PDF* i *Exporta a Excel* treuen els fulls
    (classificacions, acta de notes, llistat d'inscrites i fulls de jutge en blanc).
+
+## Categories
+
+Per anys de naixement, iguals per a noies i nois (curs 2026-2027): Prebenjamí 2019-2020,
+Benjamí 2017-2018, Aleví 2015-2016, Infantil 2013-2014, Cadet 2011-2012, Juvenil 2009-2010,
+Sènior 2008 i abans. A *Configuració → Categories* es poden canviar els noms i els anys, i cada
+estiu el botó **Passa al curs següent (+1 any)** ho avança tot i actualitza la categoria de
+cada gimnasta. Les competicions ja fetes conserven la categoria d'aquell dia.
 
 ## Regles que aplica
 
-- Cada **categoria + nivell** té les seves classificacions.
-- **General individual** = suma dels aparells que compten (per defecte salt, barra i terra).
+Per defecte, les de la normativa UCEC de gimnàstica artística dels JEEC:
+
+- Cada **categoria + gènere + nivell** té les seves classificacions.
+- **Noies**: salt, barra i terra. **Nois**: salt, terra i minitramp. Es pot canviar per aparell
+  (que compti, que tingui classificació a part o que no es faci) a la configuració.
+- **Salt i minitramp: 2 intents, compta el millor.** Nota mínima de **3 punts** per a qui fa
+  l'exercici (un 0 vol dir que no l'ha fet).
+- **General individual** = suma dels aparells que compten.
 - **Equips** de 3 a 6 gimnastes: a cada aparell només compten les **3 millors notes**; la resta
-  surten ratllades. Un equip amb menys de 3 gimnastes surt però no classifica.
+  surten ratllades. Un equip que no té entre 3 i 6 gimnastes que hagin competit surt com a NC.
 - **Empats**: per defecte mateixa posició (1, 1, 3). Es pot triar desempatar per la millor nota
   d'aparell o, si s'entren D i E, com la FIG (primer E, després D).
 - **No presentada (NP)**: surt a baix, sense posició, i no suma per a l'equip.
@@ -47,7 +62,8 @@ internet.
 
 Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 
-- **Desa també a un fitxer** (Chrome/Edge): tria un fitxer `.json` i cada canvi s'hi escriu.
+- **Desa també a un fitxer** (Chrome/Edge): crea un fitxer `.json` o fes servir el que ja tens
+  (si ja té dades, pregunta abans de tocar res) i cada canvi s'hi escriu.
 - **Descarrega còpia de seguretat** / **Restaura una còpia**: per passar les dades a un altre
   ordinador o guardar-les en un USB. L'app avisa si fa dies que no en fas cap.
 

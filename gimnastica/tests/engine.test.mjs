@@ -118,7 +118,7 @@ test('equips: el nombre de notes que compten és configurable i el minitramp no 
   assert.equal(rows[0].total, 51000);
 });
 
-test('equips amb menys gimnastes del mínim no classifiquen; NP no puntua', () => {
+test('equips amb menys gimnastes del mínim no classifiquen; NP no puntua ni compta per al mínim', () => {
   const c = comp();
   c.teams.push({ id: 't1', name: 'Petit', category: 'Aleví', level: 'A' }, { id: 't2', name: 'Bo', category: 'Aleví', level: 'A' });
   c.entries.push(entry('P1', { salt: 9, barra: 9, terra: 9 }, { teamId: 't1' }), entry('P2', { salt: 9, barra: 9, terra: 9 }, { teamId: 't1' }));
@@ -129,9 +129,50 @@ test('equips amb menys gimnastes del mínim no classifiquen; NP no puntua', () =
   assert.equal(petit.eligible, false);
   assert.equal(petit.rank, null);
   assert.equal(petit.rawTotal, 54000);
-  assert.equal(bo.rank, 1);
-  assert.equal(bo.total, 30000);        // la NP no suma
+  // «Bo» té 3 inscrites però una no s'ha presentat: només n'han competit 2, com «Petit»
+  assert.equal(bo.eligible, false);
+  assert.equal(bo.rank, null);
+  assert.equal(bo.rawTotal, 30000);     // la NP no suma
   assert.equal(bo.complete, false);     // només 2 notes per aparell
+});
+
+test('equips de més del màxim no classifiquen', () => {
+  const c = comp({ teamMax: 6 });
+  c.teams.push({ id: 'g', name: 'Gran', category: 'Aleví', level: 'A' }, { id: 'n', name: 'Normal', category: 'Aleví', level: 'A' });
+  for (let i = 0; i < 8; i++) c.entries.push(entry('G' + i, { salt: 9, barra: 9, terra: 9 }, { teamId: 'g' }));
+  for (let i = 0; i < 6; i++) c.entries.push(entry('N' + i, { salt: 8, barra: 8, terra: 8 }, { teamId: 'n' }));
+  const { rows } = E.teamRanking(c, group(c));
+  const gran = rows.find(r => r.name === 'Gran');
+  assert.equal(gran.oversize, true);
+  assert.equal(gran.rank, null);
+  assert.equal(rows.find(r => r.name === 'Normal').rank, 1);
+});
+
+test('mode detallat: sense E encara no hi ha nota (una E oblidada no passa per bona)', () => {
+  assert.equal(E.attemptValue({ d: 2.5 }, 'detailed'), null);
+  assert.equal(E.attemptValue({ e: 8 }, 'detailed'), 8000);           // D = 0
+  assert.equal(E.attemptValue({ d: 2.5, e: 8, p: 0.3 }, 'detailed'), 10200);
+  // nota final entrada en mode simple i després penalització en mode detallat: final − penalització
+  assert.equal(E.attemptValue({ v: 8.5, p: 0.3 }, 'detailed'), 8200);
+  // si la nota guardada ja ve de D+E (src 'de'), la penalització ja hi és inclosa
+  assert.equal(E.attemptValue({ v: 8.2, p: 0.3, src: 'de' }, 'detailed'), 8200);
+  const c = comp({ scoring: 'detailed' });
+  const r = E.appResult({ scores: { salt: [{ d: 2 }] } }, c.apparatus[0], c);
+  assert.equal(r.value, null);
+  assert.equal(r.complete, false);
+});
+
+test('l’apòstrof també serveix de coma (tecla al costat del 0)', () => {
+  assert.equal(E.parseScore("8'5"), 8.5);
+});
+
+test('la general marca incompleta qui només té el 1r de 2 intents', () => {
+  const c = comp();
+  c.apparatus[0] = { ...c.apparatus[0], attempts: 2, rule: 'best' };
+  c.entries.push({ id: 'x', name: 'X', category: 'Aleví', level: 'A', status: '', scores: { salt: [{ v: 9 }], barra: [{ v: 8 }], terra: [{ v: 8 }] } });
+  const { rows } = E.individualRanking(c, group(c), { nameOf });
+  assert.equal(rows[0].total, 25000);
+  assert.equal(rows[0].complete, false);
 });
 
 test('equips: desempat per millor nota individual que compta', () => {
@@ -224,4 +265,62 @@ test('appDE amb 2 intents segueix la regla de l’aparell', () => {
   assert.deepEqual(plain(E.appDE(e, { id: 'salt', attempts: 2, rule: 'best' }, 'detailed')), { d: 3000, e: 7500 });
   assert.deepEqual(plain(E.appDE(e, { id: 'salt', attempts: 2, rule: 'avg' }, 'detailed')), { d: 2500, e: 7250 });
   assert.deepEqual(plain(E.appDE(e, { id: 'salt', attempts: 2, rule: 'sum' }, 'detailed')), { d: 5000, e: 14500 });
+});
+
+const CATS = [
+  { name: 'Prebenjamí', from: 2019, to: 2020 }, { name: 'Benjamí', from: 2017, to: 2018 }, { name: 'Aleví', from: 2015, to: 2016 },
+  { name: 'Infantil', from: 2013, to: 2014 }, { name: 'Cadet', from: 2011, to: 2012 }, { name: 'Juvenil', from: 2009, to: 2010 },
+  { name: 'Sènior', from: null, to: 2008 },
+];
+
+test('categoria per any de naixement (taula del curs 2026-2027)', () => {
+  const c = y => E.categoryForYear(CATS, y);
+  assert.equal(c(2020), 'Prebenjamí'); assert.equal(c(2019), 'Prebenjamí');
+  assert.equal(c(2018), 'Benjamí'); assert.equal(c(2016), 'Aleví'); assert.equal(c('2015'), 'Aleví');
+  assert.equal(c(2014), 'Infantil'); assert.equal(c(2011), 'Cadet'); assert.equal(c(2010), 'Juvenil');
+  assert.equal(c(2008), 'Sènior'); assert.equal(c(1990), 'Sènior');
+  assert.equal(c(2021), null);           // massa petita: cap categoria
+  assert.equal(c(''), null);
+  // una categoria sense cap any no captura ningú
+  assert.equal(E.categoryForYear([{ name: 'Lliure', from: null, to: null }], 2015), null);
+  // en passar de curs (+1 a tots els anys), qui era aleví de 2n any (2015) passa a infantil
+  const next = CATS.map(x => ({ ...x, from: x.from === null ? null : x.from + 1, to: x.to === null ? null : x.to + 1 }));
+  assert.equal(E.categoryForYear(next, 2015), 'Infantil');
+  assert.equal(E.categoryForYear(next, 2009), 'Sènior');
+});
+
+test('noies i nois van en grups i classificacions separats', () => {
+  const c = comp();
+  c.entries.push(entry('Anna', { salt: 9, barra: 9, terra: 9 }, { gender: 'F' }), entry('Pau', { salt: 8, barra: 8, terra: 8 }, { gender: 'M' }),
+    entry('Bet', { salt: 7, barra: 7, terra: 7 }));
+  const gs = E.groupsOf(c, { categories: CATS, levels: ['A'] });
+  assert.deepEqual(plain(gs.map(g => [g.gender, g.entries.map(e => e.name)])), [['F', ['Anna', 'Bet']], ['M', ['Pau']]]);
+  const r = E.individualRanking(c, gs[1], { nameOf });
+  assert.equal(r.rows[0].name, 'Pau');
+  assert.equal(r.rows[0].rank, 1);
+});
+
+test('aparells per gènere: les noies fan barra, els nois minitramp', () => {
+  const c = comp({ apparatus: [
+    { id: 'salt', name: 'Salt', modes: { F: 'total', M: 'total' }, attempts: 1 },
+    { id: 'barra', name: 'Barra', modes: { F: 'total', M: 'off' }, attempts: 1 },
+    { id: 'terra', name: 'Terra', modes: { F: 'total', M: 'total' }, attempts: 1 },
+    { id: 'mini', name: 'Minitramp', modes: { F: 'apart', M: 'total' }, attempts: 1 },
+  ] });
+  assert.deepEqual(plain(E.enabledApps(c, 'F').map(a => a.id)), ['salt', 'barra', 'terra', 'mini']);
+  assert.deepEqual(plain(E.totalApps(c, 'F').map(a => a.id)), ['salt', 'barra', 'terra']);
+  assert.deepEqual(plain(E.totalApps(c, 'M').map(a => a.id)), ['salt', 'terra', 'mini']);
+  assert.deepEqual(plain(E.enabledApps(c).map(a => a.id)), ['salt', 'barra', 'terra', 'mini']);
+  const girl = entry('Anna', { salt: 8, barra: 8, terra: 8, mini: 9 }, { gender: 'F' });
+  const boy = entry('Pau', { salt: 8, barra: 9, terra: 8, mini: 9 }, { gender: 'M' });
+  assert.equal(E.entryTotal(c, girl), 24000);   // el minitramp va a part
+  assert.equal(E.entryTotal(c, boy), 25000);    // la barra no compta per als nois
+  // equips de nois: compten salt, terra i minitramp
+  c.teams.push({ id: 'tm', name: 'Nois', category: 'Aleví', gender: 'M', level: 'A' }, { id: 'tf', name: 'Noies', category: 'Aleví', gender: 'F', level: 'A' });
+  ['P1', 'P2', 'P3'].forEach(n => c.entries.push(entry(n, { salt: 8, terra: 8, mini: 9, barra: 10 }, { gender: 'M', teamId: 'tm' })));
+  const gs = E.groupsOf(c, { categories: CATS, levels: ['A'] });
+  const boys = E.teamRanking(c, gs.find(g => g.gender === 'M'));
+  assert.deepEqual(plain(boys.rows.map(r => [r.name, r.total])), [['Nois', 75000]]);
+  const girls = E.teamRanking(c, gs.find(g => g.gender === 'F') || { category: 'Aleví', gender: 'F', level: 'A', entries: [] });
+  assert.deepEqual(plain(girls.rows.map(r => r.name)), ['Noies']);
 });

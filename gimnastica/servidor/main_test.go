@@ -308,3 +308,47 @@ func TestCorruptDataFileOpensNewestBackup(t *testing.T) {
 		t.Fatalf("sense còpies: %v %q %v", err, s2.recovered, s2.db)
 	}
 }
+
+// «Tanca NotesGim» quan no es pot desar al fitxer: no es tanca (si no, es perdrien els últims canvis), excepte
+// si la finestra ho demana expressament
+func TestQuitRefusesWhenCannotSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	_ = os.Mkdir(path+".tmp", 0o755)
+	post := func(body string) int {
+		r, err := http.Post(srv.URL+"/api/quit", "application/json", bytes.NewReader([]byte(body)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if code := post(`{}`); code != 500 {
+		t.Fatalf("sense poder desar no s'havia de tancar: %d", code)
+	}
+	select {
+	case <-s.quit:
+		t.Fatal("s'ha tancat")
+	case <-time.After(400 * time.Millisecond):
+	}
+	if code := post(`{"force":true}`); code != 200 {
+		t.Fatalf("amb force: %d", code)
+	}
+	if code := post(`{"force":true}`); code != 200 { // dues vegades no peta
+		t.Fatalf("segona vegada: %d", code)
+	}
+	select {
+	case <-s.quit:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no s'ha tancat")
+	}
+}

@@ -281,6 +281,10 @@ try {
     await new Promise(r => setTimeout(r, 5000));
     assert.ok(puts <= 4, `massa intents de desar: ${puts}`);
     assert.equal(await admin.locator('.toast', { hasText: 'altra finestra' }).count(), 0);
+    // «Tanca NotesGim» avisa que ara no es pot desar (i es pot fer-se enrere)
+    await admin.click('button[data-act=quitApp]');
+    await admin.waitForSelector('#confirm[open] >> text=Ara no es pot desar al fitxer');
+    await admin.click('#confirm button[value=no]');
     rmSync(dataFile + '.tmp', { recursive: true, force: true });
     await admin.waitForSelector('.toast:has-text("Ja es torna a desar al fitxer")', { timeout: 12000 });
     admin.off('request', count);

@@ -1113,7 +1113,7 @@ function flush() {
    l'ordinador de la taula (role admin) hi envia cada canvi i en rep les notes de les tutores al moment;
    des d'un altre aparell (role tutor) s'obre el mode tutora. */
 const server = { on: false, role: null, version: null, dataRev: null, sentStamp: null, urls: [], urlsAt: 0, pushing: false, again: false,
-  online: true, deferred: false, replaceNext: false, closed: false, conflicts: 0, saveErr: '', retrySave: false };
+  online: true, deferred: false, replaceNext: false, closed: false, conflicts: 0, saveErr: '', retrySave: false, diskStamp: null };
 async function api(path, opts = {}, timeout = 0) {
   const ctl = timeout ? new AbortController() : null;
   const t = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
@@ -1152,7 +1152,7 @@ async function serverInit() {
     } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);   // la més nova sencera,
     else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }                                   // i de l'altra, les notes més noves
   } else if (has(remote.db)) db = migrate(remote.db);
-  server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = rm.updated || null;
+  server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
   flush();
   render();
   if (note) toast(note, 'bad');
@@ -1168,7 +1168,7 @@ function serverPush() {
   api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, replace }) })
     .then(resp => {
       server.online = true; server.conflicts = 0; setSaveErr('');
-      server.version = resp.version; server.dataRev = resp.dataRev; server.sentStamp = stamp;
+      server.version = resp.version; server.dataRev = resp.dataRev; server.sentStamp = server.diskStamp = stamp;
       if (replace) server.replaceNext = false;
       if (resp.taken && resp.db) applyRemote(resp.db, resp.dataRev);
     })
@@ -1205,12 +1205,14 @@ function serverConflict(r) {
   server.version = r.version; server.dataRev = r.dataRev;
   if (++server.conflicts > 3) { server.online = false; toast('No es pot desar al fitxer de NotesGim: tanca aquesta finestra i torna a obrir NotesGim.', 'bad'); return; }
   // ningú més les ha canviat (p. ex. NotesGim s'ha tornat a obrir): es tornen a enviar les d'aquí, amb el que s'hagi fet mentrestant
-  if (tm.dbId === db.meta.dbId && server.sentStamp && tm.updated === server.sentStamp) { server.again = true; return; }
+  // (diskStamp: el darrer que se sap que és al fitxer; si el programa no podia desar i s'ha tornat a obrir, el
+  // fitxer té aquestes, més velles que les d'aquí, i no són d'una altra finestra)
+  if (tm.dbId === db.meta.dbId && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp)) { server.again = true; return; }
   const mine = db;
   try { localStorage.setItem(LS_KEY + '.abans-servidor', JSON.stringify(mine)); } catch (_) {}
   db = migrate(theirs);
   if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
-  server.replaceNext = false; server.sentStamp = tm.updated || null;
+  server.replaceNext = false; server.sentStamp = server.diskStamp = tm.updated || null;
   try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
   server.again = true;
   renderKeepFocus();
@@ -1286,9 +1288,14 @@ function applyRemote(remoteDb, rev) {
   else renderKeepFocus();
 }
 // el que ha arribat mentre hi havia un diàleg obert o s'escrivia un nom: es mostra quan s'acaba
+// (mai amb el botó del ratolí o el dit a mig clic: si es tornés a pintar entre «prémer» i «deixar anar», el clic es perdria)
+let ptrDown = false;
+document.addEventListener('pointerdown', () => { ptrDown = true; }, true);
+document.addEventListener('pointerup', () => { ptrDown = false; applyDeferred(); }, true);
+document.addEventListener('pointercancel', () => { ptrDown = false; applyDeferred(); }, true);
 function applyDeferred() {
   setTimeout(() => {
-    if (!server.deferred || dialogOpen() || editing() || typingScore()) return;
+    if (!server.deferred || ptrDown || dialogOpen() || editing() || typingScore()) return;
     server.deferred = false; renderKeepFocus();
   }, 0);
 }
@@ -1465,7 +1472,8 @@ async function resolveFileConflict() {
     Fitxer: ${info(inFile)}${inFile.meta && inFile.meta.updated ? ` · canviat el ${h(new Date(inFile.meta.updated).toLocaleString('ca'))}` : ''}<br>Aquest navegador: ${info(db)}${db.meta.updated ? ` · canviat el ${h(new Date(db.meta.updated).toLocaleString('ca'))}` : ''}
     <br><br>«Fes servir les del fitxer» substitueix les d’aquest navegador (pots desfer-ho just després).`,
     [{ value: 'unlink', label: 'Desvincula el fitxer' }, { value: 'mine', label: 'Escriu-hi les d’aquest navegador', cls: 'danger' }, { value: 'file', label: 'Fes servir les del fitxer', cls: 'primary' }]);
-  if (pick === 'file') { fileChecked = true; fileState = 'ok'; withUndo('Dades carregades del fitxer.', () => { db = migrate(inFile); }); }
+  // (el Desfés torna les d'aquest navegador però no les escriu al fitxer: es torna a preguntar què fer)
+  if (pick === 'file') { fileChecked = true; fileState = 'ok'; withUndo('Dades carregades del fitxer.', () => { db = migrate(inFile); }, { beforeRestore: () => { fileChecked = false; fileState = 'conflict'; } }); }
   else if (pick === 'mine') { fileChecked = true; fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue; toast('Fitxer actualitzat amb les dades d’aquest navegador.', 'ok'); }
   else if (pick === 'unlink') await unlinkFile();
   renderSaveState(false);
@@ -3923,12 +3931,22 @@ const actions = {
   },
   // programa NotesGim: desa-ho tot i tanca'l
   quitApp: async () => {
-    if (!(await confirmBox('Tancar NotesGim? Tot queda desat al fitxer de dades. Les tutores ja no podran entrar notes fins que el tornis a obrir.', { ok: 'Tanca' }))) return;
+    // si ara no es pot desar al fitxer, es diu clar (i es pot descarregar una còpia abans)
+    const bad = server.saveErr;
+    const msg = bad ? `<b>Ara no es pot desar al fitxer</b> (${h(bad)}).<br>Si tanques NotesGim, els últims canvis només quedaran en aquest ordinador, en aquesta finestra. Abans, fes «Descarrega còpia de seguretat» a Configuració.<br><br>Vols tancar-lo igualment?`
+      : 'Tancar NotesGim? Tot queda desat al fitxer de dades. Les tutores ja no podran entrar notes fins que el tornis a obrir.';
+    if (!(await confirmBox(msg, { ok: bad ? 'Tanca igualment' : 'Tanca', danger: !!bad }))) return;
     commitTyping(); flush();
     for (let i = 0; i < 40 && (server.pushing || server.again); i++) await new Promise(r => setTimeout(r, 100));
+    let saved = !server.saveErr;
+    try { await api('api/quit', { method: 'POST', body: JSON.stringify({ force: !!bad }) }); }
+    catch (e) {
+      // el programa no ha pogut desar l'últim cop i no s'ha tancat: es diu, i la finestra continua
+      if (e && e.status === 500) { setSaveErr(e.message); toast('NotesGim no s’ha tancat perquè no ha pogut desar al fitxer. Torna-ho a provar o fes una còpia de seguretat.', 'bad'); return; }
+      saved = saved && server.online;
+    }
     server.closed = true;   // aquesta finestra ja no parla més amb cap NotesGim (si se n'obre un altre, no hi escriu)
-    try { await api('api/quit', { method: 'POST', body: '{}' }); } catch (_) {}
-    document.body.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;font:16px system-ui"><h2>NotesGim s’ha tancat</h2><p>Les dades estan desades. Ja pots tancar aquesta finestra.</p></div>';
+    document.body.innerHTML = `<div style="max-width:420px;margin:80px auto;text-align:center;font:16px system-ui"><h2>NotesGim s’ha tancat</h2><p>${saved ? 'Les dades estan desades. Ja pots tancar aquesta finestra.' : 'Els últims canvis no s’han pogut desar al fitxer: queden en aquesta finestra d’aquest ordinador i hi tornaran quan tornis a obrir NotesGim.'}</p></div>`;
   },
   install: () => doInstall(),
   installPrompt: () => { closeDialog(); promptInstall(); },

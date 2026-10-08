@@ -57,6 +57,7 @@ type store struct {
 	recovered string       // el fitxer de dades estava malmès i s'ha obert una còpia (què se n'ha de dir)
 	dataRev   int64        // canvia cada vegada que la taula desa (no amb les notes de les tutores); < 2^53 perquè JavaScript el llegeixi exacte
 	quit      chan struct{}
+	quitOnce  sync.Once
 	mu        sync.Mutex
 	db        map[string]any
 	version   int64
@@ -767,8 +768,22 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, 403, "no permès")
 			return
 		}
+		var body struct {
+			Force bool `json:"force"`
+		}
+		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
+		// abans de tancar, es desa; si no es pot, no es tanca (si no, es perdrien els últims canvis) excepte si
+		// la finestra ho demana expressament
+		s.mu.Lock()
+		err := s.saveLocked()
+		msg := s.saveErr
+		s.mu.Unlock()
+		if err != nil && !body.Force {
+			fail(w, 500, msg)
+			return
+		}
 		writeJSON(w, 200, map[string]any{"ok": true})
-		go func() { time.Sleep(300 * time.Millisecond); close(s.quit) }()
+		s.quitOnce.Do(func() { go func() { time.Sleep(300 * time.Millisecond); close(s.quit) }() })
 	})
 
 	// tutores
@@ -1144,7 +1159,11 @@ func main() {
 			}
 			gone := func(t int64) bool { return now.UnixMilli()-t > int64(*grace)*1000 }
 			// no es tanca mentre la finestra imprimeix ni mentre hi ha tutores enviant notes
-			if !*keepAlive && !*noBrowser && seen > 0 && gone(seen) && gone(s.lastTutor.Load()) && now.UnixMilli() > s.holdUntil.Load() {
+			// (ni mentre hi ha dades que no s'han pogut desar al fitxer: quan es torni a obrir, la finestra les recupera)
+			s.mu.Lock()
+			dirty := s.dirty
+			s.mu.Unlock()
+			if !*keepAlive && !*noBrowser && seen > 0 && gone(seen) && gone(s.lastTutor.Load()) && now.UnixMilli() > s.holdUntil.Load() && !dirty {
 				log.Print("fa estona que la finestra de l'app no hi és: es tanca")
 				s.mu.Lock()
 				_ = s.saveLocked()

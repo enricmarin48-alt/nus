@@ -6,7 +6,14 @@ classificacions **individual**, **per aparells** i **per equips** al moment.
 
 ## Com aconseguir-lo
 
-**Opció A — fitxer (la més senzilla).** Descarrega `index.html`, posa'l en una carpeta fixa
+**A l'ordinador (recomanat): el programa `NotesGim.exe`.** Posa'l en una carpeta (per exemple
+*Documents/NotesGim*) i obre'l amb doble clic: s'obre en una finestra pròpia, com qualsevol
+programa, i funciona sense internet. Les dades es guarden a `notesgim-dades.json`, al costat del
+programa (amb còpies automàtiques), i les tutores hi poden entrar les notes des del mòbil. Si el
+tornes a obrir mentre ja està obert, només en torna a mostrar la finestra; quan tanques la
+finestra, el programa es tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»).
+
+**Opció A — fitxer.** Descarrega `index.html`, posa'l en una carpeta fixa
 (per exemple *Documents/NotesGim*) i obre'l amb doble clic. S'obre al navegador i ja està.
 Recomanat: Chrome o Edge. Obre'l sempre **des del mateix lloc i amb el mateix navegador**,
 perquè les dades es guarden al navegador d'aquell ordinador.
@@ -18,7 +25,8 @@ internet.
 
 ## Com es fa servir
 
-1. **Gimnastes**: entra-les una a una o *Enganxa des d'Excel* (copia les cel·les amb la fila de
+1. **Gimnastes**: a la mateixa fitxa hi tries **l'equip** (o en crees un de nou); també es pot
+   canviar directament a la llista. Entra-les una a una o *Enganxa des d'Excel* (copia les cel·les amb la fila de
    títols: Nom, Cognoms, Entitat, Gènere, Any de naixement, Nivell, i si vols Categoria i Equip).
    Amb l'any de naixement la **categoria es posa sola**. Es queden guardades per a totes les
    competicions.
@@ -69,11 +77,10 @@ Per defecte, les de la normativa UCEC de gimnàstica artística dels JEEC:
 
 ## Tutores entrant les notes des del mòbil (sense internet)
 
-Amb el programa **NotesGim-servidor** (un sol fitxer, no cal instal·lar res; porta l'app a dins):
+Amb el programa **NotesGim.exe** (un sol fitxer, no cal instal·lar res; porta l'app a dins):
 
-1. A l'ordinador de la taula, posa `NotesGim-servidor-windows.exe` en una carpeta (per exemple
-   *Documents/NotesGim*) i obre'l. S'obre una finestra negra (deixa-la oberta) i l'app al
-   navegador. Les dades es guarden a `notesgim-dades.json`, a la mateixa carpeta, i cada 10
+1. A l'ordinador de la taula, posa `NotesGim.exe` en una carpeta (per exemple
+   *Documents/NotesGim*) i obre'l. S'obre l'app en una finestra pròpia. Les dades es guarden a `notesgim-dades.json`, a la mateixa carpeta, i cada 10
    minuts es fa una còpia a `copies-notesgim/`.
    - Windows pot avisar «Windows ha protegit l'ordinador»: *Més informació → Executa igualment*.
    - La primera vegada, el tallafoc pregunta si el deixes accedir a la xarxa: digues que **sí**

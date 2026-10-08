@@ -1192,6 +1192,18 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
   });
 }
 // Desfés torna a l'estat d'abans, però només si després no s'ha canviat res més (si no, es perdria)
+// demana un text: torna el text o null si es cancel·la
+function promptBox(msg, value = '') {
+  return new Promise(res => {
+    const d = $('#confirm');
+    d.innerHTML = `<form method="dialog" class="dlg"><div>${msg}</div><input type="text" name="v" value="${h(value)}" style="width:100%;margin-top:10px" autocomplete="off">
+      <div class="dlg-actions"><button value="ok" class="btn primary">D’acord</button><button value="no" class="btn">Cancel·la</button></div></form>`;
+    d.returnValue = '';
+    d.onclose = () => res(d.returnValue === 'ok' ? d.querySelector('input[name=v]').value.trim() : null);
+    d.showModal();
+    const i = d.querySelector('input'); i.focus(); i.select();
+  });
+}
 // diàleg amb diverses opcions: torna el value del botó triat o null
 function choiceBox(msg, buttons) {
   return new Promise(res => {
@@ -1248,6 +1260,7 @@ function renderSaveState(busy) {
     parts.push(server.online
       ? `<span title="Les dades es desen al fitxer del programa servidor i es reben les notes de les tutores"><span class="dot ${busy || server.pushing ? 'busy' : ''}"></span>Servidor · ${busy || server.pushing ? 'desant…' : 'desat'}</span>`
       : `<span title="Es continua desant en aquest navegador i s'enviarà quan torni la connexió"><span class="dot err"></span>Sense connexió amb el servidor</span>`);
+    parts.push(`<button data-act="quitApp" title="Desa i tanca el programa NotesGim">Tanca NotesGim</button>`);
     el.innerHTML = parts.join('');
     return;
   }
@@ -1260,6 +1273,7 @@ function renderSaveState(busy) {
     else if (fileState === 'err') parts.push(`<button class="alert" data-act="regrantFile">⚠ Error desant a ${h(fileHandle.name)}</button>`);
     else parts.push(`<span title="També es desa en aquest fitxer">+ ${h(fileHandle.name)}</span>`);
   }
+  if (!server.on && !isStandalone() && (installEvt || isIOS())) parts.push(`<button data-act="install" title="Tenir NotesGim com una app, amb icona, que funciona sense internet">Instal·la l’app</button>`);
   if (!fileOk && hasData() && backupDue()) {
     parts.push(`<button class="alert" data-act="backup" title="No hi ha cap còpia recent de les dades fora del navegador">Fes una còpia</button>`);
   }
@@ -1829,6 +1843,51 @@ views.gimnastes = () => {
     </div>
     <div id="gymtable">${gymTable()}</div></section>`;
 };
+/* ─── Equip de cada gimnasta (es tria a la mateixa fitxa) */
+// l'equip fix d'una gimnasta (només n'hi ha un)
+const gymTeam = g => db.teams.find(t => t.memberIds.includes(g.id)) || null;
+// equips on pot anar: els del seu grup (categoria + gènere + nivell), primer els de la seva entitat
+function teamsFor(g) {
+  return db.teams.filter(t => sameGroup(t, g)).sort((a, b) => ((a.clubId === g.clubId ? 0 : 1) - (b.clubId === g.clubId ? 0 : 1)) || coll(a.name, b.name));
+}
+const suggestTeamName = g => [clubName(g.clubId) || 'Equip', g.category, g.level, genderOf(g) === 'M' ? 'nois' : ''].filter(Boolean).join(' ');
+function teamOptionsFor(g, current) {
+  const list = teamsFor(g);
+  const cur = current ? teamById(current) : null;
+  if (cur && !list.includes(cur)) list.unshift(cur);
+  const n = t => t.memberIds.filter(id => id !== g.id).length + 1;
+  return `<option value="">— Cap equip (només individual) —</option>
+    ${list.map(t => `<option value="${t.id}" ${t.id === current ? 'selected' : ''}>${h(t.name)}${sameGroup(t, g) ? '' : ' (un altre grup)'}${t.clubId && t.clubId !== g.clubId ? ' · ' + h(clubName(t.clubId)) : ''}</option>`).join('')}
+    <option value="__new">＋ Equip nou…</option>`;
+}
+// posa una gimnasta en un equip (o en cap). Les competicions obertes on està inscrita la segueixen.
+function setGymTeam(g, value, newName) {
+  let team = null;
+  if (value === '__new') {
+    team = { id: uid(), name: String(newName || '').trim() || suggestTeamName(g), clubId: g.clubId || null, gender: genderOf(g), category: g.category, level: g.level, memberIds: [] };
+    db.teams.push(team);
+  } else if (value) team = teamById(value) || null;
+  for (const t of db.teams) if (t !== team) t.memberIds = t.memberIds.filter(id => id !== g.id);
+  if (team && !team.memberIds.includes(g.id)) team.memberIds.push(g.id);
+  const touched = [];
+  for (const c of db.competitions) {
+    if (c.locked) continue;
+    const e = c.entries.find(x => x.gymnastId === g.id);
+    if (!e) continue;
+    if (!team) { if (e.teamId) { e.teamId = null; e.noAuto = true; touched.push(c.name); } pruneAutoTeams(c); continue; }
+    if (!sameGroup(e, team)) continue;   // aquell dia competeix en un altre grup: no es toca
+    let ct = c.teams.find(x => x.sourceTeamId === team.id);
+    if (!ct) { ct = { id: uid(), name: team.name, clubId: team.clubId || null, category: team.category, gender: genderOf(team), level: team.level, sourceTeamId: team.id }; c.teams.push(ct); }
+    if (e.teamId !== ct.id) { e.teamId = ct.id; delete e.noAuto; touched.push(c.name); }
+    pruneAutoTeams(c);
+  }
+  return { team, touched };
+}
+function teamSetToast(g, r) {
+  const n = r.team ? r.team.memberIds.length : 0, max = S().compDefaults.teamMax;
+  const where = r.touched.length ? ` També a: ${r.touched.join(', ')}.` : '';
+  toast(r.team ? `${gymName(g)} → ${r.team.name} (${plural(n, 'gimnasta', 'gimnastes')}).${where}${n > max ? ` Compte: el màxim és ${max}.` : ''}` : `${gymName(g)} ara no té equip.${where}`, n > max ? 'bad' : 'ok');
+}
 function gymTable() {
   const list = filteredGyms();
   if (!db.gymnasts.length) return `<div class="empty">Encara no hi ha cap gimnasta.<br><br><button class="btn primary" data-act="newGym">＋ Afegeix-ne una</button> &nbsp; <button class="btn" data-act="importGyms">Enganxa una llista des d’Excel</button></div>`;
@@ -1837,28 +1896,34 @@ function gymTable() {
   for (const c of db.competitions) for (const e of c.entries) usage[e.gymnastId] = (usage[e.gymnastId] || 0) + 1;
   return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th>Cognoms</th><th>Entitat</th><th>Gènere</th><th>Categoria</th><th>Nivell</th><th>Any</th><th>Equip</th><th class="num">Compet.</th><th></th></tr></thead><tbody>
     ${list.map(g => {
-      const teams = db.teams.filter(t => t.memberIds.includes(g.id)).map(t => h(t.name)).join(', ');
+      const cur = gymTeam(g);
+      const teams = `<select class="teamsel" data-chg="gymTeamInline" data-id="${g.id}" aria-label="Equip de ${h(gymName(g))}">${teamOptionsFor(g, cur && cur.id)}</select>`;
       const wrong = catMismatch(g);
       return `<tr class="${g.archived ? 'np' : ''}"><td><a href="#" data-act="editGym" data-id="${g.id}">${h(g.name)}</a>${g.archived ? ' <span class="badge">arxivada</span>' : ''}</td><td>${h(g.surname)}</td>
       <td>${h(clubName(g.clubId))}</td><td>${genderShort(g.gender)}</td>
-      <td>${h(g.category)}${wrong ? ` <span class="badge warn" title="Per l’any de naixement li toca ${h(wrong)}">→ ${h(wrong)}</span>` : ''}</td><td>${h(g.level)}</td><td>${h(g.birthYear)}</td><td class="small">${teams || '<span class="muted">—</span>'}</td>
+      <td>${h(g.category)}${wrong ? ` <span class="badge warn" title="Per l’any de naixement li toca ${h(wrong)}">→ ${h(wrong)}</span>` : ''}</td><td>${h(g.level)}</td><td>${h(g.birthYear)}</td><td class="small">${teams}</td>
       <td class="num">${usage[g.id] || 0}</td>
       <td class="num nowrap"><button class="icon-btn" data-act="editGym" data-id="${g.id}" title="Edita">✎</button><button class="icon-btn" data-act="delGym" data-id="${g.id}" title="Esborra">✕</button></td></tr>`;
     }).join('')}</tbody></table></div>`;
 }
+// una «gimnasta» feta amb els valors del formulari (per saber quins equips li toquen)
+const gymLike = (v, g) => ({ id: g ? g.id : '', clubId: db.clubs.find(c => norm(c.name) === norm(v.clubName))?.id || null, gender: v.gender, category: v.category, level: v.level });
 function gymForm(g, keep = {}) {
-  const v = Object.assign({ name: '', surname: '', clubName: '', gender: 'F', category: '', level: '', birthYear: '', notes: '' }, keep, g ? {
-    name: g.name, surname: g.surname, clubName: clubName(g.clubId), gender: genderOf(g), category: g.category, level: g.level, birthYear: g.birthYear || '', notes: g.notes || '' } : {});
+  const cur = g ? gymTeam(g) : null;
+  const v = Object.assign({ name: '', surname: '', clubName: '', gender: 'F', category: '', level: '', birthYear: '', notes: '', teamId: '' }, keep, g ? {
+    name: g.name, surname: g.surname, clubName: clubName(g.clubId), gender: genderOf(g), category: g.category, level: g.level, birthYear: g.birthYear || '', notes: g.notes || '', teamId: cur ? cur.id : '' } : {});
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
   return `<form data-form="gym" data-id="${g ? g.id : ''}"><h2>${g ? 'Edita la fitxa' : 'Afegeix gimnasta'}</h2>
     <div class="grid2">
       <label class="f"><span>Nom</span><input type="text" name="name" required value="${h(v.name)}" autofocus></label>
       <label class="f"><span>Cognoms</span><input type="text" name="surname" value="${h(v.surname)}"></label>
-      <label class="f"><span>Entitat (club o escola)</span><input type="text" name="club" list="clublist" value="${h(v.clubName)}" placeholder="Escriu-la o tria-la"></label>
-      <label class="f"><span>Gènere</span><select name="gender">${genderOptions(v.gender)}</select></label>
+      <label class="f"><span>Entitat (club o escola)</span><input type="text" name="club" list="clublist" value="${h(v.clubName)}" placeholder="Escriu-la o tria-la" data-chg="gymFormTeams"></label>
+      <label class="f"><span>Gènere</span><select name="gender" data-chg="gymFormTeams">${genderOptions(v.gender)}</select></label>
       <label class="f"><span>Any de naixement <span class="small">(posa la categoria sola)</span></span><input type="number" name="birthYear" min="1950" max="2100" value="${h(v.birthYear)}" data-inp="gymYear"></label>
-      <label class="f"><span>Categoria</span><select name="category"><option value="">—</option>${catOptions(v.category)}</select></label>
-      <label class="f"><span>Nivell</span><select name="level"><option value="">—</option>${levelOptions(v.level)}</select></label>
+      <label class="f"><span>Categoria</span><select name="category" data-chg="gymFormTeams"><option value="">—</option>${catOptions(v.category)}</select></label>
+      <label class="f"><span>Nivell</span><select name="level" data-chg="gymFormTeams"><option value="">—</option>${levelOptions(v.level)}</select></label>
+      <label class="f"><span>Equip</span><select name="team" data-chg="gymFormTeams">${teamOptionsFor(gymLike(v, g), v.teamId)}</select></label>
+      <label class="f ${v.teamId === '__new' ? '' : 'hidden'}" id="newteam"><span>Nom de l’equip nou</span><input type="text" name="newTeam" value="${h(v.newTeam || '')}" placeholder="${h(suggestTeamName(gymLike(v, g)))}"></label>
       <label class="f"><span>Observacions</span><input type="text" name="notes" value="${h(v.notes)}"></label>
     </div>
     <p class="small muted" id="yearhint">${v.birthYear && !catForYear(v.birthYear) ? `Cap categoria no inclou l’any ${h(v.birthYear)}. Revisa els anys a Configuració → Categories.` : ''}</p>
@@ -2126,6 +2191,8 @@ views.configuracio = () => {
         <div class="toolbar"><button class="btn primary" data-act="linkFile">Crea un fitxer de dades nou…</button><button class="btn" data-act="openLinkFile">Fes servir un fitxer de dades que ja tinc…</button></div>`)
     : `<p class="muted small">Aquest navegador no pot desar directament a un fitxer (ho fan Chrome i Edge). Fes servir «Descarrega còpia de seguretat» de tant en tant.</p>`;
   return `<section><div class="page-head"><h1>Configuració</h1></div>
+    ${server.on || isStandalone() ? '' : `<div class="card"><div class="card-head"><h3>Fes-la servir com una app</h3><div class="actions"><button class="btn primary" data-act="install">${installEvt ? 'Instal·la l’app' : 'Com s’instal·la'}</button></div></div>
+      <p class="small muted" style="margin:0">Amb icona pròpia i sense internet: a l’ordinador, el programa NotesGim.exe; al mòbil o la tauleta, «Instal·la» o «Afegeix a la pantalla d’inici».</p></div>`}
     <div class="card"><h3 style="margin-bottom:10px">Dades i còpies de seguretat</h3>
       <div class="note">Les dades es desen soles en <b>aquest navegador d’aquest ordinador</b>. Si fas servir un altre ordinador o un altre navegador no hi seran: porta-hi una còpia.
       ${db.meta.lastBackup ? `Última còpia descarregada: <b>${fmtDate(db.meta.lastBackup.slice(0, 10))}</b>.` : '<b>Encara no has descarregat cap còpia.</b>'}</div>
@@ -2297,6 +2364,40 @@ views.tutor = () => {
     ${a ? `<div class="tbl-wrap grid-wrap"><table class="tbl" id="scoregrid"><thead><tr><th class="num">Dors.</th><th>Gimnasta</th>${range(n).map(i => `<th class="num">${n > 1 ? ordHtml(i + 1) + ' salt' : icon(a) + ' ' + h(a.name)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">No hi ha cap aparell per a aquest grup.</div>'}
   </section>`;
 };
+
+/* ═══════════════════════════════════════════ INSTAL·LAR COM A APP
+   Al mòbil i a l'ordinador, des de l'adreça web: «Instal·la» (Chrome, Edge, Android) o «Afegeix a la
+   pantalla d'inici» (iPhone/iPad). A l'ordinador també hi ha el programa NotesGim.exe. */
+const APP_URL = 'https://enricmarin48-alt.github.io/nus/gimnastica/';
+let installEvt = null;
+const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = () => /android/i.test(navigator.userAgent);
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; renderSaveState(false); if (ui.view === 'configuracio') render(); });
+addEventListener('appinstalled', () => { installEvt = null; toast('NotesGim instal·lada: ja la tens com una app més i funciona sense internet.', 'ok'); renderSaveState(false); });
+async function doInstall() {
+  if (installEvt) {
+    const ev = installEvt; installEvt = null;
+    ev.prompt();
+    try { await ev.userChoice; } catch (_) {}
+    renderSaveState(false);
+    return;
+  }
+  openDialog(installHelp() + `<div class="dlg-actions"><button type="button" class="btn primary" data-act="closeDlg">D’acord</button></div>`);
+}
+function installHelp() {
+  if (server.on) return `<h2>Ja és una app</h2><p>Ara la fas servir amb el programa <b>NotesGim</b> d’aquest ordinador. Les dades es guarden al fitxer del costat del programa.</p>`;
+  if (isStandalone()) return `<h2>Ja està instal·lada</h2><p>La tens com una app i funciona sense internet.</p>`;
+  const steps = isIOS()
+    ? `<ol class="steps"><li>Obre <b>${APP_URL}</b> amb <b>Safari</b>.</li><li>Toca el botó <b>Comparteix</b> (el quadrat amb la fletxa cap amunt).</li><li>Toca <b>«Afegeix a la pantalla d’inici»</b> i després <b>Afegeix</b>.</li></ol>`
+    : isAndroid()
+      ? `<ol class="steps"><li>Obre <b>${APP_URL}</b> amb <b>Chrome</b>.</li><li>Toca el menú <b>⋮</b> i després <b>«Instal·la l’aplicació»</b> (o «Afegeix a la pantalla d’inici»).</li></ol>`
+      : `<ol class="steps"><li><b>Opció 1 (recomanada a l’ordinador):</b> descarrega el programa <b>NotesGim.exe</b> i obre’l amb doble clic. S’obre en una finestra pròpia, guarda les dades en un fitxer al seu costat i permet que les tutores entrin notes des del mòbil.</li>
+         <li><b>Opció 2:</b> obre <b>${APP_URL}</b> amb Chrome o Edge i clica la icona <b>«Instal·la»</b> de la barra d’adreces (o el menú → «Instal·la NotesGim»).</li></ol>`;
+  return `<h2>Instal·la NotesGim com una app</h2>${steps}
+    <p class="small muted">Un cop instal·lada, s’obre amb la seva icona i funciona sense internet. Les dades es guarden en aquell aparell: fes còpies de seguretat de tant en tant (Configuració → Dades).</p>
+    ${location.protocol === 'file:' ? `<div class="note">Ara l’has oberta com un fitxer descarregat. També funciona, però com a app és més còmode i segura.</div>` : ''}`;
+}
 
 /* ═══════════════════════════════════════════ IMPRESSIÓ */
 function printHeader(c) {
@@ -2623,6 +2724,15 @@ const actions = {
     });
     downloadBlob(XLSX.build(sheets), `ranquing ${ui.rkSeason}.xlsx`);
   },
+  // programa NotesGim: desa-ho tot i tanca'l
+  quitApp: async () => {
+    if (!(await confirmBox('Tancar NotesGim? Tot queda desat al fitxer de dades. Les tutores ja no podran entrar notes fins que el tornis a obrir.', { ok: 'Tanca' }))) return;
+    commitTyping(); flush();
+    for (let i = 0; i < 40 && (server.pushing || server.again); i++) await new Promise(r => setTimeout(r, 100));
+    try { await api('api/quit', { method: 'POST', body: '{}' }); } catch (_) {}
+    document.body.innerHTML = '<div style="max-width:420px;margin:80px auto;text-align:center;font:16px system-ui"><h2>NotesGim s’ha tancat</h2><p>Les dades estan desades. Ja pots tancar aquesta finestra.</p></div>';
+  },
+  install: () => doInstall(),
   tutComp: el => { tut.compId = el.dataset.id; render(); },
   tutGroup: el => { tut.group = el.dataset.g; render(); },
   tutApp: el => { tut.app = el.dataset.a; render(); const f = $('#scoregrid input.sc:not(:disabled)'); if (f) f.focus(); },
@@ -2928,9 +3038,12 @@ const forms = {
     const name = fd.get('name').trim(); if (!name) return;
     const vals = { name, surname: fd.get('surname').trim(), clubId: ensureClub(fd.get('club')), gender: fd.get('gender') === 'M' ? 'M' : 'F',
       category: fd.get('category'), level: fd.get('level'), birthYear: fd.get('birthYear') ? String(fd.get('birthYear')) : '', notes: fd.get('notes').trim() };
+    const teamVal = fd.get('team') || '', newTeam = fd.get('newTeam') || '';
     if (id) {
       const g = gymById(id);
+      const before = gymTeam(g);
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
+      if (teamVal !== (before ? before.id : '')) teamSetToast(g, setGymTeam(g, teamVal, newTeam));
       commit(); closeDialog(); render();
       // si està inscrita en una competició oberta en un altre grup, ofereix canviar-ho també allà
       const stuck = db.competitions.filter(c => !c.locked && c.entries.some(e => e.gymnastId === g.id && !sameGroup(e, g) && hasScores(e)));
@@ -2941,10 +3054,13 @@ const forms = {
       return;
     }
     const dup = db.gymnasts.find(g => norm(gymName(g)) === norm(name + ' ' + vals.surname));
-    db.gymnasts.push(Object.assign({ id: uid(), archived: false }, vals));
-    ui.lastGym = { clubName: clubName(vals.clubId), gender: vals.gender, category: vals.category, level: vals.level };
+    const g = Object.assign({ id: uid(), archived: false }, vals);
+    db.gymnasts.push(g);
+    const r = teamVal ? setGymTeam(g, teamVal, newTeam) : { team: null, touched: [] };
+    // «Desa i afegeix-ne una altra» recorda entitat, grup i equip: així s'entra un equip sencer de pressa
+    ui.lastGym = { clubName: clubName(vals.clubId), gender: vals.gender, category: vals.category, level: vals.level, teamId: r.team ? r.team.id : '' };
     commit();
-    toast(`${name} ${vals.surname}: desat.${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
+    toast(`${name} ${vals.surname}: desat${r.team ? ` a l’equip ${r.team.name}` : ''}.${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup ? 'bad' : 'ok');
     if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym)); else closeDialog();
     render();
   },
@@ -3187,10 +3303,36 @@ const inputs = {
     const f = el.closest('form'), sel = f && f.querySelector('select[name=category]'), hint = $('#yearhint');
     if (!/^\d{4}$/.test(el.value)) { if (hint) hint.textContent = ''; return; }
     const cat = catForYear(el.value);
-    if (cat && sel) sel.value = cat;
+    if (cat && sel && sel.value !== cat) { sel.value = cat; changes.gymFormTeams(sel); }
     if (hint) hint.textContent = cat ? `Per l’any ${el.value} li toca ${cat}.` : `Cap categoria no inclou l’any ${el.value}. Revisa els anys a Configuració → Categories.`;
   },
   pickFilter: el => { ui.pick[el.dataset.k] = el.value; refreshPick(); },
+};
+// el formulari de la fitxa: la llista d'equips segueix l'entitat, el gènere, la categoria i el nivell
+changes.gymFormTeams = el => {
+  const f = el.closest('form'); if (!f) return;
+  const fd = new FormData(f), sel = f.querySelector('select[name=team]');
+  const v = { clubName: fd.get('club') || '', gender: fd.get('gender'), category: fd.get('category'), level: fd.get('level') };
+  const g = gymLike(v, f.dataset.id ? gymById(f.dataset.id) : null);
+  if (el.name !== 'team') {
+    const keep = sel.value, t = keep && keep !== '__new' ? teamById(keep) : null;
+    sel.innerHTML = teamOptionsFor(g, t && sameGroup(t, g) ? keep : (keep === '__new' ? '' : ''));
+    if (keep === '__new') sel.value = '__new';
+  }
+  const nt = $('#newteam'); if (nt) nt.classList.toggle('hidden', sel.value !== '__new');
+  const ni = f.querySelector('input[name=newTeam]'); if (ni) ni.placeholder = suggestTeamName(g);
+  if (sel.value === '__new' && el.name === 'team' && ni) ni.focus();
+};
+// llista de gimnastes: canviar l'equip directament
+changes.gymTeamInline = async el => {
+  const g = gymById(el.dataset.id); if (!g) return;
+  let name = '';
+  if (el.value === '__new') {
+    name = await promptBox(`Nom de l’equip nou per a <b>${h(gymName(g))}</b>:`, suggestTeamName(g));
+    if (name === null) { const cur = gymTeam(g); el.value = cur ? cur.id : ''; return; }
+  }
+  const r = setGymTeam(g, el.value, name);
+  commit(); $('#gymtable').innerHTML = gymTable(); teamSetToast(g, r);
 };
 function refreshPick() {
   const p = ui.pick, q = norm(p.q);
@@ -3286,7 +3428,15 @@ start();
 // instal·lable i sense internet quan es serveix per web (des d'un fitxer local ja funciona sense res més)
 if (location.protocol.startsWith('http')) {
   const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l);
-  if ('serviceWorker' in navigator) addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+    // quan arriba una versió nova, s'avisa (no es recarrega sola: es podria estar entrant notes)
+    let had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (had) toast('Hi ha una versió nova de NotesGim a punt.', '', { action: 'Fes-la servir ara', onAction: () => { commitTyping(); flush(); location.reload(); } });
+      had = true;
+    });
+  }
 }
 </script>
 </body>

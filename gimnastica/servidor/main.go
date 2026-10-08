@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,17 +43,19 @@ const appVersion = "1.0"
 /* ═══════════════════════════════════════════ dades */
 
 type store struct {
-	mu      sync.Mutex
-	db      map[string]any
-	version int64
-	path    string
-	backups string
-	lastBak time.Time
-	waiters []chan struct{}
+	lastAdmin atomic.Int64 // última vegada que la finestra de l'app (a aquest ordinador) ha dit alguna cosa
+	quit      chan struct{}
+	mu        sync.Mutex
+	db        map[string]any
+	version   int64
+	path      string
+	backups   string
+	lastBak   time.Time
+	waiters   []chan struct{}
 }
 
 func newStore(path string) (*store, error) {
-	s := &store{path: path, backups: filepath.Join(filepath.Dir(path), "copies-notesgim"), version: time.Now().UnixMilli()}
+	s := &store{path: path, backups: filepath.Join(filepath.Dir(path), "copies-notesgim"), version: time.Now().UnixMilli(), quit: make(chan struct{})}
 	b, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
@@ -397,7 +400,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func fail(w http.ResponseWriter, code int, msg string) { writeJSON(w, code, map[string]any{"error": msg}) }
+func fail(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]any{"error": msg})
+}
 
 func lanURLs(port int) []string {
 	var urls []string
@@ -437,6 +442,7 @@ func (s *store) routes(port int) http.Handler {
 		role := "tutor"
 		if isLocal(r) {
 			role = "admin"
+			s.lastAdmin.Store(time.Now().UnixMilli())
 		}
 		writeJSON(w, 200, map[string]any{"app": "notesgim", "version": appVersion, "role": role, "urls": lanURLs(port), "dataFile": s.path})
 	})
@@ -447,6 +453,7 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, 403, "només des de l'ordinador de la taula")
 			return
 		}
+		s.lastAdmin.Store(time.Now().UnixMilli())
 		switch r.Method {
 		case http.MethodGet:
 			s.mu.Lock()
@@ -486,13 +493,26 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
-		if !s.wait(since, 25*time.Second) {
+		s.lastAdmin.Store(time.Now().UnixMilli())
+		changed := s.wait(since, 25*time.Second)
+		s.lastAdmin.Store(time.Now().UnixMilli())
+		if !changed {
 			w.WriteHeader(204)
 			return
 		}
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"version": s.version, "db": s.db})
+	})
+
+	// botó «Tanca NotesGim» de l'app
+	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || r.Method != http.MethodPost {
+			fail(w, 403, "no permès")
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+		go func() { time.Sleep(300 * time.Millisecond); close(s.quit) }()
 	})
 
 	// tutores
@@ -544,7 +564,42 @@ func (s *store) routes(port int) http.Handler {
 	return mux
 }
 
-func openBrowser(url string) {
+// obre l'app en una finestra pròpia (sense barres de navegador), com un programa: Edge o Chrome en mode
+// «app» amb un perfil separat. Si no n'hi ha cap, s'obre al navegador de sempre.
+func openApp(url string) {
+	profile := filepath.Join(os.TempDir(), "NotesGim-finestra")
+	if d, err := os.UserCacheDir(); err == nil {
+		profile = filepath.Join(d, "NotesGim", "finestra")
+	}
+	args := []string{"--app=" + url, "--user-data-dir=" + profile, "--window-size=1280,860", "--no-first-run", "--no-default-browser-check"}
+	var candidates []string
+	switch runtime.GOOS {
+	case "windows":
+		for _, env := range []string{"ProgramFiles(x86)", "ProgramFiles", "LocalAppData"} {
+			if base := os.Getenv(env); base != "" {
+				candidates = append(candidates,
+					filepath.Join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
+					filepath.Join(base, "Google", "Chrome", "Application", "chrome.exe"))
+			}
+		}
+	case "darwin":
+		candidates = []string{"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium"}
+	default:
+		for _, n := range []string{"google-chrome", "chromium", "chromium-browser", "microsoft-edge"} {
+			if p, err := exec.LookPath(n); err == nil {
+				candidates = append(candidates, p)
+			}
+		}
+	}
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			if exec.Command(c, args...).Start() == nil {
+				return
+			}
+		}
+	}
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
@@ -557,17 +612,78 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
+// si NotesGim ja està obert (amb les mateixes dades), no se n'obre un altre: només se'n mostra la finestra
+func runningInstance(port int, dataPath string) string {
+	client := &http.Client{Timeout: 700 * time.Millisecond}
+	for p := port; p < port+20; p++ {
+		resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/info", p))
+		if err != nil {
+			continue
+		}
+		var info struct {
+			App      string `json:"app"`
+			DataFile string `json:"dataFile"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&info)
+		resp.Body.Close()
+		if info.App == "notesgim" && filepath.Clean(info.DataFile) == filepath.Clean(dataPath) {
+			return fmt.Sprintf("http://localhost:%d", p)
+		}
+	}
+	return ""
+}
+
+// on es guarden les dades: al costat del programa; si aquella carpeta no es pot escriure, a Documents/NotesGim
+func defaultDataPath(dir string) string {
+	test := filepath.Join(dir, ".notesgim-prova")
+	if f, err := os.Create(test); err == nil {
+		f.Close()
+		os.Remove(test)
+		return filepath.Join(dir, "notesgim-dades.json")
+	}
+	home, _ := os.UserHomeDir()
+	alt := filepath.Join(home, "Documents", "NotesGim")
+	_ = os.MkdirAll(alt, 0o755)
+	return filepath.Join(alt, "notesgim-dades.json")
+}
+
 func main() {
 	exe, _ := os.Executable()
 	dir := filepath.Dir(exe)
-	dataPath := flag.String("dades", filepath.Join(dir, "notesgim-dades.json"), "fitxer on es guarden les dades")
+	dataPath := flag.String("dades", "", "fitxer on es guarden les dades (per defecte, al costat del programa)")
 	portFlag := flag.Int("port", 8080, "port (si està ocupat, es prova el següent)")
-	noBrowser := flag.Bool("sense-navegador", false, "no obris el navegador en arrencar")
+	noBrowser := flag.Bool("sense-navegador", false, "no obris cap finestra en arrencar")
+	keepAlive := flag.Bool("sempre", false, "no es tanca sol quan es tanca la finestra de l'app")
+	grace := flag.Int("tanca-als", 120, "segons sense la finestra de l'app abans de tancar-se sol")
 	flag.Parse()
+	if *dataPath == "" {
+		*dataPath = defaultDataPath(dir)
+	}
+	if abs, err := filepath.Abs(*dataPath); err == nil {
+		*dataPath = abs
+	}
+
+	// registre al costat de les dades (a Windows no hi ha consola on escriure)
+	if lf, err := os.OpenFile(filepath.Join(filepath.Dir(*dataPath), "notesgim-registre.txt"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+		if st, _ := lf.Stat(); st != nil && st.Size() > 1<<20 {
+			_ = lf.Truncate(0)
+		}
+		log.SetOutput(io.MultiWriter(os.Stderr, lf))
+	}
+
+	if url := runningInstance(*portFlag, *dataPath); url != "" {
+		log.Printf("NotesGim ja està obert a %s: només se n'obre la finestra", url)
+		if !*noBrowser {
+			openApp(url)
+		}
+		return
+	}
 
 	s, err := newStore(*dataPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		alert("NotesGim", "No s'han pogut llegir les dades:\n\n"+err.Error())
+		os.Exit(1)
 	}
 
 	var ln net.Listener
@@ -579,30 +695,62 @@ func main() {
 		}
 	}
 	if ln == nil {
-		log.Fatalf("no s'ha pogut obrir cap port a partir del %d: %v", *portFlag, err)
+		log.Printf("no s'ha pogut obrir cap port a partir del %d: %v", *portFlag, err)
+		alert("NotesGim", fmt.Sprintf("No s'ha pogut engegar NotesGim (cap port lliure a partir del %d).", *portFlag))
+		os.Exit(1)
 	}
 
 	fmt.Println("════════════════════════════════════════════════════════════")
-	fmt.Println(" NotesGim servidor " + appVersion + " — funciona sense internet")
+	fmt.Println(" NotesGim " + appVersion + " — funciona sense internet")
 	fmt.Println("════════════════════════════════════════════════════════════")
 	fmt.Printf(" Dades: %s\n\n", s.path)
-	fmt.Printf(" A AQUEST ORDINADOR obre:   http://localhost:%d\n\n", port)
-	urls := lanURLs(port)
-	if len(urls) == 0 {
-		fmt.Println(" (Aquest ordinador no està connectat a cap Wi-Fi: les tutores no hi podran entrar.)")
-	} else {
+	fmt.Printf(" A AQUEST ORDINADOR:   http://localhost:%d\n\n", port)
+	if urls := lanURLs(port); len(urls) > 0 {
 		fmt.Println(" LES TUTORES (mòbil connectat a la mateixa Wi-Fi) obren:")
 		for _, u := range urls {
 			fmt.Println("     " + u)
 		}
 	}
-	fmt.Println("\n Deixa aquesta finestra oberta mentre dura la competició.")
-	fmt.Println(" Per aturar-lo, tanca la finestra o prem Ctrl+C.")
 	fmt.Println("════════════════════════════════════════════════════════════")
+	log.Printf("engegat al port %d, dades a %s", port, s.path)
 
 	if !*noBrowser {
-		go func() { time.Sleep(600 * time.Millisecond); openBrowser(fmt.Sprintf("http://localhost:%d", port)) }()
+		go func() { time.Sleep(400 * time.Millisecond); openApp(fmt.Sprintf("http://localhost:%d", port)) }()
 	}
 	srv := &http.Server{Handler: s.routes(port), ReadHeaderTimeout: 10 * time.Second}
-	log.Fatal(srv.Serve(ln))
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Print(err)
+			alert("NotesGim", "NotesGim s'ha aturat: "+err.Error())
+			os.Exit(1)
+		}
+	}()
+
+	// es tanca sol quan fa 2 minuts que la finestra de l'app no hi és (si s'ha tancat la finestra).
+	// Si l'ordinador ha estat adormit, es compta des que es desperta.
+	tick := time.NewTicker(time.Duration(min(10, max(1, *grace/4))) * time.Second)
+	last := time.Now()
+	for {
+		select {
+		case <-s.quit:
+			log.Print("tancat des de l'app")
+			s.mu.Lock()
+			_ = s.saveLocked()
+			s.mu.Unlock()
+			return
+		case now := <-tick.C:
+			if now.Sub(last) > 40*time.Second { // s'ha despertat d'una suspensió
+				s.lastAdmin.Store(now.UnixMilli())
+			}
+			last = now
+			seen := s.lastAdmin.Load()
+			if !*keepAlive && !*noBrowser && seen > 0 && now.UnixMilli()-seen > int64(*grace)*1000 {
+				log.Print("fa estona que la finestra de l'app no hi és: es tanca")
+				s.mu.Lock()
+				_ = s.saveLocked()
+				s.mu.Unlock()
+				return
+			}
+		}
+	}
 }

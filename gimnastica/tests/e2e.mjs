@@ -333,6 +333,33 @@ await step('passar de curs: +1 any i les gimnastes canvien de categoria', async 
   await page.waitForSelector('text=Aleví femení · Nivell A');
 });
 
+await step('l’equip es tria a la mateixa fitxa (i la competició oberta la segueix)', async () => {
+  await page.goto(url + '#/gimnastes');
+  await page.waitForSelector('#gymtable');
+  const carla = page.locator('#gymtable tr:has(td:text-is("Vidal"))');
+  await carla.locator('a[data-act=editGym]').click();
+  await page.selectOption('#dlg select[name=team]', '__new');
+  await page.fill('#dlg input[name=newTeam]', 'Equip de prova');
+  await page.click('#dlg button.primary');
+  await page.waitForSelector('.toast:has-text("Equip de prova")');
+  await page.waitForTimeout(400);
+  const d = JSON.parse(await page.evaluate(() => localStorage.getItem('notesgim.db')));
+  const g = d.gymnasts.find(x => x.name === 'Carla');
+  const t = d.teams.find(x => x.name === 'Equip de prova');
+  assert.ok(t.memberIds.includes(g.id));
+  assert.equal(d.teams.filter(x => x.memberIds.includes(g.id)).length, 1, 'només en un equip');
+  for (const c of d.competitions) {
+    const e = c.entries.find(x => x.gymnastId === g.id);
+    if (!e || c.locked) continue;
+    assert.equal(c.teams.find(x => x.id === e.teamId).name, 'Equip de prova');
+  }
+  // a la llista es pot canviar directament
+  const sel = page.locator(`#gymtable select.teamsel[data-id="${g.id}"]`);
+  assert.equal(await sel.locator('option:checked').textContent(), 'Equip de prova');
+  await sel.selectOption({ label: 'CG Lleida Aleví A femení' });
+  await page.waitForSelector('.toast:has-text("CG Lleida Aleví A femení")');
+});
+
 await step('còpia de seguretat: es descarrega i es pot restaurar', async () => {
   await page.goto(url + '#/configuracio');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button[data-act=backup]')]);

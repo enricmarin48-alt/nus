@@ -447,7 +447,12 @@ func tutorData(db map[string]any, pin string) []any {
 				var atts []any
 				for _, a := range arr(list) {
 					am := obj(a)
-					atts = append(atts, map[string]any{"v": am["v"], "by": am["by"], "at": am["at"], "ok": truthy(am["ok"]), "locked": guarded(am)})
+					// (amb D + E − Pen., la nota final; la tutora només veu que ja hi és i quina és)
+					v := am["v"]
+					if v == nil && am["d"] != nil && am["e"] != nil {
+						v = math.Max(0, num(am["d"])+num(am["e"])-num(am["p"]))
+					}
+					atts = append(atts, map[string]any{"v": v, "by": am["by"], "at": am["at"], "ok": truthy(am["ok"]), "locked": guarded(am)})
 				}
 				scores[appID] = atts
 			}

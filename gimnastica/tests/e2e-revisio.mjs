@@ -248,6 +248,67 @@ try {
     }
     await page.setViewportSize({ width: 1366, height: 900 });
   });
+
+  // (amb dades noves, com si fos el primer dia: les proves d'abans han canviat equips i nivells)
+  const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES' });
+  await ctx2.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, JSON.stringify(seed));
+  const pg = await ctx2.newPage();
+  pg.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  const data2 = () => pg.evaluate(() => JSON.parse(JSON.stringify(db)));
+
+  await step('fulls d’inscripció dels clubs (.xlsx del Consell): nivell A i B, equips i individuals', async () => {
+    const fx = n => path.join(here, 'fixtures', n);
+    await pg.goto(url + '#/gimnastes');
+    await pg.click('button[data-act=inscOpen]');
+    await pg.setInputFiles('#inscfile', [fx('inscripcio-nivell-A.xlsx'), fx('inscripcio-nivell-B.xlsx'), fx('inscripcio-buida.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=inscripcio-nivell-B.xlsx');
+    const dlg = await pg.locator('#dlg').textContent();
+    assert.ok(dlg.includes('no té cap esportista'), 'el model buit es diu');
+    assert.ok(dlg.includes('en surten'), 'es diu qui surt d’un equip que ja hi era');
+    // «C.G. LLEIDA» és l'entitat «CG Lleida» que ja hi ha; el nivell surt del full
+    assert.equal(await pg.locator('#dlg select[data-chg=inscClub][data-f="0"]').inputValue(), 'c1');
+    assert.equal(await pg.locator('#dlg select[data-chg=inscClub][data-f="1"]').inputValue(), 'c2');
+    assert.equal(await pg.locator('#dlg select[data-chg=inscLevel][data-f="1"]').inputValue(), 'B');
+    assert.ok(dlg.includes('Marta Soler Rius') && dlg.includes('600 111 222'), 'l’entrenadora');
+    await pg.click('#dlg button[data-act=inscDo]');
+    await pg.waitForSelector('.toast:has-text("Fulls d’inscripció importats")');
+    const d = await data2();
+    const by = (n, club) => d.gymnasts.find(g => gymKey(g) === n && g.clubId === club);
+    const gymKey = g => g.name + ' ' + g.surname;
+    // els noms en majúscules queden ben escrits; l'any surt fins i tot d'una data
+    const maria = by('Maria Antònia D’Alòs i Col·lell'.replace('’', "'"), 'c1');
+    assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && maria.noTeam, JSON.stringify(maria));
+    assert.equal(by('Júlia Roca Mir', 'c1').birthYear, '2013');
+    // l'Anna surt a la fulla individual i a l'EQUIP 1: és de l'equip (una sola fitxa)
+    assert.equal(d.gymnasts.filter(g => gymKey(g) === 'Anna Serra' && g.clubId === 'c1').length, 1);
+    const team = n => d.teams.find(t => t.clubId === 'c1' && t.name === n && t.category === 'Aleví' && t.level === 'A');
+    const names = t => t.memberIds.map(id => d.gymnasts.find(g => g.id === id).name).sort();
+    // l'equip «CG Lleida» ja hi era (amb altres gimnastes): ara és el del full
+    assert.deepEqual(names(team('CG Lleida')), ['Anna', 'Berta', 'Carla', 'Dana']);
+    assert.ok(team('CG Lleida').memberIds.every(id => d.gymnasts.find(g => g.id === id).surname !== 'Prova'));
+    assert.deepEqual(names(team('CG Lleida 2')), ['Elna', 'Fiona', 'Gina']);
+    assert.ok(d.teams.some(t => t.clubId === 'c1' && t.category === 'Benjamí' && t.level === 'A' && t.memberIds.length === 3));
+    // nivell B, de l'altra entitat
+    assert.ok(d.teams.some(t => t.clubId === 'c2' && t.name === 'Escola Pardinyes 2' && t.level === 'B' && t.memberIds.length === 3));
+    assert.equal(by('Laia Garcia Puig', 'c2').level, 'B');
+    assert.ok((d.clubs.find(c => c.id === 'c1').contacts || []).some(p => p.name === 'Marta Soler Rius' && p.email === 'marta@exemple.cat'));
+  });
+
+  await step('des d’una competició, els fulls d’inscripció també hi inscriuen les gimnastes (amb el seu equip)', async () => {
+    await pg.goto(url + '#/competicio/k1/inscripcions');
+    await pg.click('button[data-act=inscOpen] >> visible=true');
+    await pg.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-nivell-A.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=ja hi és');
+    assert.ok(await pg.locator('#dlg input[data-k=enroll]').isChecked());
+    await pg.click('#dlg button[data-act=inscDo]');
+    await pg.waitForSelector('.toast:has-text("inscripcions fetes a Jornada avui")');
+    const d = await data2(), c = d.competitions.find(x => x.id === 'k1');
+    const e = n => c.entries.find(x => { const g = d.gymnasts.find(y => y.id === x.gymnastId); return g && g.name + ' ' + g.surname === n && g.clubId === 'c1'; });
+    const tname = x => (c.teams.find(t => t.id === x.teamId) || {}).name || null;
+    assert.equal(tname(e('Elna Font')), 'CG Lleida 2');
+    assert.equal(tname(e('Laia Garcia Puig')), null, 'la de la fulla individual, sense equip');
+    assert.ok(e('Ona Bosch') && e('Ona Bosch').category === 'Benjamí');
+  });
 } finally {
   await browser.close();
 }

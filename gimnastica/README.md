@@ -35,10 +35,17 @@ internet.
 
 ## Com es fa servir
 
-1. **Gimnastes**: entra-les una a una o *Enganxa des d'Excel* (copia les cel·les amb la fila de
-   títols: Nom, Cognoms, Entitat, Gènere, Any de naixement, Nivell, i si vols Categoria i Equip).
-   Amb l'any de naixement la **categoria es posa sola**. Es queden guardades per a totes les
-   competicions.
+1. **Gimnastes**: la manera més ràpida és **📥 Fulls d'inscripció dels clubs**: tria (o arrossega a la
+   finestra) els fitxers d'Excel d'inscripció que envien els clubs, tal com te'ls passen (el model del
+   Consell, nivell A o B, amb les fulles INDIVIDUAL i EQUIPS). L'app en treu l'entitat, el nivell,
+   l'entrenador/a i el delegat/da, i cada gimnasta (cognoms, nom i any) amb el seu equip (EQUIP 1, 2,
+   3 → «CG Lleida», «CG Lleida 2»…); les de la fulla INDIVIDUAL queden com a només individuals. Abans
+   d'importar es veu tot i es pot corregir l'entitat, el nivell i si són noies o nois (el full no ho
+   diu). Des d'una competició (*Inscripcions*), també les hi inscriu. Si una gimnasta ja hi és,
+   se n'actualitzen el grup, l'any i l'equip. També les pots entrar una a una o *Enganxa des
+   d'Excel* qualsevol llista (amb la fila de títols: Nom, Cognoms, Entitat, Gènere, Any de naixement,
+   Nivell, i si vols Categoria i Equip). Amb l'any de naixement la **categoria es posa sola**. Es
+   queden guardades per a totes les competicions.
 2. **L'equip és a la fitxa de cada gimnasta** (també es canvia directament a la llista). Per
    defecte és *Automàtic*: en inscriure-les, les d'una mateixa entitat i grup formen equip si n'hi ha
    3 o més (7 o més → dos equips), i l'equip queda a la fitxa per a les jornades següents. També pots
@@ -146,6 +153,7 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi
   escriu sense preguntar.
+- `tests/fixtures/` — fulls d'inscripció d'exemple (model del Consell, nivell A i B, i un de buit).
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
   següent» i la mida de pantalla de les tauletes.

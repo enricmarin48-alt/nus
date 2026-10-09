@@ -383,6 +383,9 @@
   .dlg-actions .left{margin-right:auto}
   #confirm .dlg-actions{flex-direction:row-reverse;justify-content:flex-start}
   .pick-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .dropzone{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;border:2px dashed var(--line2);border-radius:10px;padding:16px;margin:10px 0 14px;cursor:pointer;text-align:center}
+  .dropzone:hover,.dropzone:focus-within{border-color:var(--pri);background:var(--pri-soft)}
+  .dropzone input{position:absolute;width:1px;height:1px;opacity:0}
   .pick-list label{display:flex;gap:9px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line2);cursor:pointer}
   .pick-list label:hover{background:#f7f9fc}
   .pick-list label .muted{margin-left:auto;font-size:12px;text-align:right}
@@ -970,7 +973,10 @@ function sanitize(d) {
   const date = v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : '';
   const iso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/.test(v) ? v : null;
   d.clubs = objs(d.clubs); d.gymnasts = objs(d.gymnasts); d.teams = objs(d.teams); d.competitions = objs(d.competitions);
-  for (const c of d.clubs) { c.id = fix(c.id) || uid(); c.name = str(c.name); }
+  for (const c of d.clubs) {
+    c.id = fix(c.id) || uid(); c.name = str(c.name);
+    if (c.contacts !== undefined) c.contacts = objs(c.contacts).map(p => ({ role: str(p.role), name: str(p.name), phones: str(p.phones), email: str(p.email) }));
+  }
   for (const g of d.gymnasts) { g.id = fix(g.id) || uid(); g.clubId = fix(g.clubId) || null; for (const k of ['name', 'surname', 'category', 'level', 'notes']) g[k] = str(g[k]); g.birthYear = /^\d{4}$/.test(String(g.birthYear)) ? String(g.birthYear) : ''; }
   for (const t of d.teams) { t.id = fix(t.id) || uid(); t.clubId = fix(t.clubId) || null; t.memberIds = (Array.isArray(t.memberIds) ? t.memberIds : []).map(fix).filter(Boolean); for (const k of ['name', 'category', 'level']) t[k] = str(t[k]); }
   for (const c of d.competitions) {
@@ -1937,7 +1943,8 @@ views.competicio = () => {
 function tabInscripcions(c) {
   const groups = groupsOf(c);
   const dis = c.locked ? 'disabled' : '';
-  const more = `<button class="btn" data-act="renumber" ${dis} title="Torna a numerar els dorsals per categoria, nivell, entitat i nom">Renumera dorsals</button>
+  const more = `<button class="btn" data-act="inscOpen" ${dis} title="Llegeix els fitxers d’Excel d’inscripció dels clubs i inscriu-hi les gimnastes">📥 Fulls d’inscripció dels clubs…</button>
+      <button class="btn" data-act="renumber" ${dis} title="Torna a numerar els dorsals per categoria, nivell, entitat i nom">Renumera dorsals</button>
       <button class="btn" data-act="printDlg" data-types="list">Llistat d’inscripcions</button>
       <button class="btn" data-act="printDlg" data-types="judge">Fulls de jutge</button>`;
   const tools = `<div class="toolbar">
@@ -2858,7 +2865,7 @@ views.gimnastes = () => {
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
   const wrong = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
   const nf = ['gClub', 'gGender', 'gCat', 'gLevel'].filter(k => ui[k]).length + (ui.gArchived ? 1 : 0);
-  const more = `<button class="btn" data-act="importGyms">Enganxa des d’Excel…</button><button class="btn" data-act="exportGyms">Exporta a Excel</button>`;
+  const more = `<button class="btn" data-act="inscOpen">📥 Fulls d’inscripció dels clubs…</button><button class="btn" data-act="importGyms">Enganxa des d’Excel…</button><button class="btn" data-act="exportGyms">Exporta a Excel</button>`;
   return `<section>
     ${gymTabs('g')}
     <div class="page-head"><h1>Gimnastes</h1><span class="muted">${plural(db.gymnasts.filter(g => !g.archived).length, 'gimnasta', 'gimnastes')}</span>
@@ -2900,7 +2907,7 @@ function teamSetMsg(g, r) {
 const teamSetToast = (g, r) => { const m = teamSetMsg(g, r); toast(m.msg, m.type); };
 function gymTable() {
   const list = filteredGyms();
-  if (!db.gymnasts.length) return `<div class="empty">Encara no hi ha cap gimnasta.<br><br><button class="btn primary" data-act="newGym">＋ Afegeix-ne una</button> &nbsp; <button class="btn" data-act="importGyms">Enganxa una llista des d’Excel</button></div>`;
+  if (!db.gymnasts.length) return `<div class="empty">Encara no hi ha cap gimnasta.<br><br><button class="btn primary" data-act="inscOpen">📥 Importa els fulls d’inscripció dels clubs (.xlsx)</button><br><br><button class="btn" data-act="newGym">＋ Afegeix-ne una</button> &nbsp; <button class="btn" data-act="importGyms">Enganxa una llista des d’Excel</button></div>`;
   if (!list.length) return `<div class="empty">Cap gimnasta coincideix amb la cerca.</div>`;
   const usage = {};
   for (const c of db.competitions) for (const e of c.entries) usage[e.gymnastId] = (usage[e.gymnastId] || 0) + 1;
@@ -2954,6 +2961,268 @@ function gymForm(g, keep = {}, opts = {}) {
       ${g ? '' : `<button class="btn" name="again" value="1">Desa i afegeix-ne una altra</button>`}<button class="btn primary">Desa</button></div></form>`;
 }
 
+/* ─── Fulls d'inscripció dels clubs (l'Excel .xlsx del Consell, tal com l'envia el club)
+   Es llegeix sense internet ni llibreries (un .xlsx és un zip amb XML a dins). Del model del Consell —fulles
+   INDIVIDUAL-A/B i EQUIPS-A-<CATEGORIA>— se n'agafen l'entitat, el nivell, l'entrenador/a i el delegat/da, i
+   cada esportista (cognoms, nom i any de naixement) amb el seu equip (EQUIP 1, 2, 3). Es reconeix pels títols
+   (COGNOMS · NOM · ANY NAIXEMENT, ENTITAT, NIVELL), no per la posició exacta de les cel·les. */
+const XLSX_MAX = 25e6;
+async function unzipEntries(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), dec = new TextDecoder();
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('zip');
+  const n = dv.getUint16(eocd + 10, true), files = new Map();
+  let p = dv.getUint32(eocd + 16, true);
+  for (let k = 0; k < n && p + 46 <= u8.length && dv.getUint32(p, true) === 0x02014b50; k++) {
+    const nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    files.set(dec.decode(u8.subarray(p + 46, p + 46 + nl)), { method: dv.getUint16(p + 10, true), csize: dv.getUint32(p + 20, true), usize: dv.getUint32(p + 24, true), off: dv.getUint32(p + 42, true) });
+    p += 46 + nl + el + cl;
+  }
+  return async name => {
+    const f = files.get(name);
+    if (!f || f.usize > XLSX_MAX || f.off + 30 > u8.length || dv.getUint32(f.off, true) !== 0x04034b50) return null;
+    const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true);
+    const data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return dec.decode(data);
+    if (f.method !== 8 || typeof DecompressionStream !== 'function') throw new Error('deflate');
+    return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  };
+}
+const xlCol = s => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+const xlRef = r => { const m = /^\$?([A-Z]{1,3})\$?(\d+)$/.exec(r || ''); return m ? { c: xlCol(m[1]), r: +m[2] } : null; };
+// les fulles d'un .xlsx: nom, cel·les ('fila:columna' → valor) i cel·les combinades
+async function readXlsx(buf) {
+  const get = await unzipEntries(buf);
+  const xml = async name => { const t = await get(name); return t ? new DOMParser().parseFromString(t, 'application/xml') : null; };
+  const wb = await xml('xl/workbook.xml');
+  if (!wb) throw new Error('xlsx');
+  const rels = await xml('xl/_rels/workbook.xml.rels'), target = {};
+  if (rels) for (const r of rels.getElementsByTagName('Relationship')) target[r.getAttribute('Id')] = r.getAttribute('Target') || '';
+  const ss = [], sst = await xml('xl/sharedStrings.xml');
+  if (sst) for (const si of sst.getElementsByTagName('si')) ss.push([...si.getElementsByTagName('t')].filter(t => t.parentNode.nodeName !== 'rPh').map(t => t.textContent).join(''));
+  const sheets = [];
+  for (const s of wb.getElementsByTagName('sheet')) {
+    const tg = target[s.getAttribute('r:id')] || '';
+    const doc = await xml(tg.startsWith('/') ? tg.slice(1) : 'xl/' + tg.replace(/^\.\//, ''));
+    if (!doc) continue;
+    const cells = new Map(); let maxR = 0;
+    for (const c of doc.getElementsByTagName('c')) {
+      const ref = xlRef(c.getAttribute('r')); if (!ref) continue;
+      const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0], vt = v ? v.textContent : '';
+      const val = t === 's' ? (ss[+vt] ?? '') : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map(x => x.textContent).join('')
+        : t === 'str' || t === 'd' ? vt : t === 'b' || t === 'e' ? '' : (vt !== '' && Number.isFinite(+vt) ? +vt : vt);
+      if (val === '' || val === null) continue;
+      cells.set(ref.r + ':' + ref.c, val); if (ref.r > maxR) maxR = ref.r;
+    }
+    const merges = [...doc.getElementsByTagName('mergeCell')].map(m => (m.getAttribute('ref') || '').split(':').map(xlRef))
+      .filter(x => x[0] && x[1]).map(([a, b]) => ({ r1: a.r, c1: a.c, r2: b.r, c2: b.c }));
+    sheets.push({ name: s.getAttribute('name') || '', cells, merges, maxR });
+  }
+  return sheets;
+}
+// «GARCIA PUIG» → «Garcia Puig» (si està tot en majúscules); «D'ALÒS I COL·LELL» → «D'Alòs i Col·lell»
+function smartCase(s) {
+  s = String(s ?? '').replace(/\s+/g, ' ').trim();
+  if (!s || s !== s.toUpperCase() || !/\p{L}/u.test(s)) return s;
+  return s.toLowerCase().replace(/(^|[\s\-'’(.])(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
+    .replace(/(\s)(De|Del|Dels|La|Les|Los|I|Y)(?=\s)/g, (m, a, w) => a + w.toLowerCase());
+}
+// any de naixement d'una cel·la: 2015, «2015», «12/03/2015» o una data d'Excel
+function cellYear(v) {
+  if (typeof v === 'number') {
+    if (v >= 1900 && v <= 2100) return String(Math.round(v));
+    if (v > 3000 && v < 80000) return String(new Date(Math.round((v - 25569) * 864e5)).getUTCFullYear());
+    return '';
+  }
+  return (/(19|20)\d{2}/.exec(String(v ?? '')) || [])[0] || '';
+}
+// llegeix el model d'inscripció: { club, level, contacts, rows: [{ surname, name, year, sheet, kind, catRaw, teamNo }] }
+function parseInscripcio(sheets) {
+  const txt = v => typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v == null ? '' : String(v);
+  const sq = s => norm(s).replace(/[\s.]/g, '');                 // «E N T R E N A D O R / A» → «entrenador/a»
+  const isLabel = s => /^(cognoms?|nom|telefons?|e-?mail(\(\*\)|\(1\))?|entitat|enna|curs|any.*)$/.test(sq(s));
+  const out = { club: '', level: '', contacts: [], rows: [], sheets: 0 };
+  for (const sh of sheets) {
+    const all = [...sh.cells.entries()].map(([k, v]) => { const [r, c] = k.split(':').map(Number); return { r, c, raw: v, v: txt(v) }; }).filter(x => x.v);
+    const byRow = new Map();
+    for (const x of all) { if (!byRow.has(x.r)) byRow.set(x.r, []); byRow.get(x.r).push(x); }
+    for (const l of byRow.values()) l.sort((a, b) => a.c - b.c);
+    const row = r => byRow.get(r) || [];
+    // valor que hi ha a la dreta d'un títol (fins al títol següent de la mateixa fila)
+    const after = (r, c) => { for (const x of row(r)) if (x.c > c) return isLabel(x.v) ? '' : x.v; return ''; };
+    // capçalera de la llista: COGNOMS · NOM · ANY NAIXEMENT (a la mateixa fila)
+    const head = all.find(x => sq(x.v) === 'cognoms' && row(x.r).some(y => /^any/.test(sq(y.v))) && row(x.r).some(y => sq(y.v) === 'nom'));
+    if (!head) continue;
+    out.sheets++;
+    const cS = head.c, cN = row(head.r).find(y => sq(y.v) === 'nom').c, cY = row(head.r).find(y => /^any/.test(sq(y.v))).c;
+    const ent = all.find(x => sq(x.v) === 'entitat');
+    if (ent && !out.club) out.club = after(ent.r, ent.c);
+    const nv = all.map(x => /^nivell\s*(\S+)$/i.exec(x.v)).find(Boolean) || /(?:^|-)(?:INDIVIDUAL|EQUIPS?)-([A-Z])(?:-|$)/i.exec(sh.name);
+    const level = nv ? nv[1].toUpperCase() : '';
+    if (level && !out.level) out.level = level;
+    // entrenador/a i delegat/da: les dues files de sota del títol
+    for (const sec of all.filter(x => /^(entrenador|delegat)/.test(sq(x.v)))) {
+      const p = { role: /^entrenador/.test(sq(sec.v)) ? 'Entrenador/a' : 'Delegat/da', name: '', phones: '', email: '' };
+      let cog = '';
+      for (const r of [sec.r + 1, sec.r + 2]) for (const x of row(r)) {
+        const k = sq(x.v);
+        if (k === 'cognoms' || k === 'cognom') cog = after(r, x.c);
+        else if (k === 'nom') p.name = after(r, x.c);
+        else if (/^telefons?/.test(k)) p.phones = after(r, x.c);
+        else if (/^e-?mail/.test(k)) p.email = after(r, x.c);
+      }
+      p.name = smartCase([p.name, cog].filter(Boolean).join(' '));
+      if (!p.name && !p.phones && !p.email) continue;
+      // (la mateixa persona surt a cada fulla: s'ajunta, amb el que digui cadascuna)
+      const same = out.contacts.find(o => o.role === p.role && norm(o.name) === norm(p.name));
+      if (same) { for (const k of ['phones', 'email']) if (!same[k] && p[k]) same[k] = p[k]; }
+      else out.contacts.push(p);
+    }
+    // equips: «EQUIP 1», «EQUIP 2»… (la cel·la combinada diu quines files són de cada equip)
+    const tl = all.filter(x => /^equip\s*\d+$/i.test(x.v) && x.r > head.r).sort((a, b) => a.r - b.r);
+    const span = tl.map((x, i) => { const m = sh.merges.find(m => m.r1 === x.r && m.c1 === x.c); return { no: +/\d+/.exec(x.v)[0], r1: x.r, r2: m ? m.r2 : (tl[i + 1] ? tl[i + 1].r - 1 : sh.maxR) }; });
+    const kind = tl.length || /equip/i.test(sh.name) ? 'team' : 'ind';
+    // categoria de la fulla d'equips: «EQUIPS-A-ALEVÍ» o la cel·la que diu la categoria
+    let catRaw = '';
+    if (kind === 'team') {
+      const part = sh.name.split(/[-_]/).map(s => s.trim()).filter(s => s && !/^(equips?|individual|[ab])$/i.test(s)).pop() || '';
+      const known = s => catNames().find(c => norm(c) === norm(s));
+      catRaw = known(part) || (all.find(x => x.r < head.r && known(x.v)) || {}).v || part;
+      catRaw = known(catRaw) || smartCase(catRaw);
+    }
+    for (let r = head.r + 1; r <= sh.maxR; r++) {
+      const sur = txt(sh.cells.get(r + ':' + cS)), nom = txt(sh.cells.get(r + ':' + cN)), y = sh.cells.get(r + ':' + cY);
+      if (!sur && !nom) continue;
+      if (isLabel(sur) || /^equip\s*\d+$/i.test(sur)) continue;
+      const t = span.find(s => r >= s.r1 && r <= s.r2);
+      out.rows.push({ surname: smartCase(sur), name: smartCase(nom), year: cellYear(y), sheet: sh.name, kind, catRaw, level, teamNo: kind === 'team' && t ? t.no : null });
+    }
+  }
+  return out;
+}
+// el que es farà amb cada fila d'un fitxer (es torna a calcular cada vegada que es canvia una opció)
+function inscResolve(f) {
+  const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : null;
+  const firstTeam = new Map(), out = [];
+  const key = r => norm(r.name + ' ' + r.surname);
+  // la mateixa gimnasta a la fulla individual i en un equip: compta l'equip
+  for (const r of f.rows) if (r.teamNo && !firstTeam.has(key(r))) firstTeam.set(key(r), r);
+  const done = new Set();
+  for (const [idx, r] of f.rows.entries()) {
+    const k = key(r), p = Object.assign({}, r, { idx, gender: r.gender || f.gender || 'F', level: f.level || r.level || '' });
+    p.category = r.kind === 'team' ? r.catRaw : (r.year && catForYear(r.year)) || '';
+    p.yearCat = r.year ? catForYear(r.year) || '' : '';
+    if (!r.name) p.status = 'noname';
+    else if ((firstTeam.has(k) && firstTeam.get(k) !== r) || done.has(k)) p.status = 'dup';
+    else {
+      done.add(k);
+      p.existing = clubId ? db.gymnasts.find(g => g.clubId === clubId && norm(gymName(g)) === k) || null : null;
+      p.status = p.existing ? 'update' : 'new';
+    }
+    out.push(p);
+  }
+  return out;
+}
+// entitat del fitxer: la que ja hi és amb el mateix nom (o gairebé: «C.G. Lleida» = «CG Lleida»), o una de nova
+function inscClubFor(name) {
+  const loose = s => norm(s).replace(/[^a-z0-9]/g, '');
+  const c = db.clubs.find(x => norm(x.name) === norm(name)) || (loose(name) && db.clubs.find(x => loose(x.name) === loose(name)));
+  return c ? c.id : '__new';
+}
+async function inscAddFiles(files) {
+  ui.insc = ui.insc || { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' ? ui.compId : null };
+  for (const file of files) {
+    const f = { name: file.name, rows: [], contacts: [], club: '', level: '', gender: 'F', clubPick: '__new', error: '' };
+    try {
+      if (/\.xls$/i.test(file.name)) throw new Error('Aquest és un Excel antic (.xls). Obre’l amb Excel i desa’l com a «Llibre d’Excel (.xlsx)».');
+      if (file.size > XLSX_MAX) throw new Error('El fitxer és massa gran.');
+      let sheets;
+      try { sheets = await readXlsx(await file.arrayBuffer()); }
+      catch (e) { throw new Error(typeof DecompressionStream !== 'function' ? 'Aquest navegador no pot obrir fitxers d’Excel: fes servir Chrome, Edge o un Safari recent.' : 'No és un fitxer d’Excel (.xlsx) que es pugui llegir.'); }
+      const d = parseInscripcio(sheets);
+      if (!d.sheets) throw new Error('No s’hi troba cap llista d’esportistes (amb les columnes COGNOMS, NOM i ANY NAIXEMENT).');
+      Object.assign(f, { rows: d.rows, contacts: d.contacts, club: smartCase(d.club), level: matchFromList(S().levels, d.level) || d.level });
+      f.clubPick = f.club ? inscClubFor(f.club) : (db.clubs.length === 1 ? db.clubs[0].id : '__new');
+      if (!d.rows.length) f.error = 'El full no té cap esportista escrita.';
+    } catch (e) { f.error = e.message; }
+    ui.insc.files.push(f);
+  }
+}
+function inscDialog() {
+  const I = ui.insc || { files: [] }, c = I.compId && compById(I.compId);
+  const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
+  const st = { new: '<span class="badge ok">nova</span>', update: '<span class="badge" title="Ja hi ha la fitxa: se n’actualitzen el grup, l’any i l’equip">ja hi és</span>', dup: '<span class="badge" title="Surt dues vegades al full (o també en un equip): es fa servir la primera">repetida</span>', noname: '<span class="badge bad">sense nom</span>' };
+  let total = 0;
+  const cards = I.files.map((f, fi) => {
+    if (f.error) return `<div class="card"><h3>${h(f.name)}</h3><div class="note bad">${h(f.error)}</div></div>`;
+    const list = inscResolve(f), ok = list.filter(p => p.status === 'new' || p.status === 'update');
+    total += ok.length;
+    const bySheet = [...new Set(list.map(p => p.sheet))];
+    const rows = bySheet.map(sn => {
+      const ps = list.filter(p => p.sheet === sn), k = ps[0].kind;
+      return `<tr class="np"><td colspan="5"><b>${k === 'team' ? `Equips · ${h(ps[0].catRaw || '?')}` : 'Individual'}</b> · Nivell ${h(f.level || '?')} <span class="muted small">(${h(sn)})</span></td></tr>` + ps.map(p => {
+        const i = p.idx;
+        const warn = !p.year ? '<span class="badge warn">sense any</span>' : (!p.category ? '<span class="badge warn">sense categoria</span>' : (p.yearCat && p.yearCat !== p.category ? `<span class="badge warn" title="Per l’any li tocaria ${h(p.yearCat)}">${h(p.year)} → ${h(p.yearCat)}?</span>` : ''));
+        return `<tr><td>${st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
+          <td>${h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' && I.onlyInd ? ' · <span class="muted">individual</span>' : ''}</td>
+          <td><select class="sm" data-chg="inscRowGender" data-f="${fi}" data-i="${i}" aria-label="Gènere de ${h(p.name)}"><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Noia</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Noi</option></select></td></tr>`;
+      }).join('');
+    }).join('');
+    return `<div class="card"><div class="card-head"><h3>${h(f.name)}</h3><span class="muted">${plural(ok.length, 'gimnasta', 'gimnastes')}</span></div>
+      <div class="grid2">
+        <label class="f"><span>Entitat${f.club ? ` <span class="small muted">(al full: ${h(f.club)})</span>` : ''}</span><select data-chg="inscClub" data-f="${fi}">
+          <option value="__new" ${f.clubPick === '__new' ? 'selected' : ''}>${f.club ? `Nova: ${h(f.club)}` : '— Escriu-la al full o tria’n una —'}</option>
+          ${clubs.map(cl => `<option value="${cl.id}" ${f.clubPick === cl.id ? 'selected' : ''}>${h(cl.name)}</option>`).join('')}</select></label>
+        <label class="f"><span>Nivell</span><select data-chg="inscLevel" data-f="${fi}">${[...new Set([...S().levels, f.level].filter(Boolean))].map(l => `<option ${f.level === l ? 'selected' : ''}>${h(l)}</option>`).join('')}</select></label>
+        <label class="f"><span>Són <span class="small muted">(el full no ho diu)</span></span><select data-chg="inscGender" data-f="${fi}"><option value="F" ${f.gender === 'F' ? 'selected' : ''}>Noies</option><option value="M" ${f.gender === 'M' ? 'selected' : ''}>Nois</option></select></label>
+      </div>
+      ${inscTeamsNote(f, list)}
+      ${f.contacts.length ? `<p class="small muted">${f.contacts.map(p => `${h(p.role)}: <b>${h(p.name || '—')}</b>${p.phones ? ` · ${h(p.phones)}` : ''}${p.email ? ` · ${h(p.email)}` : ''}`).join('<br>')}</p>` : ''}
+      ${!f.club && f.clubPick === '__new' ? '<div class="note warn">El full no diu l’entitat: tria-la a dalt.</div>' : ''}
+      <div class="tbl-wrap" style="max-height:40vh"><table class="tbl"><tbody>${rows}</tbody></table></div></div>`;
+  }).join('');
+  const bad = I.files.some(f => !f.error && !f.club && f.clubPick === '__new');
+  return `<h2>Fulls d’inscripció dels clubs</h2>
+    <p class="small muted">Tria (o arrossega aquí) els fitxers d’Excel (.xlsx) d’inscripció que envien els clubs, tal com te’ls passen: el model del Consell, amb les fulles INDIVIDUAL i EQUIPS. Se n’agafen l’entitat, el nivell (A o B), l’entrenador/a, el delegat/da i cada gimnasta amb el seu any de naixement i el seu equip.</p>
+    <label class="dropzone" id="inscdrop"><input type="file" id="inscfile" accept=".xlsx,.xlsm,.xls" multiple data-chg="inscFiles"><span>📥 <b>Tria els fitxers</b> o arrossega’ls aquí</span></label>
+    ${cards}
+    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL competeixen només individualment (no van en cap equip)</label>
+      ${c ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="enroll" ${I.enroll && !c.locked ? 'checked' : ''} ${c.locked ? 'disabled' : ''}> Inscriu-les també a <b>${h(c.name)}</b></label>` : ''}` : ''}
+    <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
+      <button type="button" class="btn primary" data-act="inscDo" ${total && !bad ? '' : 'disabled'}>Importa ${total || ''}</button></div>`;
+}
+// resum dels equips que farà el full (i qui en surt, si l'equip ja hi era amb altres gimnastes)
+function inscTeamsNote(f, list) {
+  const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : null, club = clubId ? clubName(clubId) : smartCase(f.club);
+  const m = new Map();
+  for (const p of list) {
+    if (!p.teamNo || !(p.status === 'new' || p.status === 'update')) continue;
+    const name = p.teamNo === 1 ? club : `${club} ${p.teamNo}`, k = p.category + '|' + p.gender + '|' + name;
+    if (!m.has(k)) m.set(k, { name, grp: { category: p.category, gender: p.gender, level: p.level }, ids: new Set(), n: 0 });
+    const x = m.get(k); x.n++; if (p.existing) x.ids.add(p.existing.id);
+  }
+  if (!m.size) return '';
+  return `<p class="small">Equips: ${[...m.values()].map(x => {
+    const ex = clubId && findTeam(clubId, x.grp, x.name), out = ex ? ex.memberIds.filter(id => !x.ids.has(id)).length : 0;
+    return `<b>${h(x.name)}</b> (${h(x.grp.category)} ${h(x.grp.level)}, ${x.n})${out ? ` <span class="badge warn" title="L’equip ja hi era: queda amb les del full">${plural(out, 'en surt una', `en surten ${out}`).replace(/^\d+ /, '')}</span>` : ''}`;
+  }).join(' · ')}</p>`;
+}
+function inscRefresh() {
+  const d = $('#dlg'), box = d && d.querySelector('.dlg'), top = box ? box.scrollTop : 0;
+  if (!d || !d.open) { openDialog(inscDialog(), { wide: true }); return; }
+  box.innerHTML = inscDialog(); box.scrollTop = top;
+}
+// valors de contacte d'una entitat (es guarden a l'entitat, sense repetir-ne)
+function mergeContacts(old, add) {
+  const out = Array.isArray(old) ? old.slice() : [];
+  for (const p of add) {
+    const i = out.findIndex(o => o.role === p.role && norm(o.name) === norm(p.name));
+    if (i >= 0) out[i] = Object.assign({}, out[i], Object.fromEntries(Object.entries(p).filter(([, v]) => v)));
+    else out.push(Object.assign({}, p));
+  }
+  return out;
+}
 /* ─── Importació des d'Excel (enganxar) */
 const IMPORT_FIELDS = [['', '— no l’importis —'], ['name', 'Nom'], ['surname', 'Cognoms'], ['full', 'Nom i cognoms'], ['club', 'Entitat'],
   ['gender', 'Gènere'], ['category', 'Categoria'], ['level', 'Nivell'], ['birth', 'Any / data de naixement'], ['team', 'Equip']];
@@ -3076,6 +3345,7 @@ function importDialog() {
   const newCats = [...new Set(ok.filter(p => p.newCat).map(p => p.category))], newLevels = [...new Set(ok.filter(p => p.newLevel).map(p => p.level))];
   const newClubs = [...new Set(ok.map(p => p.club).filter(cl => cl && !db.clubs.some(c => norm(c.name) === norm(cl))).map(norm))];
   return `<h2>Enganxa gimnastes des d’Excel</h2>
+    <div class="note">Si tens els fulls d’inscripció dels clubs (l’Excel del Consell), no cal copiar res: <button type="button" class="btn sm" data-act="inscOpen">📥 Obre’ls directament</button></div>
     <p class="small muted">Selecciona les cel·les a l’Excel (amb la fila de títols, si en té), copia (Ctrl+C) i enganxa-les aquí (Ctrl+V). Columnes que s’entenen: Nom, Cognoms (o «Esportista» amb el nom sencer), Entitat, Gènere, Categoria, Nivell, Any de naixement i Equip. Si no hi ha categoria però sí any de naixement, la categoria es posa sola.</p>
     <textarea rows="7" id="imptext" data-inp="impText" placeholder="Nom&#9;Cognoms&#9;Entitat&#9;Categoria&#9;Nivell">${imp ? h(imp.rows.map(r => r.join('\t')).join('\n')) : ''}</textarea>
     <div class="toolbar" style="margin-top:8px"><button class="btn" data-act="impAnalyze">Analitza</button>
@@ -3193,7 +3463,8 @@ views.entitats = () => {
     <div class="actions"><button class="btn primary" data-act="newClub">＋ Nova entitat</button></div></div>
     <p class="muted small">Les entitats es creen soles quan les escrius a la fitxa d’una gimnasta. Aquí les pots reanomenar o, si n’hi ha dues que són la mateixa (p. ex. «CG Lleida» i «C.G. Lleida»), fusionar-les.</p>
     ${clubs.length ? `<div class="tbl-wrap"><table class="tbl cardify clubs"><thead><tr><th>Nom</th><th class="num">Gimnastes</th><th class="num">Equips</th><th>Fusiona amb…</th><th></th></tr></thead><tbody>
-    ${clubs.map(c => `<tr><td class="c-name"><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat"></td>
+    ${clubs.map(c => `<tr><td class="c-name"><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat">
+        ${(c.contacts || []).length ? `<div class="small muted" style="margin-top:4px">${c.contacts.map(p => `${h(p.role)}: ${h(p.name || '—')}${p.phones ? ` · ${h(p.phones)}` : ''}${p.email ? ` · ${h(p.email)}` : ''}`).join('<br>')}</div>` : ''}</td>
       <td class="num c-ng"><span class="ph-lbl">Gimnastes</span>${nG(c.id)}</td><td class="num c-nt"><span class="ph-lbl">Equips</span>${nT(c.id)}</td>
       <td class="c-merge"><span class="ph-lbl">Fusiona amb…</span><select data-chg="clubMerge" data-id="${c.id}" aria-label="Fusiona ${h(c.name)} amb"><option value="">—</option>${clubs.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">${h(o.name)}</option>`).join('')}</select></td>
       <td class="num c-del"><button class="icon-btn" data-act="delClub" data-id="${c.id}" title="Esborra" aria-label="Esborra ${h(c.name)}">✕</button></td></tr>`).join('')}
@@ -4221,6 +4492,59 @@ const actions = {
     });
   },
   importGyms: () => { ui.import = null; openDialog(importDialog(), { wide: true }); },
+  // fulls d'inscripció dels clubs (.xlsx)
+  inscOpen: async (el, files) => {
+    ui.insc = { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
+    if (files && files.length) await inscAddFiles(files);
+    openDialog(inscDialog(), { wide: true });
+  },
+  inscDo: () => {
+    const I = ui.insc; if (!I) return;
+    const c = I.compId && I.enroll ? compById(I.compId) : null;
+    let made = 0, upd = 0, teamed = 0, res = null;
+    const enrol = new Set(), formTeams = new Map();   // equip → les gimnastes que hi posa el full
+    closeDialog();
+    withUndo(() => `Fulls d’inscripció importats: ${plural(made, 'fitxa nova', 'fitxes noves')}${upd ? `, ${plural(upd, 'actualitzada', 'actualitzades')}` : ''}${teamed ? ` · ${plural(teamed, 'gimnasta', 'gimnastes')} en equips` : ''}${c ? ` · ${plural(res ? res.n : 0, 'inscripció feta', 'inscripcions fetes')} a ${c.name}` : ''}.`, () => {
+      for (const f of I.files) {
+        if (f.error) continue;
+        const list = inscResolve(f).filter(p => p.status === 'new' || p.status === 'update');
+        if (!list.length) continue;
+        const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : ensureClub(f.club);
+        const club = clubById(clubId);
+        if (club && f.contacts.length) club.contacts = mergeContacts(club.contacts, f.contacts);
+        if (f.level && !S().levels.includes(f.level)) S().levels.push(f.level);
+        for (const p of list) {
+          if (p.category && !catNames().includes(p.category)) S().categories.push({ name: p.category, from: null, to: null });
+          let g = p.existing && gymById(p.existing.id);
+          const vals = { gender: p.gender, level: p.level, ...(p.category ? { category: p.category } : {}), ...(p.year ? { birthYear: p.year } : {}) };
+          if (g) { Object.assign(g, vals); if (g.archived) g.archived = false; upd++; }
+          else { g = Object.assign({ id: uid(), name: p.name, surname: p.surname, clubId, category: '', birthYear: '', notes: '', archived: false }, vals); db.gymnasts.push(g); made++; }
+          // l'equip del full (EQUIP 1 = «CG Lleida», EQUIP 2 = «CG Lleida 2»…) passa a la fitxa
+          if (p.teamNo && club) {
+            const nm = p.teamNo === 1 ? club.name : `${club.name} ${p.teamNo}`;
+            const t = findTeam(clubId, g, nm) || makeTeam(clubId, g, nm);
+            setGymTeam(g, t.id); teamed++;
+            if (!formTeams.has(t)) formTeams.set(t, new Set());
+            formTeams.get(t).add(g.id);
+          } else if (p.kind === 'ind' && I.onlyInd) setGymTeam(g, '__none');
+          if (c) enrol.add(g.id);
+        }
+      }
+      // l'equip del full és el que val: les que ja hi eren i el full no diu, en surten
+      for (const [t, ids] of formTeams) {
+        const out = t.memberIds.filter(id => !ids.has(id));
+        if (!out.length) continue;
+        t.memberIds = t.memberIds.filter(id => ids.has(id));
+        propagateTeam(t, out, []);
+      }
+      if (c) {
+        const added = [...enrol].filter(id => !c.entries.some(e => e.gymnastId === id)).map(id => { const e = newEntry(c, gymById(id)); c.entries.push(e); return e; });
+        if (c.autoTeams) autoCompTeams(c, added); else autoAssignTeams(c, added);
+        res = { n: added.length };
+      }
+    });
+    ui.insc = null;
+  },
   impAnalyze: () => {
     const imp = importAnalyze($('#imptext').value);
     if (!imp) { toast('Primer enganxa-hi les dades.', 'bad'); return; }
@@ -4915,6 +5239,12 @@ function renameInUi(field, old, to) {
   if (ui.pick && ui.pick[f[1]] === old) ui.pick[f[1]] = to;
   if (ui.lastGym && ui.lastGym[field] === old) ui.lastGym[field] = to;
 }
+changes.inscFiles = async el => { const files = [...(el.files || [])]; el.value = ''; if (!files.length) return; await inscAddFiles(files); inscRefresh(); };
+changes.inscClub = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.clubPick = el.value; inscRefresh(); } };
+changes.inscLevel = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.level = el.value; inscRefresh(); } };
+changes.inscGender = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.gender = el.value; f.rows.forEach(r => { delete r.gender; }); inscRefresh(); } };
+changes.inscRowGender = el => { const f = ui.insc && ui.insc.files[+el.dataset.f], r = f && f.rows[+el.dataset.i]; if (r) { r.gender = el.value; inscRefresh(); } };
+changes.inscOpt = el => { if (ui.insc) { ui.insc[el.dataset.k] = el.checked; inscRefresh(); } };
 changes.groupSel = el => { const fn = actions[el.dataset.target]; if (fn) fn({ dataset: { g: el.value } }); };
 const inputs = {
   // s'ha tornat a enganxar: l'anàlisi d'abans ja no val (s'ha de tornar a analitzar abans d'importar)
@@ -5121,6 +5451,17 @@ document.addEventListener('change', e => {
 });
 // una nota que s'ha tornat a escriure igual que quan s'hi ha entrat (p. ex. 9 → Intro → 8,50 de nou): el navegador
 // no avisa de cap canvi en sortir-ne, però el que hi ha desat no és el que es veu. Es desa en sortir.
+// arrossegar fitxers d'Excel a la finestra: s'obren els fulls d'inscripció
+const xlsxIn = e => e.dataTransfer && [...(e.dataTransfer.items || [])].some(i => i.kind === 'file');
+document.addEventListener('dragover', e => { if (xlsxIn(e) && ui.view !== 'tutor') { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+document.addEventListener('drop', async e => {
+  if (!xlsxIn(e) || ui.view === 'tutor') return;
+  const files = [...e.dataTransfer.files].filter(f => /\.xls[xm]?$/i.test(f.name));
+  e.preventDefault();
+  if (!files.length) { toast('Aquí només es poden deixar fitxers d’Excel (.xlsx) d’inscripció.', 'bad'); return; }
+  if (ui.insc && $('#dlg').open && $('#inscdrop')) { await inscAddFiles(files); inscRefresh(); }
+  else actions.inscOpen(null, files);
+});
 document.addEventListener('focusout', e => {
   const el = e.target;
   if (isSc(el) && document.contains(el) && el.dataset.last !== el.value && changes[el.dataset.chg]) changes[el.dataset.chg](el, e);

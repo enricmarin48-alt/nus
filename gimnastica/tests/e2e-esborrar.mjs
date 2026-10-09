@@ -112,8 +112,9 @@ try {
   await step('Gimnastes: arxivar les marcades', async () => {
     await page.check('#gymtable input.selbox[data-id=g7]');
     await bar('gyms').locator('button[data-act=delGymsSel]').click();
-    await page.click('#confirm button:has-text("Arxiva-les")');
-    await page.waitForSelector('.toast:has-text("1 gimnasta arxivada")');
+    await page.waitForSelector('#confirm[open] >> text=Esborrar Gina Prova? Surt a alguna competició.');
+    await page.click('#confirm button:has-text("Arxiva-la")');
+    await page.waitForSelector('.toast:has-text("Fitxa de Gina Prova arxivada: ja no surt a les llistes")');
     const d = await data();
     assert.equal(d.gymnasts.find(g => g.id === 'g7').archived, true);
     assert.ok(d.competitions.find(c => c.id === 'kl').entries.some(e => e.gymnastId === 'g7'), 'la tancada no es toca');
@@ -160,7 +161,7 @@ try {
     await page.waitForSelector('#confirm[open] >> text=al full d’inscripció');
     assert.equal(await page.locator('#confirm button:has-text("Es tornen a agrupar soles")').count(), 0);
     await page.click('#confirm button:has-text("Esborra’l (queden com a individuals)")');
-    await page.waitForSelector('.toast:has-text("1 equip esborrat")');
+    await page.waitForSelector('.toast:has-text("Equip esborrat: les seves gimnastes queden com a individuals")');
     d = await data(); kt = d.competitions.find(c => c.id === 'kt');
     assert.ok(['g4', 'g5', 'g6'].every(id => d.gymnasts.find(g => g.id === id).noTeam));
     assert.ok(kt.entries.filter(e => e.clubId === 'c2').every(e => !e.teamId && e.noAuto));
@@ -173,9 +174,9 @@ try {
     await bar('clubs').waitFor();
     await page.check('table.clubs input.selbox[data-id=c2]');
     await bar('clubs').locator('button[data-act=delClubsSel]').click();
-    await page.waitForSelector('#confirm[open] >> text=Esborrar 1 entitat?');
-    await page.click('#confirm button:has-text("Esborra-les amb les seves gimnastes")');
-    await page.waitForSelector('.toast:has-text("1 entitat esborrada, amb les seves gimnastes")');
+    await page.waitForSelector('#confirm[open] >> text=Esborrar Escola Pardinyes? Hi ha 3 gimnastes d’aquesta entitat.');
+    await page.click('#confirm button:has-text("Esborra-la amb les seves gimnastes")');
+    await page.waitForSelector('.toast:has-text("Entitat esborrada, amb les seves gimnastes")');
     const d = await data();
     assert.deepEqual(d.clubs.map(c => c.id), ['c1']);
     assert.ok(!d.gymnasts.some(g => g.clubId === 'c2'));
@@ -233,6 +234,56 @@ try {
     assert.ok(await bar('entries:kl').locator('input[data-chg=selAll]').isDisabled());
   });
 
+  await step('Entitats «amb les seves gimnastes»: les d’una altra entitat del mateix equip s’hi queden, i les notes passades d’una gimnasta que es queda no es toquen', async () => {
+    // la Gina (CG Lleida) és a l'equip de l'Escola Pardinyes, i una inscripció passada de la Carla és de l'Escola Pardinyes
+    await page.evaluate(() => {
+      db.teams.find(t => t.id === 'T2').memberIds.push('g7');
+      const kt = db.competitions.find(c => c.id === 'kt'); kt.entries.find(e => e.id === 't7').teamId = 'tt2';
+      const kp = db.competitions.find(c => c.id === 'kp'); kp.entries.find(e => e.id === 'p3').clubId = 'c2';
+      commit(); render();
+    });
+    await go('#/entitats');
+    await page.check('table.clubs input.selbox[data-id=c2]');
+    await bar('clubs').locator('button[data-act=delClubsSel]').click();
+    await page.click('#confirm button:has-text("Esborra-la amb les seves gimnastes")');
+    await page.waitForSelector('.toast:has-text("Entitat esborrada, amb les seves gimnastes")');
+    const d = await data(), kt = d.competitions.find(c => c.id === 'kt'), kp = d.competitions.find(c => c.id === 'kp');
+    assert.deepEqual(d.teams.find(t => t.id === 'T2').memberIds, ['g7'], 'la Gina es queda a l’equip (ara sense entitat)');
+    assert.equal(d.teams.find(t => t.id === 'T2').clubId, null);
+    const t7 = kt.entries.find(e => e.id === 't7');
+    assert.ok(kt.teams.some(t => t.id === t7.teamId), 'la seva inscripció continua en un equip que existeix');
+    assert.ok(kp.entries.some(e => e.id === 'p3' && e.scores.salt[0].v === 8.2), 'la nota passada de la Carla es queda');
+    for (const c of d.competitions) for (const e of c.entries) assert.ok(!e.teamId || c.teams.some(t => t.id === e.teamId), `${c.id}/${e.id}: equip que no existeix`);
+    await undo();
+    await page.evaluate(() => {
+      const T2 = db.teams.find(t => t.id === 'T2'); T2.memberIds = T2.memberIds.filter(x => x !== 'g7');
+      db.competitions.find(c => c.id === 'kt').entries.find(e => e.id === 't7').teamId = null;
+      db.competitions.find(c => c.id === 'kp').entries.find(e => e.id === 'p3').clubId = 'c1';
+      commit(); render();
+    });
+  });
+
+  await step('Equips: si s’esborren tots els equips de la categoria triada, es tornen a veure els altres', async () => {
+    await page.evaluate(() => {
+      for (const id of ['g1', 'g2', 'g3']) db.gymnasts.find(g => g.id === id).category = 'Benjamí';
+      db.teams.find(t => t.id === 'T1').category = 'Benjamí'; commit(); render();
+    });
+    await go('#/equips');
+    await page.click('button[data-act=pickTCat][data-c="Benjamí"]');
+    await bar('teams').locator('input[data-chg=selAll]').check();
+    assert.match(await bar('teams').textContent(), /Marca’ls tots \(1\)[\s\S]*Desmarca’ls/);
+    await bar('teams').locator('button[data-act=delTeamsSel]').click();
+    await page.click('#confirm button:has-text("Queden com a individuals")');
+    await page.waitForSelector('.toast:has-text("Equip esborrat")');
+    await page.waitForSelector('a[data-act=editTeam]:has-text("Escola Pardinyes")');
+    assert.match(await bar('teams').textContent(), /Marca’ls tots \(1\)/);
+    await undo();
+    await page.evaluate(() => {
+      for (const id of ['g1', 'g2', 'g3']) db.gymnasts.find(g => g.id === id).category = 'Aleví';
+      db.teams.find(t => t.id === 'T1').category = 'Aleví'; ui.tCat = ''; commit(); render();
+    });
+  });
+
   await step('Competicions: esborrar-les totes d’un cop (les gimnastes es queden)', async () => {
     await go('#/competicions');
     await bar('comps').waitFor();
@@ -253,6 +304,12 @@ try {
     await page.click('button[data-act=wipe]');
     await page.waitForSelector('#dlg form[data-form=wipe]');
     assert.equal(await page.locator('#dlg input[name=w]:checked').count(), 3, 'tot marcat menys la configuració');
+    // un Intro no esborra res: el focus és a «Cancel·la», i un Intro sobre una casella no envia el diàleg
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.act), 'closeDlg');
+    await page.focus('#dlg input[name=w][value=comps]'); await page.keyboard.press('Enter');
+    await wait(200);
+    assert.ok(await page.locator('#dlg form[data-form=wipe]').isVisible(), 'el diàleg continua obert');
+    assert.equal((await data()).gymnasts.length, 7);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#dlg form[data-form=wipe] button.danger')]);
     const copy = JSON.parse(readFileSync(await dl.path(), 'utf8'));
     assert.equal(copy.gymnasts.length, 7, 'la còpia és de com era abans');
@@ -306,7 +363,10 @@ try {
     await p.goto(url + '#/gimnastes');
     await p.waitForSelector('.gym-cards');
     assert.equal(await p.locator('.gym-card input.selbox').count(), 7);
+    const hBar = () => p.locator('.selbar[data-k=gyms]').evaluate(b => b.getBoundingClientRect().height);
+    const h0 = await hBar();
     await p.locator('.gym-card input.selbox[data-id=g3]').tap();
+    assert.equal(await hBar(), h0, 'en marcar-ne una, la barra no canvia de mida (la llista no salta)');
     assert.match(await p.locator('.selbar[data-k=gyms] button[data-act=delGymsSel]').textContent(), /\(1\)/);
     const wide = () => p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     assert.ok(await wide() <= 0, 'no hi ha desplaçament de costat');

@@ -97,18 +97,47 @@ func newStore(path string) (*store, error) {
 		if s.db == nil {
 			s.db = map[string]any{}
 		}
+		// la còpia que s'ha obert en lloc del fitxer malmès és de les versions de proves: no es fa servir
+		if s.recovered != "" && hasData(s.db) && dataGen(s.db) < 2 {
+			s.db = map[string]any{}
+			s.dirty = false
+			s.recovered = "El fitxer de dades estava malmès i la còpia de seguretat més nova és de les versions de proves: no s'ha obert i es comença de zero. Si la finestra de NotesGim tenia les dades, s'hi tornen a posar soles; si no, restaura una còpia des de Configuració."
+		}
 		// dades de les versions de proves (cap versió d'ara no les desa sense settings.dataGen): es comença de zero.
 		// No s'esborren: el fitxer es queda al costat amb un altre nom («…-proves-<data>.json») i es pot restaurar
 		if s.recovered == "" && hasData(s.db) && dataGen(s.db) < 2 {
-			old := strings.TrimSuffix(path, ".json") + "-proves-" + time.Now().Format("2006-01-02_150405") + ".json"
-			if err := os.Rename(path, old); err != nil {
-				return nil, fmt.Errorf("no s'ha pogut guardar apart el fitxer de dades de les proves (%v)", err)
+			old := freeName(strings.TrimSuffix(path, ".json") + "-proves-" + time.Now().Format("2006-01-02_150405"))
+			// (a Windows, un antivirus o OneDrive poden tenir el fitxer obert un moment: es torna a provar; si no es
+			// pot moure, se'n fa una còpia i el fitxer es substitueix la primera vegada que es desa)
+			var rerr error
+			for i := 0; i < 10; i++ {
+				if rerr = os.Rename(path, old); rerr == nil {
+					break
+				}
+				time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+			}
+			if rerr != nil {
+				if werr := writeFileSync(old, b); werr != nil {
+					return nil, fmt.Errorf("no s'han pogut guardar apart les dades de les proves d'abans (%s): %v", path, werr)
+				}
 			}
 			s.db = map[string]any{}
 			s.fresh = filepath.Base(old)
 		}
 	}
 	return s, nil
+}
+
+// base + ".json", o base-2.json, base-3.json… si ja n'hi ha un (mai se n'escriu un a sobre d'un altre)
+func freeName(base string) string {
+	name := base + ".json"
+	for i := 2; i < 1000; i++ {
+		if _, err := os.Stat(name); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		name = fmt.Sprintf("%s-%d.json", base, i)
+	}
+	return name
 }
 
 // hi ha gimnastes, equips, entitats o competicions
@@ -146,7 +175,17 @@ func newestBackup(dir string) (string, map[string]any) {
 			}
 		}
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].mod.After(list[j].mod) })
+	// primer les còpies de cada 10 minuts (les d'abans de restaurar o d'esborrar-ho tot, i les d'en obrir, són
+	// de com eren les dades abans d'un canvi que es va voler fer: només si no n'hi ha cap altra)
+	special := func(n string) bool {
+		return strings.Contains(n, "-abans-de-restaurar") || strings.Contains(n, "-en-obrir")
+	}
+	sort.Slice(list, func(i, j int) bool {
+		if a, b := special(list[i].name), special(list[j].name); a != b {
+			return b
+		}
+		return list[i].mod.After(list[j].mod)
+	})
 	for _, c := range list {
 		b, err := os.ReadFile(filepath.Join(dir, c.name))
 		if err != nil {
@@ -195,15 +234,19 @@ func (s *store) backupOriginalLocked() {
 }
 
 // abans de restaurar una còpia (o d'esborrar-ho tot), es guarda com eren les dades
-func (s *store) backupBeforeRestoreLocked() {
+func (s *store) backupBeforeRestoreLocked() error {
 	b, err := json.MarshalIndent(s.db, "", " ")
 	if err != nil || len(s.db) == 0 {
-		return
+		return err
 	}
-	if err := os.MkdirAll(s.backups, 0o755); err == nil {
-		_ = writeFileSync(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-abans-de-restaurar.json"), b)
-		s.pruneBackups(60)
+	if err := os.MkdirAll(s.backups, 0o755); err != nil {
+		return err
 	}
+	if err := writeFileSync(freeName(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-abans-de-restaurar")), b); err != nil {
+		return err
+	}
+	s.pruneBackups(60)
+	return nil
 }
 
 // desa de manera segura: primer a un fitxer temporal i després el reanomena (mai queda a mitges).
@@ -700,7 +743,7 @@ func (s *store) routes(port int) http.Handler {
 			role = "admin"
 			s.lastAdmin.Store(time.Now().UnixMilli())
 		}
-		info := map[string]any{"app": "notesgim", "version": appVersion, "role": role, "urls": lanURLs(port), "dataFile": s.path}
+		info := map[string]any{"app": "notesgim", "version": appVersion, "role": role, "urls": lanURLs(port), "dataFile": s.path, "dataGen": 2}
 		if role == "admin" {
 			s.mu.Lock()
 			info["fresh"] = s.fresh
@@ -741,6 +784,11 @@ func (s *store) routes(port int) http.Handler {
 				writeJSON(w, 409, map[string]any{"error": "les dades han canviat des d'una altra finestra", "version": s.version, "dataRev": s.dataRev, "db": s.db})
 				return
 			}
+			// una finestra d'una versió de proves (encara oberta d'abans): les seves dades no hi tornen
+			if dataGen(body.DB) < 2 {
+				writeJSON(w, 409, map[string]any{"error": "aquesta finestra és d'una versió anterior de NotesGim: tanca-la i torna a obrir NotesGim", "version": s.version, "dataRev": s.dataRev, "db": s.db})
+				return
+			}
 			// les mateixes dades que ja té (p. ex. la finestra torna a desar sense cap canvi): no cal tornar a
 			// escriure el fitxer (si ara no es pot, no és cap dada perduda)
 			if !s.dirty && !body.Replace && reflect.DeepEqual(body.DB, s.db) {
@@ -753,7 +801,8 @@ func (s *store) routes(port int) http.Handler {
 			} else {
 				// es restaura una còpia: abans, una còpia de com era (per si s'ha triat la que no era), i només
 				// s'hi afegeixen les notes arribades després de restaurar
-				s.backupBeforeRestoreLocked()
+				_ = s.backupBeforeRestoreLocked()
+				s.lastBak = time.Time{} // (i, en desar, una còpia de com queden: si el fitxer es malmet, és la que s'obre)
 				if body.Since > 0 {
 					taken = mergeScoresSince(body.DB, s.db, body.Since)
 				}
@@ -833,6 +882,23 @@ func (s *store) routes(port int) http.Handler {
 	})
 
 	// botó «Tanca NotesGim» de l'app
+	// abans d'esborrar-ho tot, la taula en fa guardar una còpia a copies-notesgim (si no es pot, la descarrega ella)
+	mux.HandleFunc("/api/backup", func(w http.ResponseWriter, r *http.Request) {
+		if !isLocal(r) || r.Method != http.MethodPost {
+			fail(w, 403, "no permès")
+			return
+		}
+		s.mu.Lock()
+		err := s.backupBeforeRestoreLocked()
+		s.mu.Unlock()
+		if err != nil {
+			log.Printf("ERROR fent la còpia de seguretat: %v", err)
+			fail(w, 500, "no s'ha pogut guardar la còpia a "+s.backups+": "+err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"ok": true})
+	})
+
 	mux.HandleFunc("/api/quit", func(w http.ResponseWriter, r *http.Request) {
 		if !isLocal(r) || r.Method != http.MethodPost {
 			fail(w, 403, "no permès")
@@ -980,33 +1046,67 @@ func openDefault(url string) {
 	_ = cmd.Start()
 }
 
-// hi ha un NotesGim amb aquestes dades al port p? Torna la seva adreça o ""
-func instanceAt(p int, dataPath string) string {
+// hi ha un NotesGim amb aquestes dades al port p? Torna la seva adreça o "", i si és d'una versió de proves
+// (d'abans de dataGen 2: s'ha de tancar perquè s'obri aquest, que comença de zero)
+func instanceAt(p int, dataPath string) (string, bool) {
 	client := &http.Client{Timeout: 700 * time.Millisecond}
 	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/api/info", p))
 	if err != nil {
-		return ""
+		return "", false
 	}
 	defer resp.Body.Close()
 	var info struct {
-		App      string `json:"app"`
-		DataFile string `json:"dataFile"`
+		App      string  `json:"app"`
+		DataFile string  `json:"dataFile"`
+		DataGen  float64 `json:"dataGen"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&info)
 	if info.App == "notesgim" && filepath.Clean(info.DataFile) == filepath.Clean(dataPath) {
-		return fmt.Sprintf("http://localhost:%d", p)
+		return fmt.Sprintf("http://localhost:%d", p), info.DataGen < 2
 	}
-	return ""
+	return "", false
 }
 
-// si NotesGim ja està obert (amb les mateixes dades), no se n'obre un altre: només se'n mostra la finestra
-func runningInstance(port int, dataPath string) string {
+// tanca el NotesGim d'una versió de proves que hi ha obert al port p (abans desa el que tingui). Torna si s'ha tancat
+func quitOld(p int) bool {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Post(fmt.Sprintf("http://127.0.0.1:%d/api/quit", p), "application/json", strings.NewReader("{}"))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return false
+	}
+	// (s'espera que deixi de respondre: llavors ja ha desat i s'ha tancat)
+	probe := &http.Client{Timeout: 300 * time.Millisecond}
+	for i := 0; i < 50; i++ {
+		time.Sleep(200 * time.Millisecond)
+		r, err := probe.Get(fmt.Sprintf("http://127.0.0.1:%d/api/info", p))
+		if err != nil {
+			return true
+		}
+		r.Body.Close()
+	}
+	return false
+}
+
+// si NotesGim ja està obert (amb les mateixes dades), no se n'obre un altre: només se'n mostra la finestra.
+// Si el que hi ha obert és d'una versió de proves, es tanca i s'obre aquest (old: no s'ha pogut tancar)
+func runningInstance(port int, dataPath string) (url string, old bool) {
 	for p := port; p < port+20; p++ {
-		if u := instanceAt(p, dataPath); u != "" {
-			return u
+		if u, o := instanceAt(p, dataPath); u != "" {
+			if o {
+				log.Printf("hi ha obert un NotesGim d'una versió de proves a %s: es tanca", u)
+				if quitOld(p) {
+					continue
+				}
+				return u, true
+			}
+			return u, false
 		}
 	}
-	return ""
+	return "", false
 }
 
 // un sol NotesGim per fitxer de dades, encara que es faci doble clic dues vegades seguides: el fitxer
@@ -1022,7 +1122,7 @@ func lockData(dataPath string) (release func(), port func(int), existing string)
 		}
 		b, _ := os.ReadFile(lock)
 		if p, _ := strconv.Atoi(strings.TrimSpace(string(b))); p > 0 {
-			if u := instanceAt(p, dataPath); u != "" {
+			if u, old := instanceAt(p, dataPath); u != "" && !(old && quitOld(p)) {
 				return nil, nil, u
 			}
 			// no respon: és d'un NotesGim que es va tancar malament (es prova unes quantes vegades abans)
@@ -1107,7 +1207,11 @@ func main() {
 		log.SetOutput(fileFirst{lf})
 	}
 
-	if url := runningInstance(*portFlag, *dataPath); url != "" {
+	if url, old := runningInstance(*portFlag, *dataPath); old {
+		log.Printf("no s'ha pogut tancar el NotesGim d'abans a %s", url)
+		alert("NotesGim", "Hi ha obert un NotesGim d'una versió anterior i no s'ha pogut tancar sol.\n\nTanca'l (botó «Tanca NotesGim» de la seva finestra) i torna a obrir aquest.")
+		os.Exit(1)
+	} else if url != "" {
 		log.Printf("NotesGim ja està obert a %s: només se n'obre la finestra", url)
 		if !*noBrowser {
 			openApp(url)

@@ -353,6 +353,42 @@ try {
     assert.equal(await admin.evaluate(() => db.gymnasts.length), 0);
     assert.equal(readdirSync(out).filter(f => /^notesgim-dades-proves-.*\.json$/.test(f)).length, 1);
   });
+
+  await step('una altra finestra (un altre navegador) amb dades d’abans no les torna a posar al fitxer buit', async () => {
+    const gyms = () => JSON.parse(readFileSync(dataFile, 'utf8')).gymnasts.length;
+    const seedWin = async db => {
+      const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+      await ctx.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, JSON.stringify(db));
+      const p = await ctx.newPage(); watch(p, 'altra finestra');
+      await p.goto(`http://127.0.0.1:${PORT}/#/gimnastes`);
+      await p.waitForSelector('text=Desat al fitxer');
+      return p;
+    };
+    const G = id => ({ id, name: 'Vella' + id, surname: 'Proves', clubId: 'cv', gender: 'F', category: 'Aleví', level: 'A' });
+    // dades de les versions de proves (sense dataGen)
+    const a = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4 }, clubs: [{ id: 'cv', name: 'Club Vell' }], gymnasts: [G('v1'), G('v2')], teams: [], competitions: [],
+      meta: { updated: new Date().toISOString(), dbId: 'proves-velles' } });
+    await a.waitForSelector('.toast:has-text("Comences de zero")');
+    assert.equal(await a.evaluate(() => db.gymnasts.length), 0);
+    await new Promise(r => setTimeout(r, 1200));
+    assert.equal(gyms(), 0, 'el fitxer continua buit');
+    // dades d'ara (d'un altre dia, d'unes altres dades): el fitxer s'ha buidat a posta, mana el fitxer
+    const b = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4, dataGen: 2 }, clubs: [], gymnasts: [G('n1')], teams: [], competitions: [],
+      meta: { updated: new Date(Date.now() + 60000).toISOString(), dbId: 'unes-altres' } });
+    await b.waitForSelector('.toast:has-text("s’hi ha esborrat tot")');
+    assert.equal(await b.evaluate(() => db.gymnasts.length), 0);
+    await new Promise(r => setTimeout(r, 1200));
+    assert.equal(gyms(), 0, 'el fitxer continua buit');
+    // però si el fitxer s'ha perdut (no hi és), la finestra hi torna a posar les seves (les d'ara)
+    await b.evaluate(() => { db.gymnasts.push({ id: 'n2', name: 'Nova', surname: 'Dara', clubId: null, gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
+    await new Promise(r => setTimeout(r, 1200));
+    await stopServer(); rmSync(dataFile, { force: true }); await startServer();
+    await b.reload();
+    await b.waitForSelector('text=Desat al fitxer');
+    await new Promise(r => setTimeout(r, 1200));
+    assert.equal(gyms(), 1, 'la finestra torna a posar les seves dades (d’ara) al fitxer que s’ha perdut');
+    await a.context().close(); await b.context().close();
+  });
 } finally {
   await browser.close();
   if (proc && proc.exitCode === null) await stopServer();

@@ -81,6 +81,7 @@
   label.f{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}
   label.f > span{color:var(--muted);font-weight:600}
   label.chk{display:flex;gap:7px;align-items:center;cursor:pointer;padding:3px 0}
+  label.chk>input{flex:none}
   .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
   .grid2>*,.grid3>*{min-width:0}
@@ -135,6 +136,7 @@
   .selbox{width:18px;height:18px;margin:0;vertical-align:middle;cursor:pointer;accent-color:var(--pri)}
   th.c-sel,td.c-sel{width:28px;text-align:center}
   .selbar{margin-bottom:10px}
+  .selbar .invis{visibility:hidden}
   .comp-sel{display:inline-flex;vertical-align:-2px;margin-right:4px}
   .chg{color:var(--warn);font-weight:600;margin-top:2px;white-space:normal}
   .badge.bad{background:var(--bad-soft);color:var(--bad)}
@@ -316,7 +318,8 @@
     dialog#dlg .dlg-actions{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#fff;padding:10px 0 calc(10px + env(safe-area-inset-bottom));margin-bottom:calc(-14px - env(safe-area-inset-bottom));border-top:1px solid var(--line2)}
     dialog#dlg .dlg-actions .btn{flex:1;justify-content:center}
     .pick-list{max-height:none}
-    table.clubs tr{grid-template-columns:28px minmax(0,1fr) auto auto;grid-template-areas:"sel name name del" "sel ng nt merge"}
+    table.clubs tr{grid-template-columns:28px minmax(0,1fr) auto auto auto;grid-template-areas:"sel name name name del" "sel ng nt merge merge"}
+    table.cardify.clubs .c-merge select{max-width:46vw}
     table.clubs .c-sel{grid-area:sel}.clubs .c-name{grid-area:name}.clubs .c-ng{grid-area:ng}.clubs .c-nt{grid-area:nt}.clubs .c-merge{grid-area:merge}.clubs .c-del{grid-area:del}
     /* amb el teclat gran, o mentre s'escriu, la barra de baix no hi és (no tapa res) */
     body.has-qe nav.bottom,body.kb nav.bottom{display:none}
@@ -1116,11 +1119,15 @@ let saveTimer = null, saveError = false;
 let fileHandle = null, fileState = 'none'; // none | ok | perm | err
 let fileQueue = Promise.resolve(), fileDirty = false;
 
+// generació de les dades d'aquesta finestra tal com eren desades (abans de posar-les al dia): < 2 = de les versions de
+// proves (amb el programa NotesGim no es fan servir: vegeu serverInit)
+let localGen = null;
 function loadDb() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     const before = raw ? JSON.parse(raw) : null;
     const oldRev = before && before.settings ? +before.settings.rev || 0 : null;
+    localGen = before ? +((before.settings || {}).dataGen) || 0 : null;
     db = migrate(before);
     lastRaw = raw; sessionStamp = db.meta.updated;
     // dades d'una versió anterior posades al dia: es desen ara (si no, cada vegada es tornarien a convertir)
@@ -1200,12 +1207,20 @@ async function serverInit() {
   let note = '', before = null;
   await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
   let fresh = '';
-  if (info.fresh && !has(remote.db)) {
-    // el programa comença de zero (les dades de les versions de proves s'han guardat apart): les que hi havia en
-    // aquesta finestra tampoc no es fan servir (es guarden, per si de cas)
+  const oldWin = has(db) && localGen !== null && localGen < 2;
+  if (oldWin || (info.fresh && !has(remote.db))) {
+    // el programa comença de zero (les dades de les versions de proves s'han guardat apart), o aquesta finestra té
+    // dades de les versions de proves: no es fan servir mai amb el programa (es guarden, per si de cas)
     if (has(db)) { before = JSON.stringify(db); keepBefore(before); }
     db = migrate(remote.db);
-    fresh = `Comences de zero. Les dades de les proves d’abans no s’han esborrat: són al fitxer «${info.fresh}», a la mateixa carpeta que les dades (es poden recuperar amb «Restaura una còpia…», a Configuració).`;
+    if (!has(db)) fresh = `Comences de zero. ${info.fresh ? `Les dades de les proves d’abans no s’han esborrat: són al fitxer «${info.fresh}», a la mateixa carpeta que les dades (es poden recuperar amb «Restaura una còpia…», a Configuració).`
+      : 'Les dades de les proves d’abans que tenia aquesta finestra no es fan servir (no s’han esborrat: es poden descarregar amb el botó d’aquest avís).'}`;
+  } else if (!has(remote.db) && has(db) && rm.dbId && (rm.dbId !== db.meta.dbId || Date.parse(rm.updated || 0) >= Date.parse(db.meta.updated || 0))) {
+    // al fitxer s'hi ha esborrat tot (o s'ha començat de zero) i aquesta finestra encara té les dades d'abans: mana
+    // el fitxer (la finestra només hi posa les seves si el fitxer no és de NotesGim, p. ex. si s'ha perdut)
+    before = JSON.stringify(db); keepBefore(before);
+    db = migrate(remote.db);
+    note = 'Al fitxer ' + (server.dataFile || '') + ' s’hi ha esborrat tot (o s’ha començat de zero): es fa servir així. Les dades que encara tenia aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
   } else if (has(remote.db) && has(db)) {
     if (rm.dbId && db.meta.dbId && rm.dbId !== db.meta.dbId) {
       // el fitxer és d'unes altres dades (un altre ordinador, un USB, una còpia posada a mà): manen les del fitxer.
@@ -1222,7 +1237,7 @@ async function serverInit() {
   flush();
   render();
   if (note) toast(note + ' També des de Configuració → Dades.', 'bad', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
-  if (fresh) toast(fresh, 'ok');
+  if (fresh) toast(fresh, 'ok', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
   setSaveErr(remote.saveErr);
   serverWaitLoop();
   return true;
@@ -1291,15 +1306,15 @@ function serverConflict(r) {
   const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   // (només si el fitxer no té dades de NotesGim: si una altra finestra ho ha esborrat tot, té un dbId nou i mana)
   if (!tm.dbId && !has(theirs)) { server.again = true; return; }
-  const mine = db, before = JSON.stringify(mine);
-  keepBefore(before);
+  const mine = db, before = JSON.stringify(mine), mineHas = has(mine);
+  if (mineHas) keepBefore(before);   // (si aquesta finestra no tenia res, no hi ha res a guardar: no es trepitja el que hi hagués)
   db = migrate(theirs);
   if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
   server.replaceNext = false; server.sentStamp = server.diskStamp = tm.updated || null;
   try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
   server.again = true;
   renderKeepFocus();
-  toast('Les dades s’havien canviat des d’una altra finestra (o un altre NotesGim): ara es veuen les del fitxer. Si el teu darrer canvi no hi és, torna’l a fer.', 'bad',
+  if (mineHas) toast('Les dades s’havien canviat des d’una altra finestra (o un altre NotesGim): ara es veuen les del fitxer. Si el teu darrer canvi no hi és, torna’l a fer.', 'bad',
     { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] });
 }
 async function serverWaitLoop() {
@@ -3636,6 +3651,7 @@ function importDialog() {
 
 /* ═══════════════════════════════════════════ EQUIPS (llista general) */
 views.equips = () => {
+  teamCatOk();
   const cats = [...new Set(db.teams.map(t => t.category))];
   const groups = Engine.groupsOf({ entries: [], teams: db.teams }, S());
   return `<section>
@@ -3645,7 +3661,7 @@ views.equips = () => {
       <button class="btn" data-act="autoTeams" title="Proposa equips amb les gimnastes de cada entitat, gènere, categoria i nivell que encara no en tenen">Fes equips per entitat</button></div></div>
     <div class="note">Els equips són de ${S().compDefaults.teamMin} a ${S().compDefaults.teamMax} gimnastes del mateix gènere, categoria i nivell, i són els que surten a la fitxa de cada gimnasta. No cal fer-los a mà: en inscriure les gimnastes a una competició, les de cada entitat formen equip soles. Si un dia canvia alguna gimnasta d’equip, es canvia dins la competició i aquí no es toca.</div>
     ${cats.length > 1 ? `<div class="pills"><button class="pill ${!ui.tCat ? 'on' : ''}" data-act="pickTCat" data-c="">Totes</button>${cats.map(c => `<button class="pill ${ui.tCat === c ? 'on' : ''}" data-act="pickTCat" data-c="${h(c)}">${h(c)}</button>`).join('')}</div>` : ''}
-    ${db.teams.length ? selBar('teams', { all: 'Marca’ls tots', del: 'Esborra els marcats', act: 'delTeamsSel' }) : ''}
+    ${db.teams.length ? selBar('teams', { all: 'Marca’ls tots', del: 'Esborra els marcats', act: 'delTeamsSel', none: 'Desmarca’ls' }) : ''}
     ${!db.teams.length ? `<div class="empty">Encara no hi ha cap equip.</div>` : groups.filter(g => !ui.tCat || g.category === ui.tCat).map(g => {
       const teams = db.teams.filter(t => sameGroup(t, g)).sort((a, b) => coll(a.name, b.name));
       return `<div class="card"><div class="card-head"><h3>${h(groupLabel(g))}</h3><span class="muted">${plural(teams.length, 'equip', 'equips')}</span></div>
@@ -5812,10 +5828,12 @@ document.addEventListener('click', e => { if (!e.target.closest || !e.target.clo
 const selSet = k => { ui.sel = ui.sel || {}; return ui.sel[k] || (ui.sel[k] = new Set()); };
 const selClear = k => { if (ui.sel) delete ui.sel[k]; };
 const selBox = (k, id, label) => `<input type="checkbox" class="selbox" data-chg="selOne" data-k="${h(k)}" data-id="${h(id)}" ${selSet(k).has(id) ? 'checked' : ''} aria-label="Marca ${h(label)}">`;
+// el filtre de categoria d'Equips d'una categoria que ja no té cap equip (p. ex. s'han esborrat tots) es treu
+const teamCatOk = () => { if (ui.tCat && !db.teams.some(t => t.category === ui.tCat)) ui.tCat = ''; return ui.tCat; };
 // les que es veuen ara a la llista (amb la cerca i els filtres): «Marca-les totes» i «Esborra» només fan servir aquestes
 function selVisible(k) {
   if (k === 'gyms') return filteredGyms().map(g => g.id);
-  if (k === 'teams') return db.teams.filter(t => !ui.tCat || t.category === ui.tCat).map(t => t.id);
+  if (k === 'teams') { const tc = teamCatOk(); return db.teams.filter(t => !tc || t.category === tc).map(t => t.id); }
   if (k === 'clubs') return db.clubs.map(c => c.id);
   if (k === 'comps') return db.competitions.map(c => c.id);
   if (k.startsWith('entries:')) {
@@ -5827,12 +5845,13 @@ function selVisible(k) {
 const selPicked = k => { const s = selSet(k); return selVisible(k).filter(id => s.has(id)); };
 const insSelBar = c => selBar('entries:' + c.id, { all: 'Marca-les totes', del: 'Treu les marcades de la competició', act: 'delEntriesSel', dis: c.locked ? 'disabled' : '' });
 const selOpts = {};
-function selBar(k, { all, del, act, dis = '' }) {
-  selOpts[k] = { all, del, act, dis };
+// («Desmarca» hi és sempre, amagat si no n'hi ha cap de marcada: la barra no canvia de mida i la llista no salta)
+function selBar(k, { all, del, act, none = 'Desmarca-les', dis = '' }) {
+  selOpts[k] = { all, del, act, none, dis };
   const ids = selVisible(k), n = selPicked(k).length, every = ids.length > 0 && n === ids.length;
   return `<div class="toolbar selbar" data-k="${h(k)}"><label class="chk"><input type="checkbox" data-chg="selAll" data-k="${h(k)}" ${every ? 'checked' : ''} ${ids.length && !dis ? '' : 'disabled'}> ${all} (${ids.length})</label>
     <button class="btn sm danger" data-act="${act}" ${n && !dis ? '' : 'disabled'}>🗑 ${del}${n ? ` (${n})` : ''}</button>
-    ${n ? `<button class="btn sm ghost" data-act="selNone" data-k="${h(k)}">Desmarca-les</button>` : ''}</div>`;
+    <button class="btn sm ghost ${n ? '' : 'invis'}" data-act="selNone" data-k="${h(k)}" ${n ? '' : 'disabled aria-hidden="true" tabindex="-1"'}>${none}</button></div>`;
 }
 // en marcar-ne una no es torna a pintar la llista (no es mou res de lloc): només les caselles i la barra
 function selRefresh(k) {
@@ -5850,23 +5869,31 @@ function selRefresh(k) {
 }
 changes.selOne = el => { const s = selSet(el.dataset.k); if (el.checked) s.add(el.dataset.id); else s.delete(el.dataset.id); selRefresh(el.dataset.k); };
 changes.selAll = el => { const s = selSet(el.dataset.k), ids = selVisible(el.dataset.k); for (const id of ids) { if (el.checked) s.add(id); else s.delete(id); } selRefresh(el.dataset.k); };
+// noms d'una llista per a un avís: com a molt 5 (i «i N més»)
+const fewNames = l => (l.length > 5 ? l.slice(0, 5).map(h).join(', ') + ` i ${l.length - 5} més` : l.length > 1 ? l.slice(0, -1).map(h).join(', ') + ' i ' + h(l[l.length - 1]) : h(l[0] || ''));
 Object.assign(actions, {
   selNone: el => { selClear(el.dataset.k); selRefresh(el.dataset.k); },
   delGymsSel: async () => {
     const gs = selPicked('gyms').map(gymById).filter(Boolean);
     if (!gs.length) return;
     const used = gs.filter(g => db.competitions.some(c => c.entries.some(e => e.gymnastId === g.id)));
-    const N = plural(gs.length, 'gimnasta', 'gimnastes');
+    const one = gs.length === 1, N = one ? `<b>${h(gymName(gs[0]))}</b>` : plural(gs.length, 'gimnasta', 'gimnastes');
     let pick = 'delete';
     if (used.length) {
-      pick = await choiceBox(`Esborrar ${N}? ${used.length === gs.length ? (gs.length === 1 ? 'Surt' : 'Totes surten') : `${plural(used.length, 'surt', 'surten')}`} a alguna competició.<br><br>
-        <b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.<br><b>Arxivar</b>: deixen de sortir a les llistes i surten de les competicions que vénen on encara no tenen notes; les passades es mantenen.`,
-        [{ value: 'delete', label: 'Esborra-les del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva-les' }]);
+      pick = await choiceBox(`Esborrar ${N}? ${one ? 'Surt' : used.length === gs.length ? 'Totes surten' : plural(used.length, 'surt', 'surten')} a alguna competició.<br><br>
+        ${one ? `<b>Esborrar-la del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.<br><b>Arxivar-la</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.`
+          : `<b>Esborrar-les del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.<br><b>Arxivar-les</b>: deixen de sortir a les llistes i surten de les competicions que vénen on encara no tenen notes; les passades es mantenen.`}`,
+        [{ value: 'delete', label: one ? 'Esborra-la del tot' : 'Esborra-les del tot', cls: 'danger' }, { value: 'archive', label: one ? 'Arxiva-la' : 'Arxiva-les' }]);
       if (!pick) return;
     } else if (!(await confirmBox(`Esborrar ${N}? Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
-    withUndo(pick === 'archive' ? `${plural(gs.length, 'gimnasta arxivada', 'gimnastes arxivades')}.` : `${plural(gs.length, 'gimnasta esborrada', 'gimnastes esborrades')}.`, () => {
+    const out = { comps: new Set(), weak: [] };
+    // (en arxivar: de quines competicions s'han tret i quins equips es queden per sota del mínim, com amb una sola)
+    const label = () => pick === 'archive'
+      ? { type: out.weak.length ? 'bad' : 'ok', msg: `${one ? `Fitxa de ${gymName(gs[0])} arxivada` : plural(gs.length, 'gimnasta arxivada', 'gimnastes arxivades')}: ja no ${one ? 'surt' : 'surten'} a les llistes ni ${one ? 'és' : 'són'} a cap equip.${out.comps.size ? ` ${one ? 'Treta' : 'Tretes'} de: ${[...out.comps].join(', ')}.` : ''}${out.weak.length ? ` Compte: ${[...new Set(out.weak)].join(', ')} es ${out.weak.length === 1 ? 'queda' : 'queden'} per sota del mínim.` : ''}` }
+      : one ? `${gymName(gs[0])} esborrada del tot.` : `${plural(gs.length, 'gimnasta esborrada', 'gimnastes esborrades')}.`;
+    withUndo(label, () => {
       const set = new Set(gs.map(g => g.id));
-      if (pick === 'archive') { for (const id of set) { const g = gymById(id); if (g) archiveGym(g); } }
+      if (pick === 'archive') { for (const id of set) { const g = gymById(id); if (g) { const r = archiveGym(g); r.comps.forEach(x => out.comps.add(x)); out.weak.push(...r.weak); } } }
       else {
         const touched = new Set(db.teams.filter(t => t.memberIds.some(id => set.has(id))).map(t => t.id));
         db.gymnasts = db.gymnasts.filter(g => !set.has(g.id));
@@ -5884,13 +5911,14 @@ Object.assign(actions, {
     const ts = selPicked('teams').map(teamById).filter(Boolean);
     if (!ts.length) return;
     const declared = t => t.form === true || clubDeclared(null, t.clubId, t);
-    const nD = ts.filter(declared).length, N = plural(ts.length, 'equip', 'equips');
+    const one = ts.length === 1, nD = ts.filter(declared).length, N = one ? `l’equip <b>${h(ts[0].name)}</b>` : plural(ts.length, 'equip', 'equips');
+    const why = nD === ts.length ? (one ? 'És un equip que va dir l’entitat' : 'Són equips que van dir les entitats') : nD === 1 ? 'Un d’ells és un equip que va dir l’entitat' : `${nD} d’ells són equips que van dir les entitats`;
     const pick = await choiceBox(`Esborrar ${N}? Les gimnastes no s’esborren, i les competicions passades no canvien.<br><br>
-      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):${nD ? `<br><span class="small muted">(${nD === ts.length ? (ts.length === 1 ? 'És un equip que va dir l’entitat' : 'Són equips que van dir les entitats') : `${plural(nD, 'és un equip que va dir l’entitat', 'són equips que van dir les entitats')}`} al full d’inscripció: les seves gimnastes queden com a individuals; si cal, posa-les a un altre equip a mà.)</span>` : ''}`,
-      nD === ts.length ? [{ value: 'solo', label: ts.length === 1 ? 'Esborra’l (queden com a individuals)' : 'Esborra’ls (queden com a individuals)', cls: 'danger' }]
+      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):${nD ? `<br><span class="small muted">(${why} al full d’inscripció: les seves gimnastes queden com a individuals; si cal, posa-les a un altre equip a mà.)</span>` : ''}`,
+      nD === ts.length ? [{ value: 'solo', label: one ? 'Esborra’l (queden com a individuals)' : 'Esborra’ls (queden com a individuals)', cls: 'danger' }]
         : [{ value: 'auto', label: 'Es tornen a agrupar soles', cls: '' }, { value: 'solo', label: 'Queden com a individuals', cls: 'danger' }]);
     if (!pick) return;
-    withUndo(`${plural(ts.length, 'equip esborrat', 'equips esborrats')}: ${pick === 'solo' ? 'les seves gimnastes queden com a individuals' : 'les seves gimnastes es tornen a agrupar soles'}${pick === 'auto' && nD ? ` (les de ${nD === 1 ? 'l’equip que va dir l’entitat' : 'els equips que van dir les entitats'}, com a individuals)` : ''}.`, () => {
+    withUndo(`${one ? 'Equip esborrat' : plural(ts.length, 'equip esborrat', 'equips esborrats')}: ${pick === 'solo' ? 'les seves gimnastes queden com a individuals' : 'les seves gimnastes es tornen a agrupar soles'}${pick === 'auto' && nD ? ` (les de ${nD === 1 ? 'l’equip que va dir l’entitat' : 'els equips que van dir les entitats'}, com a individuals)` : ''}.`, () => {
       const solo = new Set(ts.filter(t => pick === 'solo' || declared(t)).map(t => t.id)), set = new Set(ts.map(t => t.id));
       for (const t of ts) if (solo.has(t.id)) for (const id of t.memberIds) { const g = gymById(id); if (g) g.noTeam = true; }
       db.teams = db.teams.filter(t => !set.has(t.id));
@@ -5913,25 +5941,33 @@ Object.assign(actions, {
     const cs = selPicked('clubs').map(clubById).filter(Boolean);
     if (!cs.length) return;
     const set = new Set(cs.map(c => c.id)), nG = db.gymnasts.filter(g => set.has(g.clubId)).length;
-    const N = plural(cs.length, 'entitat', 'entitats');
+    const one = cs.length === 1, N = one ? `<b>${h(cs[0].name)}</b>` : plural(cs.length, 'entitat', 'entitats'), of = one ? 'd’aquesta entitat' : 'd’aquestes entitats';
+    const refs = db.teams.some(t => set.has(t.clubId)) || db.competitions.some(x => x.entries.some(e => set.has(e.clubId)) || x.teams.some(t => set.has(t.clubId)));
     let pick = 'only';
-    if (nG || db.competitions.some(c => c.entries.some(e => set.has(e.clubId)))) {
-      pick = await choiceBox(`Esborrar ${N}? Hi ${nG === 1 ? 'ha 1 gimnasta' : `ha ${nG} gimnastes`} d’aquestes entitats.<br><br>
-        <b>Amb les seves gimnastes</b>: també s’esborren les fitxes, els equips i les inscripcions i notes d’aquestes entitats a totes les competicions.<br><b>Només les entitats</b>: les gimnastes es queden sense entitat.`,
-        [{ value: 'all', label: 'Esborra-les amb les seves gimnastes', cls: 'danger' }, { value: 'only', label: 'Només les entitats' }]);
+    if (nG) {
+      pick = await choiceBox(`Esborrar ${N}? Hi ${nG === 1 ? 'ha 1 gimnasta' : `ha ${nG} gimnastes`} ${of}.<br><br>
+        <b>Amb les seves gimnastes</b>: també s’esborren les seves fitxes i els seus equips, i se’n treuen les inscripcions i les notes de totes les competicions.<br><b>${one ? 'Només l’entitat' : 'Només les entitats'}</b>: les gimnastes es queden sense entitat.`,
+        [{ value: 'all', label: one ? 'Esborra-la amb les seves gimnastes' : 'Esborra-les amb les seves gimnastes', cls: 'danger' }, { value: 'only', label: one ? 'Només l’entitat' : 'Només les entitats' }]);
       if (!pick) return;
-    } else if (!(await confirmBox(`Esborrar ${N}? Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
-    withUndo(pick === 'all' ? `${plural(cs.length, 'entitat esborrada', 'entitats esborrades')}, amb les seves gimnastes.` : `${plural(cs.length, 'entitat esborrada', 'entitats esborrades')}; les seves gimnastes es queden sense entitat.`, () => {
+    } else if (!(await confirmBox(`Esborrar ${N}?${refs ? ` Els equips i les inscripcions ${of} es quedaran sense entitat.` : ''} Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
+    const done = one ? 'Entitat esborrada' : plural(cs.length, 'entitat esborrada', 'entitats esborrades');
+    withUndo(pick === 'all' ? `${done}, amb les seves gimnastes.` : nG ? `${done}; les seves gimnastes es queden sense entitat.` : `${done}.`, () => {
       if (pick === 'all') {
+        // (només s'esborren les gimnastes d'aquestes entitats i el que és seu: les altres d'un equip compartit s'hi queden,
+        // i els equips que es queden sense ningú, fora)
         const gyms = new Set(db.gymnasts.filter(g => set.has(g.clubId)).map(g => g.id));
+        const touched = new Set(db.teams.filter(t => set.has(t.clubId) || t.memberIds.some(id => gyms.has(id))).map(t => t.id));
         db.gymnasts = db.gymnasts.filter(g => !gyms.has(g.id));
-        db.teams = db.teams.filter(t => !set.has(t.clubId));
         db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => !gyms.has(id)); });
-        db.competitions.forEach(c => { c.entries = c.entries.filter(e => !set.has(e.clubId) && !gyms.has(e.gymnastId)); c.teams = c.teams.filter(t => !set.has(t.clubId)); pruneAutoTeams(c); });
-      } else {
-        const fix = o => { if (set.has(o.clubId)) o.clubId = null; };
-        db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+        db.teams = db.teams.filter(t => !(touched.has(t.id) && !t.memberIds.length));
+        db.competitions.forEach(c => {
+          c.entries = c.entries.filter(e => !gyms.has(e.gymnastId));
+          c.teams = c.teams.filter(t => !set.has(t.clubId) || c.entries.some(e => e.teamId === t.id));
+          pruneAutoTeams(c);
+        });
       }
+      const fix = o => { if (set.has(o.clubId)) o.clubId = null; };
+      db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
       db.clubs = db.clubs.filter(c => !set.has(c.id));
       selClear('clubs');
     });
@@ -5939,19 +5975,21 @@ Object.assign(actions, {
   delCompsSel: async () => {
     const cs = selPicked('comps').map(compById).filter(Boolean);
     if (!cs.length) return;
-    const N = plural(cs.length, 'competició', 'competicions');
-    if (!(await confirmBox(`Esborrar ${N} (${cs.map(c => h(c.name)).join(', ')}) amb totes les seves inscripcions i notes? Les gimnastes no s’esborren. Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
-    withUndo(`${plural(cs.length, 'competició esborrada', 'competicions esborrades')}.`, () => { const set = new Set(cs.map(c => c.id)); db.competitions = db.competitions.filter(c => !set.has(c.id)); selClear('comps'); });
+    const one = cs.length === 1;
+    if (!(await confirmBox(`Esborrar ${one ? `la competició <b>${h(cs[0].name)}</b> (${fmtDate(cs[0].date)})` : `${plural(cs.length, 'competició', 'competicions')} (${fewNames(cs.map(c => c.name))})`} amb totes les seves inscripcions i notes? Les gimnastes no s’esborren. Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
+    withUndo(one ? 'Competició esborrada.' : `${plural(cs.length, 'competició esborrada', 'competicions esborrades')}.`, () => { const set = new Set(cs.map(c => c.id)); db.competitions = db.competitions.filter(c => !set.has(c.id)); selClear('comps'); });
   },
   delEntriesSel: async () => {
     const c = curComp(); if (!c || c.locked) return;
     const k = 'entries:' + c.id, es = selPicked(k).map(id => c.entries.find(e => e.id === id)).filter(Boolean);
     if (!es.length) return;
-    const sc = es.filter(hasScores).length, N = plural(es.length, 'gimnasta', 'gimnastes');
-    if (!(await confirmBox(`Treure ${N} d’aquesta competició?${sc ? ` <b>${plural(sc, 'ja té notes', 'ja tenen notes')}</b>: també es perdran.` : ''} Les fitxes de les gimnastes no s’esborren. Es pot desfer.`, { ok: 'Treu-les', danger: true }))) return;
-    withUndo(`${N} fora de la competició.`, () => { const cc = compById(c.id), set = new Set(es.map(e => e.id)); cc.entries = cc.entries.filter(e => !set.has(e.id)); pruneAutoTeams(cc); selClear(k); });
+    const one = es.length === 1, sc = es.filter(hasScores).length;
+    const msg = one ? `Treure <b>${h(entryName(es[0]))}</b> d’aquesta competició?${sc ? ' <b>Ja té notes</b>: també es perdran.' : ''} La seva fitxa no s’esborra. Es pot desfer.`
+      : `Treure ${plural(es.length, 'gimnasta', 'gimnastes')} d’aquesta competició?${sc ? ` <b>${plural(sc, 'ja té notes', 'ja tenen notes')}</b>: també es perdran.` : ''} Les fitxes de les gimnastes no s’esborren. Es pot desfer.`;
+    if (!(await confirmBox(msg, { ok: one ? 'Treu-la' : 'Treu-les', danger: true }))) return;
+    withUndo(one ? `${entryName(es[0])}: fora de la competició.` : `${plural(es.length, 'gimnasta', 'gimnastes')} fora de la competició.`, () => { const cc = compById(c.id), set = new Set(es.map(e => e.id)); cc.entries = cc.entries.filter(e => !set.has(e.id)); pruneAutoTeams(cc); selClear(k); });
   },
-  // «Esborra dades…»: es marca què (o tot) i s'esborra d'un cop
+  // «Esborra-ho tot…»: es marca què (o tot) i s'esborra d'un cop
   wipe: () => {
     const nG = db.gymnasts.length, nT = db.teams.length, nC = db.competitions.length, nE = db.clubs.length;
     openDialog(`<form data-form="wipe"><h2>Esborra dades</h2>
@@ -5962,22 +6000,26 @@ Object.assign(actions, {
         <label class="chk"><input type="checkbox" name="w" value="clubs" checked> <span><b>Entitats</b> (${nE}), amb els seus contactes</span></label>
         <label class="chk"><input type="checkbox" name="w" value="cfg"> <span><b>Configuració</b>: categories, nivells, aparells, logos i noms dels fulls tornen a ser els del Consell</span></label></div>
       <div class="toolbar" style="margin-top:8px"><button type="button" class="btn sm" data-act="wipeMarkAll">Marca-ho tot</button></div>
-      <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn danger solid">🗑 Esborra</button></div></form>`);
+      <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg" autofocus>Cancel·la</button><button class="btn danger solid">🗑 Esborra</button></div></form>`);
   },
   wipeMarkAll: () => $$('#dlg input[name=w]').forEach(i => { i.checked = true; }),
 });
+// (un Intro sobre una casella del diàleg no l'envia: s'esborra només amb el botó «Esborra»)
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('form[data-form=wipe] input')) e.preventDefault(); });
 forms.wipe = async f => {
   const w = new FormData(f).getAll('w');
   closeDialog();
   if (!w.length) { toast('No has marcat res: no s’ha esborrat res.', 'bad'); return; }
   const all = ['comps', 'gyms', 'clubs'].every(k => w.includes(k));
-  // una còpia de com era (al programa NotesGim la fa ell mateix a copies-notesgim, abans de substituir les dades)
+  // una còpia de com era: al programa NotesGim, a copies-notesgim (si no s'hi pot guardar, es descarrega)
   db.meta.lastBackup = new Date().toISOString(); flush();
-  if (!(server.on && server.role === 'admin')) downloadBlob(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }), `notesgim-copia-${stamp()}.json`);
+  let kept = false;
+  if (server.on && server.role === 'admin') { try { await api('api/backup', { method: 'POST' }, 10000); kept = true; } catch (_) {} }
+  if (!kept) downloadBlob(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }), `notesgim-copia-${stamp()}.json`);
   if (all && fileHandle) await unlinkFile();
   const what = [w.includes('comps') && 'les competicions', w.includes('gyms') && 'les gimnastes i els equips', w.includes('clubs') && 'les entitats', w.includes('cfg') && 'la configuració'].filter(Boolean);
   const txt = what.length > 1 ? `${what.slice(0, -1).join(', ')} i ${what[what.length - 1]}` : what[0];
-  withUndo(`Esborrat: ${txt}. ${server.on && server.role === 'admin' ? 'Abans se n’ha guardat una còpia a copies-notesgim.' : 'Abans se n’ha descarregat una còpia.'}`, () => {
+  withUndo(`Esborrat: ${txt}. ${kept ? 'Abans se n’ha guardat una còpia a copies-notesgim.' : 'Abans se n’ha descarregat una còpia.'}`, () => {
     if (w.includes('comps')) db.competitions = [];
     if (w.includes('gyms')) { db.gymnasts = []; db.teams = []; for (const c of db.competitions) { c.entries = []; c.teams = []; } }
     if (w.includes('clubs')) {
@@ -5986,8 +6028,11 @@ forms.wipe = async f => {
       db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
     }
     if (w.includes('cfg')) db.settings = defaultDb().settings;
+    // esborrat tot: són unes dades noves (una altra finestra que encara té les d'abans no les hi torna a posar)
+    if (all) db.meta.dbId = uid();
     ui.sel = {}; ui.insQ = ''; ui.gSearch = ''; ui.gClub = ''; ui.gCat = ''; ui.gLevel = ''; ui.gGender = ''; ui.gArchived = false; ui.gWrong = false; ui.tCat = '';
   }, { replace: true });
+  flush();
   if (all) go('#/competicions');
 };
 

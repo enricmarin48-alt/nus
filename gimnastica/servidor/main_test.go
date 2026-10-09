@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -477,5 +478,110 @@ func TestOldTestDataStartsFresh(t *testing.T) {
 	s3, err := newStore(path)
 	if err != nil || s3.fresh != "" || len(arr(s3.db["gymnasts"])) != 2 {
 		t.Fatalf("les dades d'ara s'havien d'obrir: %v %q", err, s3.fresh)
+	}
+}
+
+// després d'un fitxer malmès s'obre la còpia de cada 10 minuts més nova (no la d'abans d'esborrar-ho tot), i mai
+// una de les versions de proves
+func TestCorruptFilePrefersRegularBackupAndNeverTestData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	bak := filepath.Join(dir, "copies-notesgim")
+	_ = os.MkdirAll(bak, 0o755)
+	reg := filepath.Join(bak, "notesgim-2026-10-02_1000.json")
+	_ = os.WriteFile(reg, []byte(`{"settings":{"dataGen":2},"gymnasts":[]}`), 0o644)
+	before := filepath.Join(bak, "notesgim-2026-10-02_100500-abans-de-restaurar.json")
+	_ = os.WriteFile(before, []byte(sample), 0o644)
+	old := time.Now().Add(-time.Hour)
+	_ = os.Chtimes(reg, old, old) // (la d'abans d'esborrar és més nova, però no és la que s'obre)
+	_ = os.WriteFile(path, []byte("{trencat"), 0o644)
+	s, err := newStore(path)
+	if err != nil || s.recovered == "" || hasData(s.db) || dataGen(s.db) != 2 {
+		t.Fatalf("havia d'obrir la còpia de cada 10 minuts (buida després d'esborrar-ho tot): %v %q %v", err, s.recovered, s.db)
+	}
+	// només hi ha una còpia de les versions de proves: no s'obre
+	dir2 := t.TempDir()
+	p2 := filepath.Join(dir2, "notesgim-dades.json")
+	_ = os.MkdirAll(filepath.Join(dir2, "copies-notesgim"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir2, "copies-notesgim", "notesgim-2026-10-01_1000.json"), []byte(`{"gymnasts":[{"id":"vella"}]}`), 0o644)
+	_ = os.WriteFile(p2, []byte("{trencat"), 0o644)
+	s2, err := newStore(p2)
+	if err != nil || hasData(s2.db) || !strings.Contains(s2.recovered, "versions de proves") {
+		t.Fatalf("una còpia de les versions de proves no s'ha d'obrir: %v %q %v", err, s2.recovered, s2.db)
+	}
+}
+
+// una finestra d'una versió de proves no pot tornar a posar les seves dades al fitxer
+func TestPutRefusesTestVersionData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	_ = os.WriteFile(path, []byte(sample), 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	b, _ := json.Marshal(map[string]any{"db": parse(t, `{"gymnasts":[{"id":"vella"}]}`), "base": s.dataRev})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != 409 || len(arr(s.db["gymnasts"])) != 2 {
+		t.Fatalf("les dades d'una versió de proves no s'han d'acceptar: %d %v", r.StatusCode, s.db["gymnasts"])
+	}
+	// i abans d'esborrar-ho tot, la taula en pot demanar una còpia
+	r, err = http.Post(srv.URL+"/api/backup", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	got, _ := filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-de-restaurar.json"))
+	if r.StatusCode != 200 || len(got) != 1 {
+		t.Fatalf("api/backup: %d %v", r.StatusCode, got)
+	}
+	// dues còpies el mateix segon: no se n'escriu una a sobre de l'altra
+	if err := s.backupBeforeRestoreLocked(); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-de-restaurar*.json")); len(got) != 2 {
+		t.Fatalf("havien de ser dues còpies: %v", got)
+	}
+}
+
+// si hi ha obert un NotesGim d'una versió de proves amb les mateixes dades, es tanca (i s'obre el nou); un d'ara, no
+func TestOldRunningInstanceIsClosed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notesgim-dades.json")
+	fake := func(gen int) (*httptest.Server, int, *bool) {
+		quit := false
+		var srv *httptest.Server
+		srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/api/info":
+				info := map[string]any{"app": "notesgim", "dataFile": path}
+				if gen > 0 {
+					info["dataGen"] = gen
+				}
+				writeJSON(w, 200, info)
+			case "/api/quit":
+				quit = true
+				writeJSON(w, 200, map[string]any{"ok": true})
+				go func() { time.Sleep(100 * time.Millisecond); srv.CloseClientConnections(); srv.Listener.Close() }()
+			}
+		}))
+		port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
+		return srv, port, &quit
+	}
+	srv, port, quit := fake(0)
+	defer srv.Close()
+	if u, old := runningInstance(port, path); u != "" || old || !*quit {
+		t.Fatalf("el NotesGim de proves s'havia de tancar: %q %v quit=%v", u, old, *quit)
+	}
+	srv2, port2, quit2 := fake(2)
+	defer srv2.Close()
+	if u, old := runningInstance(port2, path); u == "" || old || *quit2 {
+		t.Fatalf("un NotesGim d'ara obert: se n'obre la finestra: %q %v quit=%v", u, old, *quit2)
 	}
 }

@@ -1929,6 +1929,8 @@ async function api(path, opts = {}, timeout = 0) {
 const SEEN_KEY = 'notesgim.vist-al-fitxer';
 function seenAll() { try { const s = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); return s && typeof s === 'object' && !Array.isArray(s) ? s : {}; } catch (_) { return {}; } }
 const fileKnew = stamp => !!stamp && Array.isArray(seenAll()[server.dataFile]) && seenAll()[server.dataFile].includes(stamp);
+// (en qualsevol fitxer: p. ex. una còpia a l'USB de les dades de Documents que no s'ha tocat des d'aleshores)
+const knewAnywhere = stamp => !!stamp && Object.values(seenAll()).some(l => Array.isArray(l) && l.includes(stamp));
 function fileSaw(stamp) {
   if (!stamp || !server.dataFile) return;
   const s = seenAll(), l = (Array.isArray(s[server.dataFile]) ? s[server.dataFile] : []).filter(x => x !== stamp);
@@ -2046,7 +2048,9 @@ async function serverInit() {
     const older = mineNewer ? migrate(JSON.parse(JSON.stringify(remote.db))) : local;
     // si l'altra és una versió que aquesta finestra ja havia vist al fitxer, és la mateixa història: la més nova sencera i,
     // de l'altra, les notes més noves (p. ex. les de les tutores mentre la finestra era tancada)
-    if (local.meta.updated === rm.updated || fileKnew(mineNewer ? rm.updated : local.meta.updated)) Engine.mergeScores(db, older);
+    // (si el fitxer és el més vell i aquesta finestra ja havia vist aquella versió, en el fitxer que sigui, el fitxer és d'abans
+    // del que té aquesta finestra: no s'hi ha fet res més)
+    if (local.meta.updated === rm.updated || (mineNewer ? knewAnywhere(rm.updated) : fileKnew(local.meta.updated))) Engine.mergeScores(db, older);
     else if (!sameButScores(db, older) || Engine.mergeScores(JSON.parse(JSON.stringify(db)), older).length) {
       // dues còpies de les mateixes dades canviades cada una pel seu compte (p. ex. a Documents i en un USB): s'obre la més
       // nova tal com és, sense barrejar-hi res (es podria tornar a posar el que s'havia esborrat), i l'altra es guarda

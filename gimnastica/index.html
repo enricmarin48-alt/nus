@@ -1641,6 +1641,7 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
     d.returnValue = '';
     d.onclose = () => {
       const typedOk = !typed || norm(d.querySelector('input[name=typed]').value) === norm(typed);
+      if (d.returnValue === 'ok' && !typedOk) toast(`No has escrit ${typed}: no s’ha esborrat res.`, 'bad');
       res(d.returnValue === 'ok' && typedOk);
     };
     d.showModal(); toastsShown();
@@ -2770,6 +2771,10 @@ views.ranquing = () => {
 
 /* ═══════════════════════════════════════════ GIMNASTES */
 function filteredGyms() {
+  // (un filtre d'una entitat, categoria o nivell que ja no hi és — fusionada, esborrada — es treu)
+  if (ui.gClub && !clubById(ui.gClub)) ui.gClub = '';
+  if (ui.gCat && !catNames().includes(ui.gCat)) ui.gCat = '';
+  if (ui.gLevel && !S().levels.includes(ui.gLevel)) ui.gLevel = '';
   const q = norm(ui.gSearch);
   return db.gymnasts.filter(g => (ui.gArchived || !g.archived) &&
     (!ui.gClub || g.clubId === ui.gClub) && (!ui.gCat || g.category === ui.gCat) && (!ui.gLevel || g.level === ui.gLevel) &&
@@ -2886,15 +2891,15 @@ const IMPORT_FIELDS = [['', '— no l’importis —'], ['name', 'Nom'], ['surna
 function parseGender(v) {
   const x = norm(v).replace(/\.$/, '');
   if (!x) return null;
-  if (/^(f|fem|femeni|femenina|femenino|noia|nena|dona|d|mujer|chica|nina|girl|female|w)$/.test(x)) return 'F';
-  if (/^(m|masc|masculi|masculino|noi|nen|home|h|hombre|chico|nino|boy|male)$/.test(x)) return 'M';
+  if (/^(f|fem|femeni|femenina|femenino|femenins|femenines|noia|noies|nena|nenes|dona|dones|d|mujer|chica|chicas|nina|ninas|girl|girls|female|w)$/.test(x)) return 'F';
+  if (/^(m|masc|masculi|masculina|masculino|masculins|noi|nois|nen|nens|home|homes|h|hombre|chico|chicos|nino|ninos|v|varon|boy|boys|male)$/.test(x)) return 'M';
   return null;
 }
 function guessField(header) {
   const x = norm(header);
   if (!x) return '';
   if (/^(genere|sexe|sexo|genero|gender|noi\/noia|noia\/noi)$/.test(x)) return 'gender';
-  if (/^(nom i cognoms|nom complet|esportista|gimnasta|alumne|alumna|nombre y apellidos|nombre completo)$/.test(x)) return 'full';
+  if (/^(nom i cognoms|nom complet|esportista|gimnasta|alumne|alumna|nombre y apellidos|nombre completo|cognoms i nom|cognoms, nom|cognom i nom|cognoms nom|apellidos y nombre|apellidos, nombre)$/.test(x)) return 'full';
   if (/^(cognoms?|apellidos?)/.test(x)) return 'surname';
   if (/^(nom|nombre|name)$/.test(x)) return 'name';
   if (/^(entitat|club|escola|centre|colegio|entidad|club\/escola|escola\/club|nom entitat|nom de l'entitat)$/.test(x)) return 'club';
@@ -2961,8 +2966,8 @@ function importAnalyze(text) {
 }
 function importResolve(imp) {
   const data = imp.hasHeader ? imp.rows.slice(1) : imp.rows;
-  const col = f => imp.map.indexOf(f);
-  const get = (r, f) => { const i = col(f); return i >= 0 ? String(r[i] ?? '').trim() : ''; };
+  // (si hi ha dues columnes del mateix camp, p. ex. «Cognom 1» i «Cognom 2», s'ajunten)
+  const get = (r, f) => imp.map.map((m, i) => m === f ? String(r[i] ?? '').trim() : '').filter(Boolean).join(' ');
   const seen = new Set();
   const known = new Set(db.gymnasts.map(g => norm(gymName(g)) + '|' + norm(clubName(g.clubId))));
   return data.map(r => {
@@ -2974,7 +2979,8 @@ function importResolve(imp) {
     }
     const club = get(r, 'club');
     const by = (/(19|20)\d{2}/.exec(get(r, 'birth')) || [])[0] || '';
-    const gender = parseGender(get(r, 'gender')) || imp.defGender || 'F';
+    const gRaw = get(r, 'gender'), gParsed = parseGender(gRaw);
+    const gender = gParsed || imp.defGender || 'F', genderUnknown = !!gRaw && !gParsed;
     // categoria: la de la columna; si no n'hi ha, la que toca per l'any; si tampoc, la triada per defecte
     const catRaw = get(r, 'category') || (by && catForYear(by)) || imp.defCat, levelRaw = get(r, 'level') || imp.defLevel;
     const category = matchFromList(catNames(), catRaw) || catRaw;
@@ -2988,7 +2994,7 @@ function importResolve(imp) {
     else if (seen.has(key)) status = 'dupfile';
     else if (known.has(norm(name + ' ' + surname) + '|' + norm(club))) status = 'exists';
     seen.add(key);
-    return { name, surname, club, gender, category, level, birthYear: by, team, status,
+    return { name, surname, club, gender, genderUnknown, genderRaw: gRaw, category, level, birthYear: by, team, status,
       newCat: category && !catNames().includes(category), newLevel: level && !S().levels.includes(level) };
   });
 }
@@ -3001,7 +3007,7 @@ function importDialog() {
   const newClubs = [...new Set(ok.map(p => p.club).filter(cl => cl && !db.clubs.some(c => norm(c.name) === norm(cl))).map(norm))];
   return `<h2>Enganxa gimnastes des d’Excel</h2>
     <p class="small muted">Selecciona les cel·les a l’Excel (amb la fila de títols, si en té), copia (Ctrl+C) i enganxa-les aquí (Ctrl+V). Columnes que s’entenen: Nom, Cognoms (o «Esportista» amb el nom sencer), Entitat, Gènere, Categoria, Nivell, Any de naixement i Equip. Si no hi ha categoria però sí any de naixement, la categoria es posa sola.</p>
-    <textarea rows="7" id="imptext" placeholder="Nom&#9;Cognoms&#9;Entitat&#9;Categoria&#9;Nivell">${imp ? h(imp.rows.map(r => r.join('\t')).join('\n')) : ''}</textarea>
+    <textarea rows="7" id="imptext" data-inp="impText" placeholder="Nom&#9;Cognoms&#9;Entitat&#9;Categoria&#9;Nivell">${imp ? h(imp.rows.map(r => r.join('\t')).join('\n')) : ''}</textarea>
     <div class="toolbar" style="margin-top:8px"><button class="btn" data-act="impAnalyze">Analitza</button>
       ${imp ? `<label class="chk"><input type="checkbox" data-chg="impHeader" ${imp.hasHeader ? 'checked' : ''}> La primera fila són títols</label>
       <label class="small">Gènere si no n’hi ha: <select data-chg="impDef" data-k="defGender">${genderOptions(imp.defGender)}</select></label>
@@ -3011,7 +3017,8 @@ function importDialog() {
       <tbody>${imp.hasHeader ? `<tr class="np"><td><span class="badge">títols</span></td>${range(imp.width).map(i => `<td class="small"><i>${h(imp.rows[0][i] ?? '')}</i></td>`).join('')}<td></td></tr>` : ''}
       ${(imp.hasHeader ? imp.rows.slice(1) : imp.rows).slice(0, 200).map((r, k) => { const p = preview[k];
         return `<tr><td>${stLbl[p.status]}</td>${range(imp.width).map(i => `<td class="small">${h(r[i] ?? '')}</td>`).join('')}
-        <td class="small nowrap">${h(p.name)} ${h(p.surname)} · ${genderShort(p.gender)} · ${p.category ? h(p.category) : '<span class="badge warn">sense categoria</span>'} · ${p.level ? h(p.level) : '<span class="badge warn">sense nivell</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+        <td class="small nowrap">${h(p.name)} ${h(p.surname)} · ${p.genderUnknown ? `<span class="badge warn" title="«${h(p.genderRaw)}» no s’entén: es posa el gènere per defecte">${genderShort(p.gender)}?</span>` : genderShort(p.gender)} · ${p.category ? h(p.category) : '<span class="badge warn">sense categoria</span>'} · ${p.level ? h(p.level) : '<span class="badge warn">sense nivell</span>'}</td></tr>`; }).join('')}</tbody></table></div>
+      ${ok.filter(p => p.genderUnknown).length ? `<div class="note warn">${plural(ok.filter(p => p.genderUnknown).length, 'fila té', 'files tenen')} un gènere que no s’entén (${h([...new Set(ok.filter(p => p.genderUnknown).map(p => p.genderRaw))].slice(0, 5).join(', '))}): es posarà «${genderShort(imp.defGender || 'F')}». Canvia «Gènere si no n’hi ha» o corregeix-ho a l’Excel.</div>` : ''}
       ${ok.filter(p => !p.category || !p.level).length ? `<div class="note warn">${plural(ok.filter(p => !p.category || !p.level).length, 'fitxa es guardaria', 'fitxes es guardarien')} sense categoria o sense nivell. Tria «Categoria / Nivell si no n’hi ha» a dalt, o afegeix una columna d’any de naixement.</div>` : ''}
       <p class="small">${plural(ok.length, 'fitxa nova', 'fitxes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} s’ometran` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · categories noves: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · nivells nous: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
@@ -4111,7 +4118,9 @@ const actions = {
   },
 
   // gimnastes
-  newGym: () => openDialog(gymForm(null, ui.lastGym || {})),
+  // (recorda entitat i grup de l'última, però no l'equip: només «Desa i afegeix-ne una altra» el manté)
+  goGyms: () => { closeDialog(); go('#/gimnastes'); },
+  newGym: () => openDialog(gymForm(null, Object.assign({}, ui.lastGym || {}, { teamId: '' }))),
   editGym: el => openDialog(gymForm(gymById(el.dataset.id))),
   delGym: async el => {
     const g = gymById(el.dataset.id);
@@ -4120,9 +4129,16 @@ const actions = {
     const used = db.competitions.filter(c => c.entries.some(e => e.gymnastId === g.id));
     if (used.length) {
       const pick = await choiceBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}).<br><br>
-        <b>Arxivar</b>: deixa de sortir a les llistes, però les competicions passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
+        <b>Arxivar</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
         [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
-      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) gg.archived = true; });
+      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => {
+        const gg = gymById(g.id); if (gg) gg.archived = true;
+        for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
+          const left = c.entries.filter(e => e.gymnastId === g.id && !hasScores(e));
+          if (!left.length) continue;
+          c.entries = c.entries.filter(e => !left.includes(e)); pruneAutoTeams(c);
+        }
+      });
       if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes de ${h(gymName(g))} de ${plural(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
@@ -4231,6 +4247,8 @@ const actions = {
     withUndo(d > 0 ? 'Anys de les categories avançats un curs.' : 'Anys de les categories endarrerits un curs.', () => {
       for (const c of S().categories) { if (c.from !== null) c.from += d; if (c.to !== null) c.to += d; }
     });
+    const noYear = d > 0 ? db.gymnasts.filter(g => !g.archived && !g.birthYear).length : 0;
+    if (noYear) toast(`${plural(noYear, 'gimnasta no té', 'gimnastes no tenen')} any de naixement: no se’n pot canviar la categoria sola. Revisa-la a Gimnastes (o posa’ls l’any).`, 'bad');
     const n = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
     if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi tenen notes).</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
   },
@@ -4317,7 +4335,7 @@ function gymPickList(c) {
   const inComp = new Set(c.entries.map(e => e.gymnastId));
   const list = db.gymnasts.filter(g => !g.archived && !inComp.has(g.id))
     .sort((a, b) => coll(clubName(a.clubId), clubName(b.clubId)) || coll(gymName(a), gymName(b)));
-  if (!list.length) return `<p class="muted" style="padding:10px">${db.gymnasts.length ? 'Ja està tothom inscrit.' : 'Encara no hi ha gimnastes. Afegeix-les a <a href="#/gimnastes">Gimnastes</a>.'}</p>`;
+  if (!list.length) return `<p class="muted" style="padding:10px">${db.gymnasts.length ? 'Ja està tothom inscrit.' : 'Encara no hi ha gimnastes. Afegeix-les a <a href="#/gimnastes" data-act="goGyms">Gimnastes</a>.'}</p>`;
   return list.map(g => {
     const show = (!q || norm(gymName(g) + ' ' + clubName(g.clubId)).includes(q)) && (!p.club || g.clubId === p.club) && (!p.gender || genderOf(g) === p.gender) && (!p.cat || g.category === p.cat) && (!p.level || g.level === p.level);
     return `<label class="${show ? '' : 'hidden'}"><input type="checkbox" name="g" value="${g.id}" ${(p.checked || []).includes(g.id) ? 'checked' : ''}> ${h(gymName(g))}
@@ -4806,6 +4824,12 @@ function renameInUi(field, old, to) {
 }
 changes.groupSel = el => { const fn = actions[el.dataset.target]; if (fn) fn({ dataset: { g: el.value } }); };
 const inputs = {
+  // s'ha tornat a enganxar: l'anàlisi d'abans ja no val (s'ha de tornar a analitzar abans d'importar)
+  impText: () => {
+    if (!ui.import) return;
+    ui.import = null;
+    const b = $('#dlg button[data-act=impDo]'); if (b) { b.disabled = true; b.textContent = 'Primer, «Analitza»'; }
+  },
   gSearch: el => { ui.gSearch = el.value; $('#gymtable').innerHTML = gymTable(); },
   // cerca a Inscripcions: s'amaguen les files (i els grups) que no hi coincideixen, sense tornar a pintar
   insSearch: el => {
@@ -4836,8 +4860,10 @@ changes.gymFormTeams = el => {
   const g = gymLike(v, f.dataset.id ? gymById(f.dataset.id) : null);
   if (el.name !== 'team') {
     // l'equip triat es manté si encara és del grup; si no, torna a «automàtic»
+    // (i si s'ha canviat l'entitat, un equip d'una altra entitat tampoc)
     const keep = sel.value, t = keep && !keep.startsWith('__') ? teamById(keep) : null;
-    sel.innerHTML = teamOptionsFor(g, keep.startsWith('__') || (t && sameGroup(t, g)) ? keep : '');
+    const otherClub = el.name === 'club' && t && (t.clubId || null) !== (g.clubId || null);
+    sel.innerHTML = teamOptionsFor(g, keep.startsWith('__') || (t && sameGroup(t, g) && !otherClub) ? keep : '');
   }
   const nt = $('#newteam'); if (nt) nt.classList.toggle('hidden', sel.value !== '__new');
   const ni = f.querySelector('input[name=newTeam]'); if (ni) ni.placeholder = newTeamName(g.clubId, g);

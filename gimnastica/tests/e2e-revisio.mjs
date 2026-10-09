@@ -97,6 +97,30 @@ try {
     assert.deepEqual(teams.map(t => [d.clubs.find(c => c.id === t.clubId).name, t.memberIds.length]).sort(), [['CG Lleida', 3], ['Escola Pardinyes', 3]]);
   });
 
+  await step('Excel: «Cognom 1» i «Cognom 2» s’ajunten, i «Nois» / «Masculina» són nois', async () => {
+    await page.goto(url + '#/gimnastes');
+    await page.click('button[data-act=importGyms]');
+    const rows = [['Nom', 'Cognom 1', 'Cognom 2', 'Entitat', 'Sexe', 'Categoria', 'Nivell'],
+      ['Laia', 'Garcia', 'Puig', 'CG Lleida', 'Femenina', 'Cadet', 'A'], ['Laia', 'Garcia', 'Roca', 'CG Lleida', 'Noies', 'Cadet', 'A'],
+      ['Pol', 'Serra', 'Mir', 'CG Lleida', 'Nois', 'Cadet', 'A'], ['Jan', 'Pla', 'Coll', 'CG Lleida', 'Masculina', 'Cadet', 'A'],
+      ['Ot', 'Vila', 'Gil', 'CG Lleida', 'xyz', 'Cadet', 'A']];
+    await page.fill('#imptext', rows.map(r => r.join('\t')).join('\n'));
+    await page.click('button[data-act=impAnalyze]');
+    await page.waitForSelector('text=5 fitxes noves');
+    assert.ok((await page.locator('#dlg').textContent()).includes('un gènere que no s’entén'));
+    // tornar a enganxar sense analitzar: no s'importa l'anàlisi d'abans
+    await page.fill('#imptext', 'Nom\tCognoms\nX\tY');
+    assert.ok(await page.locator('#dlg button[data-act=impDo]').isDisabled());
+    await page.fill('#imptext', rows.map(r => r.join('\t')).join('\n'));
+    await page.click('button[data-act=impAnalyze]');
+    await page.waitForSelector('text=5 fitxes noves');
+    await page.click('button[data-act=impDo]');
+    await page.waitForSelector('#gymtable >> text=Roca');
+    const d = await data(), by = n => d.gymnasts.find(g => g.name + ' ' + g.surname === n);
+    assert.ok(by('Laia Garcia Puig') && by('Laia Garcia Roca'));
+    assert.deepEqual(['Laia Garcia Puig', 'Laia Garcia Roca', 'Pol Serra Mir', 'Jan Pla Coll'].map(n => by(n).gender), ['F', 'F', 'M', 'M']);
+  });
+
   await step('dos nivells que són el mateix («NIVELL A» i «A») es poden ajuntar', async () => {
     await page.goto(url + '#/configuracio');
     const inp = page.locator('input[data-chg=listRename][data-key=levels]').nth(2);

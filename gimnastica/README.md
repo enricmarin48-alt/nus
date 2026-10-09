@@ -72,7 +72,7 @@ Per anys de naixement, iguals per a noies i nois (curs 2026-2027): Prebenjamí 2
 Benjamí 2017-2018, Aleví 2015-2016, Infantil 2013-2014, Cadet 2011-2012, Juvenil 2009-2010,
 Sènior 2008 i abans. A *Configuració → Categories* es poden canviar els noms i els anys, i cada
 estiu el botó **Passa al curs següent (+1 any)** ho avança tot i actualitza la categoria de
-cada gimnasta. Les competicions ja fetes conserven la categoria d'aquell dia.
+cada gimnasta que té l'any de naixement (de les que no en tenen, avisa perquè es revisin a mà). Les competicions ja fetes conserven la categoria d'aquell dia.
 
 ## Regles que aplica
 
@@ -130,8 +130,8 @@ torna a generar sola cada cop que hi ha canvis a `main`. També es pot compilar 
 
 Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 
-- **Desa també a un fitxer** (Chrome/Edge): crea un fitxer `.json` o fes servir el que ja tens
-  (si ja té dades, pregunta abans de tocar res) i cada canvi s'hi escriu.
+- **Crea un fitxer de dades nou…** / **Fes servir un fitxer de dades que ja tinc…** (Chrome/Edge):
+  cada canvi s'escriu també en aquest fitxer `.json` (si ja té dades, pregunta abans de tocar res).
 - **Descarrega còpia de seguretat** / **Restaura una còpia**: per passar les dades a un altre
   ordinador o guardar-les en un USB. L'app avisa si fa dies que no en fas cap.
 

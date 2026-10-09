@@ -323,7 +323,7 @@ await step('jornada següent: es proposa copiar l’anterior, i els equips surte
   await page.click('#dlg button.primary');
   await page.waitForSelector('.toast:has-text("Competició creada amb 12 gimnastes")');
   await page.click('.tabs a:has-text("Inscripcions")');
-  await page.waitForSelector('text=Aleví femení · Nivell A');
+  await page.waitForSelector('.ins-group .chip b');
   const chips = await page.locator('.chip b').allTextContents();
   assert.deepEqual(chips.sort(), ['CG Lleida', 'Club Balaguer', 'Escola Pardinyes']);
   // treure una gimnasta d'un equip a mà: «Fes equips per entitat» no la torna a posar

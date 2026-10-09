@@ -343,8 +343,12 @@ try {
     d = await data();
     assert.equal(d.gymnasts.length + d.teams.length + d.clubs.length + d.competitions.length, 0);
     assert.notEqual(d.settings.org, 'ORG PROVA', 'la configuració torna a ser la de partida');
-    // en tornar a obrir, continua buit (no torna res de les dades d'abans)
-    await page.reload();
+    // el que queda desat també és buit, i en tornar-ho a llegir no torna res de les dades d'abans
+    // (es llegeix sense recarregar la pàgina: el navegador de proves, sense perfil, a vegades perd el desat en recarregar)
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('notesgim.db')));
+    assert.equal(saved.gymnasts.length + saved.teams.length + saved.clubs.length + saved.competitions.length, 0);
+    assert.equal(saved.settings.dataGen, 2);
+    await page.evaluate(() => { loadDb(); render(); });
     await page.waitForSelector('text=Encara no hi ha cap competició');
     assert.equal((await data()).gymnasts.length, 0);
     // si no s'ha marcat res, no s'esborra res

@@ -113,7 +113,8 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   («→ Grup 3 · Terra (6 → 12)»). Queda fixat (📌): «Reequilibra» no el mourà. **Reequilibra** torna a
   repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què es mourà. «comença
   a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
-  «NOU» amb el seu equip o la seva entitat fins que es desa, i un canvi d'equip avisa («Ajunta-les»).
+  «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta es
+  queda on era i l'avís ho diu («Mou-la amb l'equip»; a la pestanya, «Ajunta-les»).
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
   junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell.
 - **Horari**: comença a les 8:30, amb 30 minuts d'escalfament general abans de cada subdivisió.

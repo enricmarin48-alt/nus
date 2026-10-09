@@ -373,3 +373,140 @@ test('claus estranyes: una categoria amb «||» no peta i va a una subdivisió',
   const cmp = E.rotKeyCmp(settings);
   assert.ok(cmp(K('Benjamí', 'A'), K('Aleví', 'A')) < 0 && cmp(K('Aleví', 'A'), K('Aleví', 'B')) < 0 && cmp(K('Aleví', 'B'), K('Aleví', 'A', 'M')) < 0);
 });
+
+// ── correccions de la revisió
+const APPS3 = [{ id: 'salt', name: 'Salt', modes: { F: 'total', M: 'total' } }, { id: 'barra', name: 'Barra', modes: { F: 'total', M: 'off' } }, { id: 'terra', name: 'Terra', modes: { F: 'total', M: 'total' } }];
+// competició feta a mà: [categoria, gènere, nivell, quantes, quantes NP]
+const mkc = (spec, apparatus = APPS3) => { const c = { id: 'c', teams: [], apparatus, entries: [] }; let n = 0;
+  for (const [cat, g, lv, count, np = 0] of spec) for (let i = 0; i < count; i++) c.entries.push({ id: 'e' + (++n), gender: g, category: cat, level: lv, clubId: 'C' + (n % 7), teamId: null, status: i < np ? 'np' : '', scores: {} });
+  return c; };
+const R2 = o => Object.assign({ joins: [], apart: [], allM: true, maxGroup: 15, order: { F: ['salt', 'barra', 'terra'], M: [] }, final: { F: [], M: [] }, subOrder: [] }, o);
+const planOf = (c, rules) => plain(E.rotPlan(c, settings, rules, {}).subs.map(s => [s.keys, s.n]));
+const rotOf = (c, rules, o = {}) => { const p = E.rotPlan(c, settings, rules, {}); c.rot = Object.assign({ v: 1, made: 'x', mode: 'cat', maxGroup: 15, order: rules.order, final: rules.final, coaches: {}, at: {}, printed: { sig: '', at: null }, time: TIME(),
+  subs: p.subs.map((s, i) => ({ id: 's' + i, g: s.g, keys: s.keys, k: s.k, extras: [] })) }, o); return p; };
+
+test('si s’acaba el pressupost de passos, el repartiment encara és el millor movent o intercanviant equips', () => {
+  // Benjamí A i B junts (una sola subdivisió de 94 gimnastes, 27 equips o grups d'individuals, 7 grups)
+  let s = 33; const R = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }, ri = (a, b) => a + Math.floor(R() * (b - a + 1));
+  const c = { id: 'c', entries: [], teams: [], apparatus: APPS3 }; let n = 0;
+  for (let cl = 1, nc = ri(12, 25); cl <= nc; cl++) {
+    const LV = ['A', 'B'][ri(0, 1)];
+    for (let t = 1, nt = ri(1, 2); t <= nt; t++) { const tid = 'T' + cl + '_' + t; c.teams.push({ id: tid, name: 'Club ' + cl + (t > 1 ? ' ' + t : ''), clubId: 'C' + cl, gender: 'F', category: 'Benjamí', level: LV });
+      for (let i = 0, m = ri(3, 6); i < m; i++) c.entries.push({ id: 'e' + String(++n).padStart(4, '0'), clubId: 'C' + cl, gender: 'F', category: 'Benjamí', level: LV, teamId: tid, status: '' }); }
+    for (let i = 0, m = ri(0, 2); i < m; i++) c.entries.push({ id: 'e' + String(++n).padStart(4, '0'), clubId: 'C' + cl, gender: 'F', category: 'Benjamí', level: LV, teamId: null, status: '' });
+  }
+  rotOf(c, R2({ joins: [{ g: 'F', cats: ['Benjamí'] }], order: { F: ['salt', 'barra', 'terra'], M: [] } }));
+  const sv = E.rotView(c, { categories: [{ name: 'Benjamí' }], levels: ['A', 'B'] }, {}).subs[0];
+  const units = sv.units.filter(u => u.n > 0).map(u => ({ id: u.id, size: u.n, ko: u.ko, cat: u.cat, clubId: u.clubId, sortName: u.sortName }));
+  const opts = { k: sv.k, maxGroup: 15, mode: 'cat', coaches: {} };
+  assert.deepEqual([sv.N, units.length, sv.k], [94, 27, 7]);
+  const r = E.rotPartition(units, opts);
+  assert.ok(r.ok && !r.exact, 'aquest cas esgota el pressupost');
+  const a = plain(r.assign), cost = x => E.rotEval(units, x, opts).total;
+  assert.equal(cost(a), r.cost.total);
+  for (const u of units) for (let g = 0; g < sv.k; g++) if (g !== a[u.id]) assert.ok(cost(Object.assign({}, a, { [u.id]: g })) >= r.cost.total, `moure ${u.id}`);
+  for (const u of units) for (const w of units) if (u.id < w.id && a[u.id] !== a[w.id]) assert.ok(cost(Object.assign({}, a, { [u.id]: a[w.id], [w.id]: a[u.id] })) >= r.cost.total, `canviar ${u.id} i ${w.id}`);
+});
+
+test('tots els aparells «tots junts al final»: sense rotacions (ni «Descans»), el temps bo i sense l’error «no tenen cap aparell»', () => {
+  const c = mkc([['Aleví', 'M', 'A', 6]], APPS3.map(a => Object.assign({}, a, { modes: { F: 'off', M: 'total' } })));
+  const rules = R2({ order: { F: [], M: [] }, final: { F: [], M: ['salt', 'barra', 'terra'] } });
+  rotOf(c, rules);
+  const v = E.rotView(c, settings, {}), sv = v.subs[0];
+  assert.deepEqual([sv.A, sv.final.length, sv.P, sv.stations.length], [0, 3, 0, 0]);
+  assert.deepEqual([sv.est.secs, sv.est.min], [3 * (90 + 360), 25]);
+  assert.ok(!v.issues.some(i => i.t === 'noApps'));
+  const row = E.rotSchedule(v, c.rot).blocks[0].rows.find(r => r.kind === 'comp').text;
+  assert.equal(row, 'Competició 1a subdivisió MASCULINA - 1’30’’ escalfament per aparell');
+  // sense cap aparell de debò, sí que avisa
+  c.apparatus = []; assert.ok(E.rotView(c, settings, {}).issues.some(i => i.t === 'noApps' && i.g === 'M'));
+  // una sola rotació: «1 rotació»
+  const c1 = mkc([['Aleví', 'M', 'A', 4]], [{ id: 'terra', name: 'Terra', modes: { F: 'off', M: 'total' } }]);
+  rotOf(c1, R2({ order: { F: [], M: [] } }));
+  c1.rot.subs[0].k = 1;
+  const v1 = E.rotView(c1, settings, {});
+  assert.equal(E.rotSchedule(v1, c1.rot).blocks[0].rows.find(r => r.kind === 'comp').text, 'Competició 1a subdivisió MASCULINA - 1 rotació - 1’30’’ escalfament per aparell');
+});
+
+test('mai una subdivisió on totes són NP ni una de 2 gimnastes per partir un bloc d’ajuntades', () => {
+  const J = R2({ joins: [{ g: 'F', cats: ['Infantil', 'Cadet', 'Juvenil'] }] });
+  // Infantil A: 2, totes NP; Cadet A 50; Juvenil A 50 (més de 45 cadascuna): Infantil va amb la del costat
+  assert.deepEqual(planOf(mkc([['Infantil', 'F', 'A', 2, 2], ['Cadet', 'F', 'A', 50], ['Juvenil', 'F', 'A', 50]]), J),
+    [[[K('Infantil', 'A'), K('Cadet', 'A')], 50], [[K('Juvenil', 'A')], 50]]);
+  // Infantil A amb 2 que competeixen, 46 i 46: no fa una subdivisió de 2
+  assert.deepEqual(planOf(mkc([['Infantil', 'F', 'A', 2], ['Cadet', 'F', 'A', 46], ['Juvenil', 'F', 'A', 46]]), J),
+    [[[K('Infantil', 'A'), K('Cadet', 'A')], 48], [[K('Juvenil', 'A')], 46]]);
+  // regles desades, Juvenil només amb NP: va amb Infantil
+  assert.deepEqual(planOf(mkc([['Infantil', 'F', 'A', 20], ['Juvenil', 'F', 'A', 1, 1]]), R2()), [[[K('Infantil', 'A'), K('Juvenil', 'A')], 20]]);
+  // si és l'única, es queda (i no se n'explica res)
+  const p = E.rotPlan(mkc([['Aleví', 'F', 'A', 2, 2]]), settings, R2({ joins: null }), {});
+  assert.deepEqual([p.subs.length, p.notes.length], [1, 0]);
+});
+
+test('notes de «Fes les rotacions»: certes i una sola vegada per categoria', () => {
+  const notes = (spec, apps = APPS3) => plain(E.rotPlan(mkc(spec, apps), settings, R2({ joins: null }), {}).notes);
+  // una sola categoria petita: no hi ha res a dir
+  assert.deepEqual(notes([['Aleví', 'F', 'A', 2]]), []);
+  // amb 4 aparells (màxim 60): Aleví va amb Infantil i prou
+  const four = APPS3.concat({ id: 'paral', name: 'Paral·leles', modes: { F: 'total', M: 'off' } });
+  assert.deepEqual(notes([['Aleví', 'F', 'A', 2], ['Infantil', 'F', 'A', 12]], four), [{ t: 'joined', cat: 'Aleví', n: 2, into: 'Infantil' }]);
+  // encadenades: Prebenjamí i Benjamí, totes dues amb Aleví
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 6], ['Aleví', 'F', 'A', 18]]),
+    [{ t: 'joined', cat: 'Prebenjamí', n: 5, into: 'Aleví' }, { t: 'joined', cat: 'Benjamí', n: 6, into: 'Aleví' }]);
+  // petita i la del costat ja és massa gran: es diu, amb el màxim de debò
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 44]]), [{ t: 'small', label: 'Prebenjamí', nc: 1, n: 5, cap: 45 }]);
+  // totes NP: cap nota
+  assert.deepEqual(notes([['Aleví', 'F', 'A', 2, 2]]), []);
+  // les dades reals, com sempre
+  assert.deepEqual(plain(E.rotPlan(fixture(), settings, RULES(), { clubName }).notes.filter(x => x.t === 'joined').map(x => [x.cat, x.n, x.into])), [['Cadet', 7, 'Infantil'], ['Juvenil', 1, 'Infantil']]);
+});
+
+test('regles recordades: les categories petites que l’organitzadora no ha vist mai s’ajunten soles; les que ha decidit, no', () => {
+  const c = fixture();
+  const sub = (p, cat) => p.subs.find(s => s.keys.includes(K(cat, 'A'))).keys;
+  // desat en una jornada sense Cadet ni Juvenil (no les ha vistes): s'ajunten amb Infantil
+  const seenB = ['Prebenjamí', 'Benjamí', 'Aleví', 'Infantil'].map(cat => ({ g: 'F', cat }));
+  const a = E.rotPlan(c, settings, RULES({ joins: [], seen: seenB }), { clubName });
+  assert.ok(sub(a, 'Infantil').includes(K('Cadet', 'B')) && sub(a, 'Infantil').includes(K('Juvenil', 'A')));
+  assert.deepEqual(plain(a.notes.filter(x => x.t === 'joined').map(x => x.cat)), ['Cadet', 'Juvenil']);
+  // les ha vistes i les va deixar soles: es queden soles
+  const b = E.rotPlan(c, settings, RULES({ joins: [], seen: seenB.concat({ g: 'F', cat: 'Cadet' }, { g: 'F', cat: 'Juvenil' }) }), { clubName });
+  assert.deepEqual(plain(sub(b, 'Juvenil')), [K('Juvenil', 'A')]);
+  // sense «seen» (com abans): només si no s'ha desat mai
+  assert.deepEqual(plain(sub(E.rotPlan(c, settings, RULES({ joins: [] }), { clubName }), 'Juvenil')), [K('Juvenil', 'A')]);
+});
+
+test('«només té N gimnastes» no surt a l’única subdivisió dels nois; «no era a cap subdivisió» diu per què', () => {
+  const c = fixture(); make(c, RULES({ joins: [] }));
+  const v = E.rotView(c, settings, { clubName, small: true });
+  assert.ok(!v.subs.find(s => s.g === 'M').warnings.some(w => w.t === 'small'));
+  // una noia sola en una subdivisió seva sí que ho diu (hi ha altres subdivisions de noies)
+  c.rot.subs.push({ id: 'sx', g: 'F', keys: [K('Sènior', 'A')], k: 1, extras: [] });
+  c.entries.push({ id: 'x1', clubId: 'CGL', gender: 'F', category: 'Sènior', level: 'A', teamId: null, status: '', scores: {} });
+  assert.ok(E.rotView(c, settings, { clubName, small: true }).subs.find(s => s.id === 'sx').warnings.some(w => w.t === 'small'));
+  // un noi d'Infantil va a l'única subdivisió dels nois: «amb els altres nois»
+  c.entries.push({ id: 'x2', clubId: 'CGL', gender: 'M', category: 'Infantil', level: 'A', teamId: null, status: '', scores: {} });
+  c.entries.push({ id: 'x3', clubId: 'CGL', gender: 'F', category: 'Juvenil', level: 'B', teamId: null, status: '', scores: {} });
+  const iss = plain(E.rotView(c, settings, { clubName }).issues.filter(i => i.t === 'orphanJoined').map(i => [i.key, i.via]));
+  assert.deepEqual(iss, [[K('Infantil', 'A', 'M'), 'boys'], [K('Juvenil', 'B'), 'cat']]);
+});
+
+test('temps m:ss: el que passa de 30:00 no es retalla sense dir res', () => {
+  assert.equal(E.rotParseMS('30:00'), 1800); assert.equal(E.rotParseMS('30'), 1800);
+  for (const x of ['99:00', '31', '30:01', 'abc']) assert.ok(Number.isNaN(E.rotParseMS(x)), x);
+});
+
+test('inscripcions sense categoria o sense nivell: subdivisió pròpia i noms sencers', () => {
+  const c = fixture();
+  for (let i = 0; i < 2; i++) c.entries.push({ id: 'q' + i, clubId: 'CGL', gender: 'F', category: '', level: 'A', teamId: null, status: '', scores: {} });
+  c.entries.push({ id: 'ql', clubId: 'CGL', gender: 'F', category: 'Aleví', level: '', teamId: null, status: '', scores: {} });
+  const p = E.rotPlan(c, settings, RULES(), { clubName });
+  assert.deepEqual(plain(p.subs.find(s => s.keys.includes(K('', 'A'))).keys), [K('', 'A')], 'no s’ajunta amb cap altra');
+  assert.ok(!p.notes.some(n => n.t === 'joined' && n.cat === ''));
+  make(c);
+  const v = E.rotView(c, settings, { clubName });
+  const labels = plain(v.subs.map(s => [s.label, s.groups.map(g => g.label)]));
+  assert.ok(labels.some(([l, g]) => l === 'SENSE CATEGORIA' && g.every(x => x === 'SENSE CATEGORIA A')), JSON.stringify(labels));
+  assert.ok(labels.some(([l]) => l === 'ALEVÍ A, B i SENSE NIVELL'), JSON.stringify(labels));
+  for (const [l, g] of labels) for (const x of [l, ...g]) assert.ok(!/ i $| – $|–  /.test(x), x);
+});

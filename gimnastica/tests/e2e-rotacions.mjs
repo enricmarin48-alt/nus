@@ -569,6 +569,233 @@ try {
     assert.ok(/^Competició \da subdivisió MASCULINA - 1’30’’ escalfament per aparell$/.test(row), row);
     await page.click('button[data-act=rotSeg][data-v=grups]');
   });
+
+  // ── segona revisió
+  const act = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? { tag: 'BODY' } : { tag: a.tagName, chg: a.dataset.chg || '', act: a.dataset.act || '', k: a.dataset.k || '', s: a.dataset.s || '', what: a.dataset.what || '' }; });
+  const addGirls = (cat, n, pre) => page.evaluate(([cat, n, pre]) => { const c = curComp(); for (let i = 0; i < n; i++) { const g = { id: pre + i, name: 'N' + i, surname: 'Nova', clubId: i % 2 ? 'CGL' : 'INEF', gender: 'F', category: cat, level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); } commit(); render(); }, [cat, n, pre]);
+
+  await step('horari amb el teclat: Tab després d’escriure no perd el focus (tampoc a una subdivisió «nova») i Maj+Tab no se’n va al botó de dalt', async () => {
+    await fresh(); await make();
+    await addGirls('Sènior', 4, 'gk');
+    await page.click('button[data-act=rotSeg][data-v=horari]');
+    const auto = await page.evaluate(() => rotViewOf(curComp()).subs.find(s => !s.real).id);
+    const dur = page.locator(`input[data-chg=rotSubField][data-s="${auto}"][data-k=dur]`);
+    await dur.fill('40'); await dur.press('Tab'); await page.waitForTimeout(150);
+    // (la subdivisió nova s'ha desat amb un altre id: el focus és a «Premis» de la mateixa fila)
+    const id = await page.evaluate(() => curComp().rot.subs.find(s => s.dur === 40).id);
+    assert.notEqual(id, auto);
+    assert.deepEqual(await act(), { tag: 'INPUT', chg: 'rotSubField', act: '', k: 'awards', s: id, what: '' });
+    await page.keyboard.type('10'); await page.keyboard.press('Tab'); await page.waitForTimeout(150);
+    assert.deepEqual(await act(), { tag: 'INPUT', chg: 'rotSubField', act: '', k: 'start', s: id, what: '' });
+    assert.equal(await page.evaluate(id => curComp().rot.subs.find(s => s.id === id).awards, id), 10);
+    // «Premis: minuts per cada 3…» → Tab: el desplegable «Temps per gimnasta i escalfaments»
+    const aw = page.locator('input[data-chg=rotTime][data-k=awards]');
+    await aw.fill('6'); await aw.press('Tab'); await page.waitForTimeout(150);
+    assert.equal((await act()).tag, 'SUMMARY');
+    // la 1a «Durada» → Maj+Tab: «Imprimeix l’horari» (no «Imprimeix / PDF…» de dalt), i la pàgina no es mou
+    const d1 = page.locator('input[data-chg=rotSubField][data-k=dur]').first();
+    await d1.evaluate(el => el.scrollIntoView({ block: 'center' }));
+    const y0 = await page.evaluate(() => scrollY);
+    await d1.fill('60'); await d1.press('Shift+Tab'); await page.waitForTimeout(150);
+    assert.deepEqual(await act(), { tag: 'BUTTON', chg: '', act: 'rotPrintDlg', k: '', s: '', what: 'horari' });
+    assert.equal(await page.evaluate(() => scrollY), y0);
+    await page.click('button[data-act=rotSeg][data-v=grups]');
+  });
+
+  await step('diàlegs amb el teclat: ↑ ↓ tornen a moure la mateixa fila (no la de l’altra llista ni la que ara és al seu lloc)', async () => {
+    await fresh(); await make();
+    await page.click('.toolbar > .menu button[data-act=menuToggle]'); await page.click('.menu.open button[data-act=rotAppsDlg]');
+    await page.waitForSelector('#dlg[open] form[data-form=rotApps]');
+    const order = () => page.evaluate(() => ({ F: ui.rotApps.F.list.join(','), M: ui.rotApps.M.list.join(',') }));
+    const o0 = await order(), m0 = o0.M.split(',');
+    await page.focus('#dlg button[data-act=rotAppsMove][data-g=M][data-i="0"][data-d="1"]');
+    await page.keyboard.press('Enter'); await page.waitForTimeout(80); await page.keyboard.press('Enter'); await page.waitForTimeout(80);
+    const o1 = await order();
+    assert.equal(o1.F, o0.F, 'l’ordre de les noies no canvia');
+    assert.deepEqual(o1.M.split(','), [m0[1], m0[2], m0[0], ...m0.slice(3)]);
+    await page.click('#dlg button[data-act=closeDlg]');
+    await page.click('button[data-act=rotSubsDlg] >> visible=true'); await page.waitForSelector('#dlg[open] form[data-form=rotSubs]');
+    const labels = () => page.evaluate(() => ui.rotDraft.subs.map(s => Engine.rotSubLabel(s.keys, curComp())));
+    const l0 = await labels();
+    await page.focus('#dlg button[data-act=rotDraftMove][data-i="0"][data-d="1"]');
+    await page.keyboard.press('Enter'); await page.waitForTimeout(80); await page.keyboard.press('Enter'); await page.waitForTimeout(80);
+    assert.deepEqual(await labels(), [l0[1], l0[2], l0[0], ...l0.slice(3)]);
+    await page.click('#dlg button[data-act=closeDlg]');
+  });
+
+  await step('al mòbil: «Desfés» després de moure un equip d’una subdivisió «nova» es queda a la mateixa subdivisió', async () => {
+    await fresh(); await make();
+    await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => render());
+    await addGirls('Sènior', 6, 'gu');
+    await page.selectOption('.gsel select', await page.evaluate(() => rotViewOf(curComp()).subs.find(s => !s.real).id));
+    await page.waitForSelector('.card.rot-sub h3:has-text("SÈNIOR")');
+    await clearToasts();
+    await page.locator('.card.rot-sub select[data-chg=rotMove]').first().selectOption({ index: 1 });
+    await toastHas('Ara:');
+    await page.click('.toast:has-text("Ara:") button:has-text("Desfés")');
+    await toastHas('Desfet');
+    assert.ok((await page.locator('.card.rot-sub h3').textContent()).includes('SÈNIOR'));
+    assert.ok((await page.locator('.gsel select').evaluate(s => s.options[s.selectedIndex].text)).includes('SÈNIOR'));
+    await page.setViewportSize({ width: 1366, height: 900 });
+  });
+
+  await step('sense cap gimnasta que competeixi, «Imprimeix» i Ctrl+P no fan uns fulls de rotacions buits', async () => {
+    await fresh(); await make();
+    await page.evaluate(() => { window.print = () => { window.__printed = (window.__printed || 0) + 1; }; window.__printed = 0; });
+    const p0 = await page.evaluate(() => JSON.stringify(curComp().rot.printed));
+    // totes NP
+    await page.evaluate(() => { for (const e of curComp().entries) e.status = 'np'; commit(); render(); });
+    await clearToasts();
+    await page.click('main .toolbar button[data-act=rotPrintDlg]');
+    await toastHas('Totes les gimnastes són NP');
+    assert.equal(await page.evaluate(() => $('#dlg').open), false);
+    // el botó de dalt i Ctrl+P: el diàleg de sempre, sense les rotacions ni l'horari
+    assert.equal(await page.locator('button[data-types="general,teams"]').first().getAttribute('data-act'), 'printDlg');
+    await page.keyboard.press('Control+p');
+    await page.waitForSelector('#dlg[open] form[data-form=print]');
+    assert.ok(!(await page.locator('#dlg').textContent()).includes('Horari general'));
+    await page.click('#dlg button[data-act=closeDlg]');
+    // ningú inscrit
+    await page.evaluate(() => { curComp().entries = []; commit(); render(); });
+    await clearToasts();
+    await page.evaluate(() => actions.rotPrintDlg({ dataset: {} }));
+    await toastHas('Primer cal inscriure les gimnastes');
+    assert.equal(await page.evaluate(() => window.__printed), 0);
+    assert.equal(await page.evaluate(() => JSON.stringify(curComp().rot.printed)), p0, 'no es marca com a imprès');
+  });
+
+  await step('«Quines categories van juntes»: desar un dia que una regla no hi fa res (un sol nivell) no l’oblida per a les properes', async () => {
+    const comp = (date, id, keep) => { const c = fixture(date).competitions[0]; c.id = id; c.name = 'Jornada ' + date;
+      for (const t of c.teams) t.id = id + t.id; for (const e of c.entries) { e.id = id + e.id; if (e.teamId) e.teamId = id + e.teamId; }
+      if (keep) c.entries = c.entries.filter(keep); return c; };
+    const d = fixture();
+    // dia Y: només Benjamí A i Prebenjamí B (noies); dia Z: totes
+    d.competitions.push(comp('2026-05-09', 'cY', e => !(e.gender === 'F' && ((e.category === 'Prebenjamí' && e.level === 'A') || (e.category === 'Benjamí' && e.level === 'B')))), comp('2026-05-30', 'cZ'));
+    await fresh(d); await make();
+    const openDlg = async () => { await page.click('button[data-act=rotSubsDlg] >> visible=true'); await page.waitForSelector('#dlg[open] form[data-form=rotSubs]'); };
+    const save = async () => { await clearToasts(); await page.click('#dlg button.primary'); await toastHas('Desat'); };
+    const row = re => page.locator('#dlg .rot-dlist li').filter({ hasText: re });
+    const rules = () => page.evaluate(() => ({ benj: S().rot.joins.some(j => j.g === 'F' && j.cats.length === 1 && j.cats[0] === 'Benjamí'), preb: S().rot.apart.some(a => a.g === 'F' && a.cat === 'Prebenjamí') }));
+    // dia X: Benjamí A i B junts (55) i Prebenjamí A i B separats
+    await openDlg();
+    await page.check('#dlg input[name=jc][data-g=F][value="Benjamí"]');
+    await page.click('#dlg button[data-act=rotDraftJoin][data-g=F]');
+    await row(/· PREBENJAMÍ A i B ·/).locator('button[data-act=rotDraftSplit]').click();
+    await save();
+    assert.deepEqual(await rules(), { benj: true, preb: true });
+    // dia Y: es desa sense canviar res
+    await clearToasts(); await page.evaluate(() => go('#/competicio/cY/rotacions')); await make();
+    await openDlg(); await save();
+    assert.deepEqual(await rules(), { benj: true, preb: true }, 'el dia Y no les oblida');
+    // dia Z: les del dia X
+    await clearToasts(); await page.evaluate(() => go('#/competicio/cZ/rotacions')); await make();
+    const labels = (await view()).map(s => s.label);
+    assert.ok(labels.includes('BENJAMÍ A i B') && labels.includes('PREBENJAMÍ A') && labels.includes('PREBENJAMÍ B'), labels.join(' | '));
+    // si ella ho canvia (Benjamí separat), sí que es canvia
+    await openDlg();
+    await row(/· BENJAMÍ A i B ·/).locator('button[data-act=rotDraftSplit]').click();
+    await save();
+    assert.deepEqual(await rules(), { benj: false, preb: true });
+  });
+
+  await step('a una tauleta (768 i 820 px) amb 5 o 6 grups, el grup de cada equip es llegeix sencer', async () => {
+    await fresh(); await make();
+    const al = (await view()).find(s => s.label === 'ALEVÍ A i B').id;
+    for (const w of [768, 820]) {
+      await page.setViewportSize({ width: w, height: 1024 }); await page.evaluate(() => render());
+      for (const k of ['5', '6']) {
+        await clearToasts();
+        await page.evaluate(([id, k]) => actions.rotSetK({ dataset: { s: id, k } }), [al, k]); await toastHas(`Ara hi ha ${k} grups`);
+        const cut = await card('ALEVÍ A i B').locator('select[data-chg=rotMove], select[data-chg=rotStart]').evaluateAll(ss => ss.map(s => {
+          const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(s).font;
+          const t = s.options[s.selectedIndex].text; return { t, sw: Math.round(s.getBoundingClientRect().width), tw: Math.round(c.measureText(t).width) }; }).filter(x => x.tw + 24 > x.sw));
+        assert.deepEqual(cut, [], `${w} px, ${k} grups`);
+        const [sw, iw] = await page.evaluate(() => [document.scrollingElement.scrollWidth, innerWidth]);
+        assert.ok(sw <= iw, `${sw} > ${iw}`);
+      }
+    }
+    await page.setViewportSize({ width: 1366, height: 900 });
+  });
+
+  await step('canviar l’equip a la fitxa (Gimnastes), a la llista d’equips, d’entitat o important un full: també diu on és a les rotacions', async () => {
+    await fresh(fixture(new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10))); await make();
+    await card('BENJAMÍ B').locator('.rot-u', { hasText: 'C.G. Lleida 2' }).locator('select[data-chg=rotMove]').selectOption('2');
+    await toastHas('Ara:'); await clearToasts();
+    const info = await page.evaluate(() => { const c = curComp(), t = n => c.teams.find(x => x.name === n && x.category === 'Benjamí' && x.level === 'B');
+      const e = c.entries.find(x => x.teamId === t('C.G. Lleida').id); return { e: e.id, gym: e.gymnastId, master2: t('C.G. Lleida 2').sourceTeamId, at: JSON.stringify(c.rot.at) }; });
+    await page.evaluate(() => go('#/gimnastes'));
+    await page.locator(`select[data-chg=gymTeamInline][data-id="${info.gym}"]`).first().selectOption(info.master2);
+    const t = await (await toastHas('A les rotacions de')).textContent();
+    assert.ok(t.includes('A les rotacions de 3a FASE COMARCAL GIMNÀSTICA ARTÍSTICA continua al Grup 2; el seu equip nou és al Grup 3.'), t);
+    assert.equal(await page.evaluate(() => JSON.stringify(compById('c418').rot.at)), info.at, 'ningú es mou sol');
+    await page.click('.toast button:has-text("Mou-la amb l’equip")');
+    await toastHas('Grup 3, amb el seu equip');
+    assert.equal(await page.evaluate(id => { const c = compById('c418'); return rotViewOf(c).place.get(c.entries.find(e => e.id === id)).g; }, info.e), 2);
+    // a la llista d'equips: una de «C.G. Lleida 2» (Grup 3) passa a «C.G. Lleida» (Grup 2)
+    await clearToasts();
+    const g2 = await page.evaluate(() => db.teams.find(t => t.id === 'TCGLBenjamiFB2').memberIds.find(id => compById('c418').entries.some(e => e.gymnastId === id)));
+    await page.evaluate(() => go('#/equips'));
+    await page.click('a[data-act=editTeam][data-id=TCGLBenjamiFB1]');
+    await page.check(`#teampick input[name=m][value="${g2}"]`);
+    await page.click('#dlg button.primary');
+    const t3 = await (await toastHas('Equip desat')).textContent();
+    assert.ok(t3.includes('A les rotacions de 3a FASE COMARCAL GIMNÀSTICA ARTÍSTICA, C.G. Lleida té gimnastes en més d’un grup'), t3);
+    // a la fitxa, una altra entitat: diu on és el seu equip nou
+    await clearToasts();
+    const g1 = await page.evaluate(g2 => db.teams.find(t => t.id === 'TCGLBenjamiFB1').memberIds.find(id => id !== g2), g2);
+    await page.evaluate(() => go('#/gimnastes'));
+    await page.evaluate(id => actions.editGym({ dataset: { id } }), g1);
+    await page.waitForSelector('#dlg[open] form[data-form=gym]');
+    await page.fill('#dlg input[name=club]', 'INEF Lleida');
+    await page.click('#dlg button.primary');
+    const t4 = await (await toastHas('A les rotacions de')).textContent();
+    assert.ok(/continua al Grup \d; el seu equip nou és al Grup \d\./.test(t4) && t4.includes('Mou-la amb l’equip'), t4);
+    // un full d'inscripció importat a la competició que deixa un equip en dos grups: el missatge ho diu
+    await fresh(); await make();
+    const sel = card('ALEVÍ A i B').locator('.rot-u', { hasText: 'C.G. Lleida 2' }).first().locator('select[data-chg=rotMove]');
+    await sel.selectOption(await sel.inputValue() === '1' ? '2' : '1'); await toastHas('Ara:'); await clearToasts();
+    await page.click('nav.tabs a:has-text("Inscripcions")');
+    await page.click('button[data-act=inscOpen] >> visible=true');
+    await page.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-nivell-A.xlsx')]);
+    await page.waitForSelector('#dlg >> text=inscripcio-nivell-A.xlsx');
+    await page.click('#dlg button[data-act=inscDo]');
+    const t2 = await (await toastHas('Fulls d’inscripció importats')).textContent();
+    assert.ok(t2.includes('A les rotacions, C.G. Lleida · ') && t2.includes('té gimnastes en més d’un grup (cadascuna s’ha quedat on era)'), t2);
+  });
+
+  await step('rètols de «Fes les rotacions»: una categoria petita al costat d’una partida per nivells, i les parts d’un bloc partit entre «»', async () => {
+    const d = fixture(); let keep = 5; d.competitions[0].entries = d.competitions[0].entries.filter(e => !(e.gender === 'F' && e.category === 'Prebenjamí') || keep-- > 0);
+    await fresh(d); await make();
+    const note = await page.locator('.note:has-text("He fet")').innerText();
+    assert.ok(note.includes('Prebenjamí només té 5 gimnastes: no l’he ajuntat amb Benjamí, que s’ha partit per nivells.'), note);
+    // Infantil, Cadet i Juvenil van juntes (recordat): Infantil A 2, Cadet A 46, Juvenil A 46
+    const d2 = fixture(), c2 = d2.competitions[0];
+    d2.settings.rot = { joins: [{ g: 'F', cats: ['Infantil', 'Cadet', 'Juvenil'] }], apart: [], seen: [], allM: true, maxGroup: 15 };
+    c2.entries = c2.entries.filter(e => !['Infantil', 'Cadet', 'Juvenil'].includes(e.category));
+    let n = 0;
+    for (const [cat, club, q] of [['Infantil', 'CGL', 2], ['Cadet', 'LSR', 46], ['Juvenil', 'INEF', 46]]) for (let i = 0; i < q; i++) {
+      n++; d2.gymnasts.push({ id: 'gx' + n, name: 'N' + n, surname: 'Extra', clubId: club, gender: 'F', category: cat, level: 'A', birthYear: '', notes: '', archived: false });
+      c2.entries.push({ id: 'ex' + n, gymnastId: 'gx' + n, clubId: club, gender: 'F', category: cat, level: 'A', teamId: null, bib: 900 + n, status: '', scores: {} }); }
+    await fresh(d2); await make();
+    const li = await page.locator('.note:has-text("He fet") li').allInnerTexts();
+    const sp = li.findIndex(x => x.startsWith('Infantil, Cadet i Juvenil tenen 94 gimnastes'));
+    assert.ok(sp >= 0 && li[sp].endsWith('les he partit en «Infantil A i Cadet A» i «Juvenil A».'), li.join(' / '));
+    assert.ok(sp < li.findIndex(x => x.startsWith('Juvenil A té 46 gimnastes')), 'primer es diu que s’ha partit');
+  });
+
+  await step('«Has canviat les rotacions després d’imprimir-les»: el dia i l’hora d’aquí (imprès a les 0:30 és d’aquell dia)', async () => {
+    const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES', timezoneId: 'Europe/Madrid' });
+    try {
+      const p2 = await ctx2.newPage();
+      p2.on('pageerror', e => errors.push('pageerror: ' + e.message));
+      await p2.goto(url);
+      await p2.evaluate(r => { db = migrate(JSON.parse(r)); commit(); go('#/competicio/c418/rotacions'); }, JSON.stringify(fixture()));
+      await p2.click('button[data-act=rotMake]'); await p2.waitForSelector('.card.rot-sub');
+      await p2.evaluate(() => { curComp().rot.printed = { sig: 'zzz', at: '2026-10-09T22:30:00.000Z' }; commit(); render(); });
+      const t = await p2.locator('.note.warn', { hasText: 'després d’imprimir-les' }).innerText();
+      assert.ok(t.includes('(10/10/2026 a les 0:30)'), t);
+    } finally { await ctx2.close(); }
+  });
 } finally {
   await browser.close();
 }

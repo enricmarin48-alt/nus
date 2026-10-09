@@ -424,7 +424,9 @@
 
 
   /* ═══ rotacions */
-  .rot-grid{display:grid;grid-template-columns:repeat(var(--k),minmax(0,1fr));gap:10px;margin:8px 0}
+  /* (--k columnes com a molt, cada una d'almenys 170 px perquè es llegeixi «Grup 4 · Descans»: si no hi caben, en
+     surten menys i els grups passen a la fila de sota) */
+  .rot-grid{display:grid;grid-template-columns:repeat(var(--k),minmax(0,1fr));grid-template-columns:repeat(auto-fill,minmax(max(170px,calc((100% - (var(--k) - 1) * 10px) / var(--k) - .5px)),1fr));gap:10px;margin:8px 0}
   .rot-col{border:1px solid var(--line);border-radius:10px;padding:8px;background:#fcfcfd;min-width:0}
   .rot-gh{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .rot-gh select{font-size:13px;padding:2px 4px}
@@ -434,8 +436,8 @@
   .rot-u .nm{font-weight:600}
   .rot-u.fresh{background:var(--warn-soft);border-radius:6px;padding:5px}
   .rot-u.np-all{opacity:.55}
-  .rot-ua{display:flex;gap:4px;align-items:center}
-  .rot-ua select{flex:1;min-width:0;font-size:13px}
+  .rot-ua{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .rot-ua select{flex:1 1 130px;min-width:0;font-size:13px}
   .rot-mem{margin:4px 0 0 14px;color:var(--muted)}
   .rot-bal{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .rot-warns{display:flex;flex-direction:column;gap:4px;margin:8px 0}
@@ -1236,7 +1238,8 @@ const Engine = (() => {
     const maxGroup = clampI(rules.maxGroup, 4, 40, 15);
     const cnt = new Map(); for (const e of comp.entries || []) { const k = keyOfE(e); cnt.set(k, (cnt.get(k) || 0) + (e.status === 'np' ? 0 : 1)); }
     const sumN = ks => ks.reduce((s, k) => s + (cnt.get(k) || 0), 0);
-    const partLabel = ks => { const ps = ks.map(k => info.get(k)); return joinI([...new Set(ps.map(p => catTx(p.category)))]) + ' ' + joinI([...new Set(ps.map(p => lvlTx(p.level)))]); };
+    // (cada categoria amb els seus nivells: «Infantil A i Cadet A», no «Infantil i Cadet A»)
+    const partLabel = ks => { const m = new Map(); for (const k of ks) { const p = info.get(k), c = catTx(p.category); if (!m.has(c)) m.set(c, []); if (!m.get(c).includes(lvlTx(p.level))) m.get(c).push(lvlTx(p.level)); } return joinI([...m].map(([c, l]) => c + ' ' + joinI(l))); };
     const nCat = ks => new Set(ks.map(k => info.get(k).category)).size;
     const out = [], notes = [];
     for (const G of ['F', 'M']) {
@@ -1260,11 +1263,11 @@ const Engine = (() => {
         const one = b.cats.length === 1, forceApart = one && apart.has(b.cats[0]), single = one && singles.has(b.cats[0]);
         if (!forceApart && (N <= cap || single)) { chunks.push({ keys: bk, whole: true, n: N, cats: b.cats.slice(), own: b.cats.slice(), bi }); if (N > cap) notes.push({ t: 'big', label: joinI(b.cats.map(catTx)), nc: b.cats.length, n: N, cap }); return; }
         const lv = [...new Set(bk.map(k => info.get(k).level))].sort((x, y) => idx(levels, x) - idx(levels, y) || cps(x, y));
-        const made = [];
+        const made = [], bigs = [];   // (el que es diu de cada part, després de dir que s'ha partit)
         for (const l of lv) {
           // (les claus on totes són NP no compten per partir: van amb la peça de la clau d'abans)
           const lk = bk.filter(k => info.get(k).level === l), ln = sumN(lk), live = lk.filter(k => cnt.get(k) > 0);
-          if (ln <= cap || live.length < 2) { made.push(lk); if (ln > cap) notes.push({ t: 'big', label: partLabel(lk), nc: nCat(lk), n: ln, cap }); continue; }
+          if (ln <= cap || live.length < 2) { made.push(lk); if (ln > cap) bigs.push({ t: 'big', label: partLabel(lk), nc: nCat(lk), n: ln, cap }); continue; }
           const m = Math.min(live.length, Math.ceil(ln / cap)), cuts = rotCuts(live.map(k => cnt.get(k)), m);
           const bounds = [0].concat(cuts, [live.length]), pieces = [];
           for (let i = 0; i + 1 < bounds.length; i++) pieces.push(live.slice(bounds[i], bounds[i + 1]));
@@ -1277,10 +1280,11 @@ const Engine = (() => {
           }
           let at = 0;
           for (const k of lk) { const p = pieces.findIndex(x => x.includes(k)); if (p >= 0) at = p; else pieces[at].push(k); }
-          for (const pk of pieces) { made.push(pk); if (sumN(pk) > cap) notes.push({ t: 'big', label: partLabel(pk), nc: nCat(pk), n: sumN(pk), cap }); }
+          for (const pk of pieces) { made.push(pk); if (sumN(pk) > cap) bigs.push({ t: 'big', label: partLabel(pk), nc: nCat(pk), n: sumN(pk), cap }); }
         }
         for (const mk of made) { const cats = [...new Set(mk.map(k => info.get(k).category))]; chunks.push({ keys: mk, whole: false, n: sumN(mk), cats, own: cats.slice(), bi }); }
         if (made.length > 1 && N > cap) notes.push({ t: 'split', label: joinI(b.cats.map(catTx)), nc: b.cats.length, n: N, cap, mg: maxGroup, parts: made.map(partLabel) });
+        notes.push(...bigs);
       });
       // categories petites (noies): s'ajunten amb la del costat si no es passa del màxim. No es toquen mai les que
       // l'organitzadora ja ha decidit (seen), les que no tenen categoria ni les que totes són NP (es fa després)
@@ -1292,8 +1296,13 @@ const Engine = (() => {
           if (!free(ch) || ch.n >= thr || ch.n === 0) continue;
           const pv = chunks[i - 1], nx = chunks[i + 1], fits = x => x && x.whole && !x.cats.includes('') && x.n + ch.n <= cap;
           const tgt = fits(pv) ? pv : fits(nx) ? nx : null;
-          // (si no hi ha cap altra categoria amb què ajuntar-la, no cal dir res)
-          if (!tgt) { if ((pv && pv.whole) || (nx && nx.whole)) notes.push({ t: 'small', label: joinI(ch.cats.map(catTx)), nc: ch.cats.length, n: ch.n, cap }); continue; }
+          // (si no hi ha cap altra categoria amb què ajuntar-la, no cal dir res; si la del costat s'ha partit per nivells
+          // (aquestes parts no s'ajunten mai amb res), es diu així)
+          if (!tgt) {
+            const big = !!((pv && pv.whole) || (nx && nx.whole)), lb = [...new Set([pv, nx].filter(x => x && !x.whole && !x.cats.includes('')).map(x => x.bi))].map(i => blocks[i].cats);
+            if (big || lb.length) notes.push(Object.assign({ t: 'small', label: joinI(ch.cats.map(catTx)), nc: ch.cats.length, n: ch.n, cap }, lb.length ? { lv: joinI(lb.map(x => joinI(x.map(catTx)))), lvc: lb.flat().length, big } : {}));
+            continue;
+          }
           if (tgt === pv) { pv.keys.push(...ch.keys); pv.cats.push(...ch.cats); } else { nx.keys.unshift(...ch.keys); nx.cats.unshift(...ch.cats); }
           tgt.n += ch.n; chunks.splice(i, 1); i--;
         }
@@ -2507,16 +2516,46 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace
 
 /* ═══════════════════════════════════════════ render general */
 // torna a pintar però deixa el focus on l'usuari l'ha posat (p. ex. Tab després d'editar una casella de configuració)
-// (data-id: el de la mateixa fila; si no hi és, el focus no va a parar a una altra fila)
-const FOCUS_KEYS = ['data-chg', 'data-inp', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'data-e', 'data-a', 'data-f', 'data-s', 'data-x', 'data-cat', 'data-id', 'id', 'name'];
+// (data-id: el de la mateixa fila; si no hi és, el focus no va a parar a una altra fila. data-g: el del mateix grup
+// o gènere; data-what i data-types: quin dels botons d'imprimir)
+const FOCUS_KEYS = ['data-chg', 'data-inp', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'data-e', 'data-a', 'data-f', 'data-s', 'data-x', 'data-cat', 'data-id', 'data-g', 'data-what', 'data-types', 'id', 'name'];
+const FOCUS_SEL = 'input, select, button, textarea, summary, a[href]';
+// ids que acaben de canviar (una subdivisió «nova» de les rotacions es desa amb un id de debò): el focus els segueix.
+// Només valen fins a la pintada següent (després, un id «auto-…» pot ser el d'una altra subdivisió)
+const focusIds = new Map();
+// on és el focus dins de root: els atributs (FOCUS_KEYS) i, si n'hi ha més d'un d'igual (p. ex. dos «Imprimeix»),
+// quin d'ells; el <summary> d'un desplegable o un enllaç sense cap d'aquests atributs, pel text (un altre camp sense
+// atributs no es pot saber quin és: no es torna a posar enlloc)
+function focusMark(root) {
+  const a = document.activeElement;
+  if (!root || !a || a === document.body || !a.getAttribute || !root.contains(a)) return null;
+  const key = FOCUS_KEYS.map(k => a.getAttribute(k)), bare = key.every(v => v === null);
+  if (bare && a.tagName !== 'SUMMARY' && a.tagName !== 'A') return null;
+  const txt = bare ? a.textContent.trim() : null;
+  const same = focusSame(root, a.tagName, key, txt);
+  return { tag: a.tagName, key, txt, n: same.indexOf(a), of: same.length };
+}
+const focusSame = (root, tag, key, txt) => [...root.querySelectorAll(FOCUS_SEL)].filter(x => (txt === null ? FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i])
+  : x.tagName === tag && FOCUS_KEYS.every(k => x.getAttribute(k) === null) && x.textContent.trim() === txt));
+// torna el focus al mateix camp després de pintar. ids: els que han canviat; set: atributs que el camp té ara
+// (p. ex. data-i d'una fila que s'ha mogut a la llista); scroll: si no es veu, s'hi va (dins d'un diàleg)
+function focusBack(root, m, ids = null, set = null, scroll = false) {
+  if (!root || !m) return null;
+  const key = set ? FOCUS_KEYS.map((k, i) => (k in set ? set[k] : m.key[i])) : m.key;
+  let same = focusSame(root, m.tag, key, m.txt);
+  if (!same.length && m.txt === null && ids && ids.size) same = focusSame(root, m.tag, key.map(v => (v !== null && ids.has(v) ? ids.get(v) : v)), null);
+  // (si ara n'hi ha un altre nombre, el primer; un sense atributs, només si és segur que és el mateix)
+  const el = same.length === m.of ? same[m.n] : m.txt === null ? same[0] : null;
+  if (!el || el.disabled) return null;
+  el.focus({ preventScroll: !scroll });
+  if (el.tagName === 'INPUT' && el.type !== 'checkbox' && typeof el.select === 'function') el.select();
+  return el;
+}
 function renderKeepFocus() {
   setTimeout(() => {
-    const a = document.activeElement;
-    const key = a && a !== document.body && a.getAttribute ? FOCUS_KEYS.map(k => a.getAttribute(k)) : null;
+    const m = focusMark($('#main')), ids = new Map(focusIds);
     render();
-    if (!key || key.every(v => v === null)) return;
-    const el = $$('#main input, #main select, #main button, #main textarea').find(x => FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i]));
-    if (el) { el.focus({ preventScroll: true }); if (el.tagName === 'INPUT' && el.type !== 'checkbox' && typeof el.select === 'function') el.select(); }
+    focusBack($('#main'), m, ids);
   }, 0);
 }
 const views = {};
@@ -2528,6 +2567,7 @@ document.addEventListener('pointerdown', e => { if (e.target.closest && e.target
 ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, () => { qeStripDown = false; }, true));
 function render() {
   const v = views[ui.view] || views.competicions;
+  focusIds.clear();
   hideFixTip();
   const strip0 = $('.qe-strip'), stripLeft = strip0 ? strip0.scrollLeft : null;
   $('#main').innerHTML = iosNote() + v();
@@ -2698,7 +2738,7 @@ views.competicio = () => {
   const body = { inscripcions: tabInscripcions, notes: tabNotes, rotacions: tabRotacions, classificacions: tabClass, configuracio: tabCompConfig }[tab] || tabNotes;
   const printTypes = tab === 'inscripcions' ? 'list' : tab === 'classificacions' ? (ui.clsType || 'general') : 'general,teams';
   const rotLook = c.rot && c.rot.made && rotNeedsLook(c, rotViewOf(c));
-  const acts = `<button class="btn" data-act="${tab === 'rotacions' && c.rot && c.rot.made ? 'rotPrintDlg' : 'printDlg'}" data-types="${printTypes}">🖨 Imprimeix / PDF…</button>
+  const acts = `<button class="btn" data-act="${tab === 'rotacions' && rotPrintable(c) ? 'rotPrintDlg' : 'printDlg'}" data-types="${printTypes}">🖨 Imprimeix / PDF…</button>
         <button class="btn" data-act="exportComp">Exporta a Excel</button>
         <button class="btn" data-act="goRanking" data-season="${h(c.season)}">Rànquing del curs</button>
         <button class="btn ${c.locked ? 'primary' : ''}" data-act="toggleLock" title="Amb les notes bloquejades ningú no pot canviar notes ni inscripcions per error">${c.locked ? '🔓 Desbloqueja' : '🔒 Bloqueja les notes'}</button>`;
@@ -2957,7 +2997,7 @@ function setGymTeam(g, value, newName, src = null) {
   else if (value && value !== '__none') team = teamById(value) || null;
   putInTeam(g.id, team);
   if (value === '__none') g.noTeam = true; else delete g.noTeam;
-  const touched = [];
+  const touched = [], rot = [];   // (rot: les competicions amb rotacions fetes on ha canviat d'equip)
   for (const c of db.competitions.filter(followsRecords)) {
     const e = c.entries.find(x => x.gymnastId === g.id);
     if (!e) continue;
@@ -2969,9 +3009,9 @@ function setGymTeam(g, value, newName, src = null) {
     else if (value === '__none') { e.teamId = null; e.noAuto = true; }
     else if (sameGroup(e, g)) { e.teamId = null; delete e.noAuto; if (c.autoTeams) autoCompTeams(c, [e]); }
     pruneAutoTeams(c);
-    if (e.teamId !== before) touched.push(c.name);
+    if (e.teamId !== before) { touched.push(c.name); if (c.rot && c.rot.made) rot.push({ compId: c.id, entryId: e.id }); }
   }
-  return { team: team || gymTeam(g), touched };
+  return { team: team || gymTeam(g), touched, rot };
 }
 // les competicions que segueixen la fitxa es posen al dia amb un equip de la llista (qui hi és i qui no).
 // added: les gimnastes que s'acaben d'afegir a l'equip. Si es dona, només es mouen aquestes i les de removed:
@@ -3745,11 +3785,12 @@ function teamOptionsFor(g, current) {
 function teamSetMsg(g, r) {
   const t = r.team, n = t ? t.memberIds.length : 0, max = S().compDefaults.teamMax;
   const where = r.touched.length ? ` També a: ${r.touched.join(', ')}.` : '';
-  return { type: n > max ? 'bad' : 'ok', msg: t ? `${gymName(g)} → ${t.name} (${plural(n, 'gimnasta', 'gimnastes')}).${where}${n > max ? ` Compte: el màxim és ${max}.` : ''}`
+  const rm = rotMoveNotes(r.rot);
+  return { type: n > max ? 'bad' : 'ok', actions: rm.actions, msg: (t ? `${gymName(g)} → ${t.name} (${plural(n, 'gimnasta', 'gimnastes')}).${where}${n > max ? ` Compte: el màxim és ${max}.` : ''}`
     : g.noTeam ? `${gymName(g)}: només individual.${where}` : clubDeclared(null, g.clubId, g) ? `${gymName(g)}: sense equip. La seva entitat ja ha dit els seus equips en aquest grup al full d’inscripció: anirà com a individual (si cal, tria-li l’equip).${where}`
-    : `${gymName(g)}: sense equip; quan s’inscrigui anirà amb les de la seva entitat.${where}` };
+    : `${gymName(g)}: sense equip; quan s’inscrigui anirà amb les de la seva entitat.${where}`) + rm.msg };
 }
-const teamSetToast = (g, r) => { const m = teamSetMsg(g, r); toast(m.msg, m.type); };
+const teamSetToast = (g, r) => { const m = teamSetMsg(g, r); toast(m.msg, m.type, { actions: m.actions }); };
 function gymTable() {
   const list = filteredGyms();
   if (!db.gymnasts.length) return `<div class="empty">Encara no hi ha cap gimnasta.<br><br><button class="btn primary" data-act="inscOpen">📥 Importa els fulls d’inscripció dels clubs (.xlsx)</button><br><br><button class="btn" data-act="newGym">＋ Afegeix-ne una</button> &nbsp; <button class="btn" data-act="importGyms">Enganxa una llista des d’Excel</button></div>`;
@@ -5430,7 +5471,7 @@ const actions = {
     const def = (el.dataset.types || 'general,teams').split(',');
     const types = [['podium', 'Podi (medalles), tots els grups junts'], ['general', 'Classificació individual (general)'], ['apps', 'Classificació per aparells'], ['teams', 'Classificació per equips'],
       ['notes', 'Acta amb totes les notes'], ['list', 'Llistat d’inscripcions i equips'], ['judge', 'Fulls de jutge en blanc (un per aparell)'],
-      ...(c.rot && c.rot.made ? [['rot', 'Rotacions (un full per subdivisió)'], ['horari', 'Horari general']] : [])];
+      ...(rotPrintable(c) ? [['rot', 'Rotacions (un full per subdivisió)'], ['horari', 'Horari general']] : [])];
     openDialog(`<form data-form="print"><h2>Imprimeix o desa en PDF</h2>
       <div class="grid2"><fieldset><legend>Què?</legend>${types.map(([k, l]) => `<label class="chk"><input type="checkbox" name="t" value="${k}" ${def.includes(k) ? 'checked' : ''}> ${l}</label>`).join('')}</fieldset>
       <fieldset><legend>Categories i nivells</legend>${groups.map(g => `<label class="chk"><input type="checkbox" name="g" value="${h(g.key)}" ${!el.dataset.group || el.dataset.group === g.key ? 'checked' : ''}> ${h(groupLabel(g))}</label>`).join('') || '<p class="muted">Cap.</p>'}</fieldset></div>
@@ -5487,6 +5528,9 @@ const actions = {
     const past = !!c && !isUpcoming(c);
     let made = 0, upd = 0, teamed = 0, nEnrol = 0, scoredMoved = 0;
     const kept = [], others = new Set(), stale = [], renamed = [];
+    // (rotacions ja fetes: ningú es mou de grup sol; si un equip queda repartit en dos grups, es diu)
+    const split0 = c ? rotSplits([c.id]) : new Map();
+    let rotNote = '';
     closeDialog();
     withUndo(() => {
       const bad = kept.length || scoredMoved || stale.length;
@@ -5497,7 +5541,8 @@ const actions = {
         + (kept.length ? ` Compte: ${names(kept)} ja ${kept.length === 1 ? 'té' : 'tenen'} notes en un altre grup a ${c.name} i no s’hi ha canviat res (fes-ho a Inscripcions si cal).` : '')
         + (scoredMoved ? ` Compte: ${plural(scoredMoved, 'gimnasta que ja tenia notes ha', 'gimnastes que ja tenien notes han')} canviat d’equip (les notes no canvien).` : '')
         + (stale.length ? ` A ${c.name} també hi ${stale.length === 1 ? 'ha' : 'són'} ${names(stale)}, de la mateixa entitat i grup, que no ${stale.length === 1 ? 'surt al full: no s’ha tret' : 'surten al full: no s’han tret'}.` : '')
-        + (others.size ? ` A ${names([...others])} hi ha alguna d’aquestes gimnastes amb un altre equip: no s’hi ha tocat res (cada competició té els seus equips; si també hi van així, importa-hi el full).` : '') };
+        + (others.size ? ` A ${names([...others])} hi ha alguna d’aquestes gimnastes amb un altre equip: no s’hi ha tocat res (cada competició té els seus equips; si també hi van així, importa-hi el full).` : '')
+        + rotNote };
     }, () => {
       const all = inscResolveAll(I), sheet = new Map();   // fitxa → el que diu el full
       for (const f of I.files) {
@@ -5605,6 +5650,7 @@ const actions = {
           if (want ? !(ct && ct.sourceTeamId === want.id) : !!ct) { others.add(cc.name); break; }
         }
       }
+      rotNote = rotSplitNote(split0, false);
     });
     ui.insc = null;
   },
@@ -5889,6 +5935,7 @@ const forms = {
       const wasArchived = !!g.archived;
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
       // ha canviat d'entitat: a les competicions que vénen també (i surt de l'equip de l'entitat d'abans)
+      const clubRot = [];   // (les que tenen les rotacions fetes: s'hi queda al seu grup i es diu on són les seves)
       if ((g.clubId || null) !== oldClub) {
         const t0 = gymTeam(g);
         if (t0 && (t0.clubId || null) === oldClub && teamVal === before) putInTeam(g.id, null);
@@ -5897,11 +5944,13 @@ const forms = {
           if (!e || (e.clubId || null) !== oldClub || hasScores(e)) continue;   // (on ja té notes, no es toca)
           e.clubId = g.clubId || null; e.teamId = null; delete e.noAuto;
           pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, [e]); else autoAssignTeams(c, [e]); pruneAutoTeams(c);
+          if (c.rot && c.rot.made) clubRot.push({ compId: c.id, entryId: e.id });
         }
       }
       const r = teamVal !== before && !g.archived ? setGymTeam(g, teamVal, newTeam) : null;
       commit(); closeDialog(); render();
-      if (r) teamSetToast(g, r); else toast(g.archived && !wasArchived ? 'Fitxa arxivada: ja no surt a les llistes ni és a cap equip.' : 'Fitxa desada.', 'ok');
+      if (r) { r.rot = (r.rot || []).concat(clubRot); teamSetToast(g, r); }
+      else { const rm = rotMoveNotes(clubRot); toast((g.archived && !wasArchived ? 'Fitxa arxivada: ja no surt a les llistes ni és a cap equip.' : 'Fitxa desada.') + rm.msg, 'ok', { actions: rm.actions }); }
       // si ara és d'un altre grup i està inscrita en una competició que vé, ofereix canviar-ho també allà
       // (les passades no es toquen; i només si aquesta vegada s'ha canviat el grup)
       const regrouped = !sameGroup(oldGroup, g);
@@ -5943,13 +5992,14 @@ const forms = {
     const members = fd.getAll('m');
     if (!vals.name || !vals.category || !vals.level) { toast('Cal el nom, la categoria i el nivell.', 'bad'); return; }
     if (db.teams.some(x => x.id !== id && (x.clubId || null) === (vals.clubId || null) && sameGroup(x, vals) && norm(x.name) === norm(vals.name))) { toast(`Aquesta entitat ja té un equip «${vals.name}» en aquest grup. Posa-li un altre nom (per exemple «${vals.name} 2»).`, 'bad'); return; }
-    let t = id && teamById(id), touched = [];
+    let t = id && teamById(id), touched = [], rotNote = '';
     closeDialog();
     withUndo(() => {
       const n = t.memberIds.length, d = S().compDefaults, where = touched.length ? ` També a: ${touched.join(', ')}.` : '';
       const bad = n < d.teamMin || n > d.teamMax;
-      return { type: bad ? 'bad' : 'ok', msg: (n < d.teamMin ? `Equip desat, però només té ${plural(n, 'gimnasta', 'gimnastes')} (mínim ${d.teamMin}).` : n > d.teamMax ? `Equip desat, però té ${n} gimnastes (màxim ${d.teamMax}).` : 'Equip desat.') + where };
+      return { type: bad ? 'bad' : 'ok', msg: (n < d.teamMin ? `Equip desat, però només té ${plural(n, 'gimnasta', 'gimnastes')} (mínim ${d.teamMin}).` : n > d.teamMax ? `Equip desat, però té ${n} gimnastes (màxim ${d.teamMax}).` : 'Equip desat.') + where + rotNote };
     }, () => {
+      const sp = rotSplits();
       if (!t) t = makeTeam(vals.clubId, vals, vals.name);
       const before = [...t.memberIds];
       Object.assign(t, vals, { memberIds: [] });
@@ -5959,18 +6009,22 @@ const forms = {
       const out = before.filter(x => !members.includes(x));
       for (const id of out) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
       touched = propagateTeam(t, out, members.filter(x => !before.includes(x)));
+      rotNote = rotSplitNote(sp);
     });
   },
   autoTeams: f => {
     const picks = new FormData(f).getAll('p').map(Number);
+    let rotNote = '';
     closeDialog();
-    withUndo(`${plural(picks.length, 'equip creat', 'equips creats')}.`, () => {
+    withUndo(() => `${plural(picks.length, 'equip creat', 'equips creats')}.${rotNote}`, () => {
+      const sp = rotSplits();
       for (const i of picks) {
         const p = ui.proposals[i];
         const t = makeTeam(p.clubId, p, p.name);
         for (const m of p.memberIds) putInTeam(m, t);
         propagateTeam(t);
       }
+      rotNote = rotSplitNote(sp);
     });
   },
   enrollGyms: f => {
@@ -6508,7 +6562,7 @@ addEventListener('afterprint', () => { if (document.body.classList.contains('pri
 document.addEventListener('keydown', e => {
   if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== 'p' && e.key !== 'P')) return;
   if ($('#dlg').open || $('#confirm').open) return;
-  if (ui.view === 'competicio' && curComp() && ui.tab === 'rotacions' && curComp().rot && curComp().rot.made) { e.preventDefault(); actions.rotPrintDlg({ dataset: {} }); }
+  if (ui.view === 'competicio' && curComp() && ui.tab === 'rotacions' && rotPrintable(curComp())) { e.preventDefault(); actions.rotPrintDlg({ dataset: {} }); }
   else if (ui.view === 'competicio' && curComp()) {
     e.preventDefault();
     actions.printDlg({ dataset: { types: ui.tab === 'inscripcions' ? 'list' : ui.tab === 'classificacions' ? (ui.clsType || 'general') : 'general,teams', group: ui.tab === 'classificacions' && ui.clsGroup !== 'all' ? (ui.clsGroup || '') : '' } });
@@ -6911,6 +6965,9 @@ function rotRenameKeys(field, old, to) {
 const rotSet = () => { if (!S().rot) S().rot = rotDefaults(S()); return S().rot; };
 const rotCtx = () => ({ clubName, small: Array.isArray(rotSet().joins) });
 const rotViewOf = c => Engine.rotView(c, S(), rotCtx());
+// hi ha rotacions per imprimir: fetes i amb alguna gimnasta que competeix (rotView les posa totes a alguna subdivisió)
+const rotPrintable = c => !!(c && c.rot && c.rot.made && c.entries.some(e => e.status !== 'np'));
+const rotNothingMsg = c => (c.entries.length ? 'Totes les gimnastes són NP: a les rotacions no hi ha ningú per imprimir.' : 'Primer cal inscriure les gimnastes.');
 // els aparells «tots junts al final» que es recorden (per nom, perquè una altra competició els té amb un altre id)
 const rotFinalIds = (c, G) => { const want = rotSet().final[G] || []; return Engine.enabledApps(c, G).filter(a => want.some(w => (w.id && w.id === a.id) || (w.name && norm(w.name) === norm(a.name)))).map(a => a.id); };
 const rotRules = c => { const sr = rotSet(); return { joins: sr.joins, apart: sr.apart, seen: sr.seen || [], allM: sr.allM, maxGroup: sr.maxGroup, order: sr.order, final: { F: rotFinalIds(c, 'F'), M: rotFinalIds(c, 'M') }, subOrder: sr.subOrder }; };
@@ -6954,9 +7011,10 @@ function rotMaterialize(c, view = rotViewOf(c)) {
   for (const sv of view.subs) if (!sv.real) { const s = rotNewSub(sv.g, sv.keys, sv.k); r.subs.push(s); map.set(sv.id, s.id); }
   for (const i of view.issues) if (i.t === 'orphanJoined') { const s = r.subs.find(x => x.id === i.subId); if (s && !s.keys.includes(i.key)) s.keys.push(i.key); }
   for (const [e, p] of view.place) if (p.derived) r.at[e.id] = { s: map.get(p.subId) || p.subId, g: p.g };
-  // (la subdivisió que es mira al mòbil i la del «Reequilibra» obert segueixen sent la mateixa)
+  // (la subdivisió que es mira al mòbil, la del «Reequilibra» obert i el camp on és el focus segueixen sent els mateixos)
   if (map.has(ui.rotSub)) ui.rotSub = map.get(ui.rotSub);
   if (ui.rotBal && map.has(ui.rotBal.subId)) ui.rotBal.subId = map.get(ui.rotBal.subId);
+  for (const [a, b] of map) focusIds.set(a, b);
   return map;
 }
 // la subdivisió (vista) d'un id, després de desar-ho tot (un id «auto-…» passa a ser un de real)
@@ -6972,9 +7030,10 @@ function rotRedoSub(c, sv, keep = true) {
   rotWrite(c, sv, r.assign, pinned);
   return r;
 }
-// després de canviar l'equip d'una gimnasta (Inscripcions): si a les rotacions el seu equip nou (o les individuals de
-// la seva entitat) és en un altre grup, el text per a l'avís i el botó per posar-la amb ells
-function rotTeamMove(c, e, isTeam) {
+// després de canviar l'equip d'una gimnasta (Inscripcions, o la fitxa): si a les rotacions el seu equip nou (o les
+// individuals de la seva entitat) és en un altre grup, el text per a l'avís i el botó per posar-la amb ells.
+// name: el nom de la competició, si el canvi s'ha fet des d'un altre lloc
+function rotTeamMove(c, e, isTeam, name = '') {
   if (!c.rot || !c.rot.made || c.locked) return null;
   const where = c2 => { const v = rotViewOf(c2); for (const sv of v.subs) { const u = sv.units.find(x => x.entries.includes(e2(c2))); if (u) return { v, sv, u }; } return null; };
   const e2 = c2 => c2.entries.find(x => x.id === e.id);
@@ -6983,7 +7042,7 @@ function rotTeamMove(c, e, isTeam) {
   const w = where(c); if (!w || !w.u.split) return null;
   const a = w.v.place.get(e).g, b = other(w.v, w.u, e);
   if (b < 0 || a === b) return null;
-  return { msg: `A les rotacions continua al Grup ${a + 1}; ${isTeam ? 'el seu equip nou és' : 'les altres individuals de la seva entitat són'} al Grup ${b + 1}.`,
+  return { comp: name, msg: `A les rotacions${name ? ` de ${name}` : ''} continua al Grup ${a + 1}; ${isTeam ? 'el seu equip nou és' : 'les altres individuals de la seva entitat són'} al Grup ${b + 1}.`,
     action: { label: isTeam ? 'Mou-la amb l’equip' : `Mou-la al Grup ${b + 1}`, fn: () => {
       const cc = compById(c.id); if (!rotGuard(cc)) return;
       const x = cc && e2(cc), w2 = x && where(cc);
@@ -6994,6 +7053,36 @@ function rotTeamMove(c, e, isTeam) {
         cc.rot.at[x.id] = w2.u.pinned ? { s, g, m: 1 } : { s, g };
       });
     } } };
+}
+// el mateix des de la fitxa, per a cada competició on ha canviat d'equip. list: [{ compId, entryId }]
+function rotMoveNotes(list) {
+  const seen = new Set(), rm = [];
+  for (const x of list || []) {
+    if (seen.has(x.compId + '|' + x.entryId)) continue;
+    seen.add(x.compId + '|' + x.entryId);
+    const c = compById(x.compId), e = c && c.entries.find(y => y.id === x.entryId);
+    const m = e && rotTeamMove(c, e, !!e.teamId && c.teams.some(y => y.id === e.teamId), c.name);
+    if (m) rm.push(m);
+  }
+  return { msg: rm.map(x => ' ' + x.msg).join(''), actions: rm.map(x => (rm.length > 1 ? Object.assign({}, x.action, { label: `${x.action.label} (${x.comp})` }) : x.action)) };
+}
+// canvis de molts equips de cop (un equip de la llista, un full d'inscripció…): abans, els que ja estaven repartits en
+// més d'un grup a les rotacions fetes; després, rotSplitNote diu els que ho han quedat ara (ningú es mou de grup sol)
+function rotSplits(ids = null) {
+  const m = new Map();
+  for (const c of db.competitions) if (c.rot && c.rot.made && (!ids || ids.includes(c.id))) m.set(c.id, rotViewOf(c).subs.flatMap(sv => sv.warnings.filter(w => w.t === 'split').map(w => w.unit)));
+  return m;
+}
+function rotSplitNote(before, named = true) {
+  let out = '';
+  for (const [id, us] of rotSplits([...before.keys()])) {
+    const was = new Set((before.get(id) || []).map(u => u.id)), c = compById(id);
+    const names = [...new Set(us.filter(u => !was.has(u.id)).map(rotUnitName))];
+    if (!names.length) continue;
+    const l = names.length > 5 ? names.slice(0, 5).concat(`${names.length - 5} més`) : names;
+    out += ` A les rotacions${named ? ` de ${c.name}` : ''}, ${rotJoin(l)} ${names.length === 1 ? 'té' : 'tenen'} gimnastes en més d’un grup (cadascuna s’ha quedat on era): ajunta-les a la pestanya Rotacions i horari.`;
+  }
+  return out;
 }
 function rotGuard(c) {
   if (!c || !c.rot) return false;
@@ -7086,8 +7175,10 @@ function rotBanners(c, v) {
     const li = [], joined = new Map();
     for (const n of pn) if (n.t === 'joined') { if (!joined.has(n.into)) joined.set(n.into, []); joined.get(n.into).push(n); }
     for (const n of pn) {
-      if (n.t === 'split') li.push(`${h(n.label)} ${n.nc > 1 ? 'tenen' : 'té'} ${n.n} gimnastes (més de ${n.cap} = ${plural(Math.round(n.cap / (n.mg || 15)), 'grup', 'grups')} × ${n.mg || 15}): ${n.nc > 1 ? 'les ' : 'l’'}he partit en ${h(rotJoin(n.parts))}.`);
+      // (si hi ha més d'una categoria, cada part entre «»: «Infantil A i Cadet A» i «Juvenil A» són dues parts, no tres)
+      if (n.t === 'split') li.push(`${h(n.label)} ${n.nc > 1 ? 'tenen' : 'té'} ${n.n} gimnastes (més de ${n.cap} = ${plural(Math.round(n.cap / (n.mg || 15)), 'grup', 'grups')} × ${n.mg || 15}): ${n.nc > 1 ? 'les ' : 'l’'}he partit en ${h(rotJoin(n.nc > 1 ? n.parts.map(p => `«${p}»`) : n.parts))}.`);
       else if (n.t === 'big') li.push(`${h(n.label)} ${n.nc > 1 ? 'tenen' : 'té'} ${n.n} gimnastes (més de ${n.cap}): hi haurà més grups que aparells i a cada rotació algun grup descansarà.`);
+      else if (n.t === 'small' && n.lv) li.push(`${h(n.label)} ${n.nc > 1 ? 'només tenen' : 'només té'} ${plural(n.n, 'gimnasta', 'gimnastes')}: ${n.big ? `no ${n.nc > 1 ? 'les ' : 'l’'}he pogut ajuntar amb cap altra sense passar de ${n.cap}, i ${h(n.lv)} ${n.lvc > 1 ? 's’han' : 's’ha'}` : `no ${n.nc > 1 ? 'les ' : 'l’'}he ajuntat amb ${h(n.lv)}, que ${n.lvc > 1 ? 's’han' : 's’ha'}`} partit per nivells.`);
       else if (n.t === 'small') li.push(`${h(n.label)} ${n.nc > 1 ? 'només tenen' : 'només té'} ${plural(n.n, 'gimnasta', 'gimnastes')} i no ${n.nc > 1 ? 'les ' : 'l’'}he pogut ajuntar amb cap altra sense passar de ${n.cap}.`);
       else if (n.t === 'allM') li.push('Tots els nois van junts.');
     }
@@ -7100,7 +7191,12 @@ function rotBanners(c, v) {
     else if (i.t === 'orphanJoined') { const p = Engine.rotKeyParts(i.key) || {}; const sv = v.subs.find(s => s.id === i.subId); out.push(`<div class="note warn">${h(Engine.catTx(p.category))}${p.gender === 'M' ? ' (nois)' : ''} ${h(Engine.lvlTx(p.level))} (${i.n}) no era a cap subdivisió: l’he posada a la ${sv && sv.idx ? sv.idx + 'a' : 'mateixa'} (${i.via === 'boys' ? 'amb els altres nois' : 'amb la seva categoria'}). <button class="btn sm" data-act="rotAccept" ${dis}>D’acord</button> <button class="btn sm" data-act="rotSubsDlg" ${dis}>Quines categories van juntes…</button></div>`); }
     else if (i.t === 'orphanNew') { const p = Engine.rotKeyParts(i.key) || { category: i.key, level: '' }; out.push(`<div class="note warn">${h(Engine.catTx(p.category))}${p.gender === 'M' ? ' (nois)' : ''} ${h(Engine.lvlTx(p.level))} (${i.n}) no era a cap subdivisió: n’he fet una de nova al final. <button class="btn sm" data-act="rotAccept" ${dis}>D’acord</button> <button class="btn sm" data-act="rotSubsDlg" ${dis}>Quines categories van juntes…</button></div>`); }
     else if (i.t === 'noApps') out.push(`<div class="note bad">${i.g === 'M' ? 'Els nois' : 'Les noies'} no tenen cap aparell: activa’n a la pestanya Configuració → Aparells.</div>`);
-    else if (i.t === 'printed') out.push(`<div class="note warn">Has canviat les rotacions després d’imprimir-les${i.at ? ` (${fmtDate(i.at.slice(0, 10))} a les ${new Date(i.at).toTimeString().slice(0, 5)})` : ''}. Torna-les a imprimir. <button class="btn sm" data-act="rotPrintDlg">🖨 Imprimeix…</button></div>`);
+    else if (i.t === 'printed') {
+      // (el dia i l'hora d'aquí, tots dos del mateix rellotge: una impressió a les 0:30 és d'aquell dia, no del d'abans)
+      const d = i.at ? new Date(i.at) : null, p2 = x => String(x).padStart(2, '0');
+      const when = d && !Number.isNaN(d.getTime()) ? ` (${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()} a les ${Engine.rotHM(d.getHours() * 60 + d.getMinutes())})` : '';
+      out.push(`<div class="note warn">Has canviat les rotacions després d’imprimir-les${when}. Torna-les a imprimir. <button class="btn sm" data-act="rotPrintDlg">🖨 Imprimeix…</button></div>`);
+    }
   }
   return out.join('');
 }
@@ -7111,9 +7207,16 @@ function rotGrupsTab(c, v) {
   const N = v.subs.reduce((t, s) => t + s.N, 0), NP = v.subs.reduce((t, s) => t + s.np, 0);
   const more = `<button class="btn" data-act="rotAppsDlg" ${dis}>Aparells i ordre…</button><button class="btn" data-act="rotOptsDlg" ${dis}>Com es fan els grups…</button>
     <button class="btn" data-act="rotRedoAll" ${dis}>Torna-les a fer de zero…</button><button class="btn danger" data-act="rotDelete" ${dis}>Esborra les rotacions…</button>`;
-  const phone = isPhone();
+  const phone = isPhone(), gw = rotGridW();
   let subs = v.subs;
-  if (phone && subs.length) { if (!subs.some(s => s.id === ui.rotSub)) ui.rotSub = subs[0].id; subs = subs.filter(s => s.id === ui.rotSub); }
+  if (phone && subs.length) {
+    // (si l'id ha canviat, la que té les mateixes categories i nivells: p. ex. una «nova» que s'ha desat i després
+    // s'ha desfet torna a ser «auto-…»)
+    const sig = s => JSON.stringify([...s.keys].sort());
+    if (!subs.some(s => s.id === ui.rotSub)) ui.rotSub = (subs.find(s => sig(s) === ui.rotSubKeys) || subs[0]).id;
+    subs = subs.filter(s => s.id === ui.rotSub);
+    ui.rotSubKeys = sig(subs[0]);
+  }
   return `<div class="toolbar">
       <button class="btn" data-act="rotSubsDlg" ${dis}><span class="hide-ph">Quines categories van juntes…</span><span class="show-ph">Categories…</span></button>
       <button class="btn hide-ph" data-act="rotCoachDlg" ${dis}>Entrenadores…</button>
@@ -7122,7 +7225,7 @@ function rotGrupsTab(c, v) {
     ${rotBanners(c, v)}
     <p class="small muted">${plural(v.subs.filter(s => s.N).length, 'subdivisió', 'subdivisions')} · ${plural(N, 'gimnasta', 'gimnastes')}${NP ? ` (${NP} NP)` : ''}${sched.start !== null ? ` · de ${Engine.rotHM(sched.start)} a ${Engine.rotHM(sched.end)}` : ''}</p>
     ${phone && v.subs.length > 1 ? groupPicker({ groups: v.subs.map(s => ({ key: s.id, label: `${s.idx ? s.idx + 'a' : '—'} · ${s.label}` })), cur: ui.rotSub, act: 'rotSubPick', label: g => g.label }) : ''}
-    ${subs.map(sv => rotSubCard(c, v, sv, when.get(sv.id))).join('')}
+    ${subs.map(sv => rotSubCard(c, v, sv, when.get(sv.id), gw)).join('')}
     <details class="card small"><summary><b>Com es fan els grups?</b></summary><ol class="steps">
       <li>Un equip no se separa mai, i les gimnastes individuals d’una entitat i d’un mateix nivell van juntes.</li>
       <li>Si has dit quantes entrenadores porta una entitat, les seves gimnastes no van en més grups dels que pot portar.</li>
@@ -7131,9 +7234,13 @@ function rotGrupsTab(c, v) {
       <li>Els equips d’una mateixa entitat, junts.</li></ol>
       <p>Els equips que mous tu (📌) no es mouen mai sols. Cada subdivisió competeix sola: el seu escalfament, les seves rotacions i els seus premis.</p></details>`;
 }
-// columnes dels grups: fins a 6 en una fila; amb més, en files iguals (8 → 4 + 4, 12 → 6 + 6) perquè es puguin llegir
-const rotCols = k => (k <= 6 ? k : Math.ceil(k / Math.ceil(k / 6)));
-function rotSubCard(c, v, sv, row) {
+// columnes dels grups: fins a 6 en una fila, les que hi caben amb 170 px cada una (w: l'amplada que hi ha); si no hi
+// caben totes, en files iguals (8 → 4 + 4, 12 → 6 + 6; a una tauleta, 6 → 3 + 3) perquè es puguin llegir
+const ROT_COL = 170;
+const rotCols = (k, w = 0) => { const max = w > 0 ? Math.max(1, Math.min(6, Math.floor((w + 10) / (ROT_COL + 10)))) : 6; return Math.ceil(k / Math.ceil(k / max)); };
+// amplada dels grups d'una subdivisió (la de la pantalla menys els marges de la pàgina i de la targeta)
+const rotGridW = () => { const m = $('#main'); if (!m) return 0; const cs = getComputedStyle(m); return m.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 34; };
+function rotSubCard(c, v, sv, row, gw = 0) {
   const dis = c.locked ? 'disabled' : '';
   const i = v.subs.indexOf(sv);
   const bal = c.locked || !sv.N || sv.k < 2 ? null : rotBalance(c, sv);
@@ -7172,7 +7279,7 @@ function rotSubCard(c, v, sv, row) {
   return `<div class="card rot-sub">${head}
     <div class="rot-bal">${badge} <span class="small muted">el grup més gran marca el temps</span>${multi.length ? ` <span class="small muted">· entitats en més d’un grup: ${multi.join(' · ')}</span>` : ''}</div>
     ${rotWarnHtml(c, sv, bal)}
-    <div class="rot-grid" style="--k:${rotCols(sv.k)}">${cols}</div>
+    <div class="rot-grid" style="--k:${rotCols(sv.k, gw)}">${cols}</div>
     <p class="small rot-ord">${rotOrderTxt(sv)}</p>${fixa}</div>`;
 }
 
@@ -7244,6 +7351,7 @@ const rotCatOf = k => (Engine.rotKeyParts(k) || { category: k }).category;
 const rotCap = (c, G, maxGroup) => Math.max(Engine.rotApps(c, G, c.rot ? c.rot.order : rotSet().order, c.rot ? c.rot.final : { F: rotFinalIds(c, 'F'), M: rotFinalIds(c, 'M') }).apps.length, 1) * maxGroup;
 function rotDraftStart(c) {
   const D = { compId: c.id, maxGroup: c.rot ? c.rot.maxGroup : rotSet().maxGroup, subs: [], orig: {} };
+  D.mg0 = D.maxGroup;   // (el màxim amb què s'han fet les subdivisions que surten al quadre)
   if (c.rot && c.rot.subs.length) {
     for (const s of rotViewOf(c).subs) { D.subs.push({ id: s.real ? s.id : null, g: s.g, keys: [...s.keys] }); if (s.real) D.orig[s.id] = JSON.stringify([...s.keys].sort()); }
     // (les subdivisions desades que ara no tenen ningú inscrit no surten)
@@ -7287,15 +7395,17 @@ function rotSubsDlgHtml(c, D) {
     <div class="dlg-actions"><button type="button" class="btn left" data-act="rotDraftReset">Torna a la proposta de l’app</button><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn primary">Desa i fes els grups</button></div></form>`;
 }
 const rotMaxNote = (A, mg) => `Si una categoria té més de ${A * mg} gimnastes (${plural(A, 'grup', 'grups')} × ${mg}), es parteix per nivells.`;
-// torna a pintar el diàleg obert sense moure'l de lloc: el que estava desplegat i el camp on s'era es queden
-function rotDlgRefresh(html) {
+// torna a pintar el diàleg obert sense moure'l de lloc: el que estava desplegat i el camp on s'era es queden.
+// mv: el botó que ha mogut una fila de la llista (el focus va amb la fila: set = els atributs que té ara; sense set,
+// la fila ja no hi és i el focus no va a cap altra)
+function rotDlgRefresh(html, mv = null) {
   const d = $('#dlg'), box = d && d.querySelector('.dlg'), top = box ? box.scrollTop : 0;
   if (!d || !d.open || !box) { openDialog(html, { wide: true }); return; }
-  const a = document.activeElement, key = a && a !== document.body && box.contains(a) ? FOCUS_KEYS.map(k => a.getAttribute(k)) : null;
+  const m = focusMark(box), own = !!mv && document.activeElement === mv.el;
   box.innerHTML = html; box.scrollTop = top;
-  if (key && !key.every(v => v === null)) { const el = [...box.querySelectorAll('input, select, button, textarea')].find(x => FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i])); if (el) el.focus(); }
+  if (!own || mv.set) focusBack(box, m, null, own ? mv.set : null, true);
 }
-const rotDraftRedraw = () => { const c = curComp(), D = ui.rotDraft; if (c && D && D.compId === c.id) rotDlgRefresh(rotSubsDlgHtml(c, D)); };
+const rotDraftRedraw = (mv = null) => { const c = curComp(), D = ui.rotDraft; if (c && D && D.compId === c.id) rotDlgRefresh(rotSubsDlgHtml(c, D), mv); };
 // una subdivisió del quadre passa a ser una per categoria (i les que passen del màxim, per nivell)
 function rotDraftSplitSub(c, D, i) {
   const s = D.subs[i], N = rotKeyN(c), cap = rotCap(c, s.g, D.maxGroup);
@@ -7398,6 +7508,8 @@ function rotHorariSheet(c, v) {
 }
 // abans d'imprimir: el que encara no s'ha revisat i els avisos; i, si es pot, es desa tal com surt (per saber si canvia)
 async function rotPrintPrep(c) {
+  // (sense ningú que competeixi no hi ha res per imprimir ni per recordar com a imprès)
+  if (!rotPrintable(c)) { toast(rotNothingMsg(c), 'bad'); return null; }
   let v = rotViewOf(c);
   // les que encara no s'han revisat, cada una un sol cop: les posades per les regles (com al rètol de les noves) i les
   // de les categories que no eren a cap subdivisió
@@ -7638,7 +7750,8 @@ Object.assign(actions, {
     const i = +el.dataset.i, j = i + +el.dataset.d;
     if (j < 0 || j >= D.subs.length) return;
     [D.subs[i], D.subs[j]] = [D.subs[j], D.subs[i]];
-    rotDraftRedraw();
+    // (el focus va amb la subdivisió que s'ha mogut: un altre Intro la torna a moure, no en mou una altra)
+    rotDraftRedraw({ el, set: { 'data-i': String(j) } });
   },
   rotDraftSplit: el => { const c = curComp(), D = ui.rotDraft; if (!c || !D || !D.subs[+el.dataset.i]) return; rotDraftSplitSub(c, D, +el.dataset.i); rotDraftRedraw(); },
   rotDraftMerge: el => {
@@ -7646,10 +7759,11 @@ Object.assign(actions, {
     const i = +el.dataset.i, s = D.subs[i]; if (!s) return;
     const p = D.subs.slice(0, i).reverse().find(x => x.g === s.g); if (!p) return;
     p.keys = rotDraftSort(D, p.keys.concat(s.keys)); D.subs.splice(i, 1);
-    rotDraftRedraw();
+    rotDraftRedraw({ el });
   },
   rotDraftReset: () => {
     const c = curComp(), D = ui.rotDraft; if (!c || !D) return;
+    D.reset = true;
     D.subs = Engine.rotPlan(c, S(), Object.assign(rotRules(c), { joins: null, apart: [], seen: [], allM: true, subOrder: [], maxGroup: D.maxGroup }), { clubName }).subs.map(s => ({ id: null, g: s.g, keys: [...s.keys] }));
     // (les que ja existien es queden el seu id si tenen les mateixes categories i nivells)
     for (const s of D.subs) { const id = Object.keys(D.orig).find(x => D.orig[x] === JSON.stringify([...s.keys].sort()) && !D.subs.some(y => y.id === x)); if (id) s.id = id; }
@@ -7676,7 +7790,7 @@ Object.assign(actions, {
     const L = A[el.dataset.g].list, i = +el.dataset.i, j = i + +el.dataset.d;
     if (j < 0 || j >= L.length) return;
     [L[i], L[j]] = [L[j], L[i]];
-    rotDlgRefresh(rotAppsHtml(c));
+    rotDlgRefresh(rotAppsHtml(c), { el, set: { 'data-i': String(j) } });
   },
   rotAppsFixa: () => { closeDialog(); actions.rotAddFixa(); },
   // com es fan els grups
@@ -7692,6 +7806,7 @@ Object.assign(actions, {
   rotPrintDlg: el => {
     const c = curComp(); if (!c) return;
     if (!c.rot || !c.rot.made) { toast('Primer fes les rotacions.', 'bad'); return; }
+    if (!rotPrintable(c)) { toast(rotNothingMsg(c), 'bad'); return; }
     const v = rotViewOf(c), only = el && el.dataset && el.dataset.what === 'horari';
     openDialog(`<form data-form="rotPrint"><h2>Imprimeix les rotacions</h2>
       <fieldset><legend>Què vols imprimir?</legend>
@@ -7812,13 +7927,32 @@ Object.assign(forms, {
         // les regles de les categories que no hi ha en aquesta competició es queden per a les properes: una que s'ajuntava
         // amb una d'aquí va amb la subdivisió on ara és aquesta
         const pres = { F: new Set(rotKeysOf(cc, 'F').map(rotCatOf)), M: new Set(rotKeysOf(cc, 'M').map(rotCatOf)) };
+        // i les de les que sí que hi ha, també, si el quadre d'avui no diu el contrari: un dia que només hi ha un nivell,
+        // o poques gimnastes, no vol dir que ja no hagin d'anar juntes o separades. (Amb «Torna a la proposta de l'app»,
+        // el que mana és el que surt al quadre.)
+        const keep = !D.reset, subOf = k => subs0.findIndex(s => s.keys.includes(k));
+        const subsOf = (G, cats) => new Set(rotKeysOf(cc, G).filter(k => cats.includes(rotCatOf(k))).map(subOf));
+        const twoInOne = (G, cat) => { const w = rotKeysOf(cc, G).filter(k => rotCatOf(k) === cat).map(subOf); return new Set(w).size < w.length; };
+        // (unes categories que van juntes però avui són en més d'una subdivisió perquè passen del màxim, partides com
+        // ho fa l'app amb el màxim que hi havia: la regla encara val)
+        const sizeSplit = (G, cats) => {
+          const T = subs0.filter(s => s.g === G && s.keys.some(k => cats.includes(rotCatOf(k)))), ks = new Set(T.flatMap(s => s.keys)), tc = [...new Set([...ks].map(rotCatOf))];
+          const part = Object.assign({}, cc, { entries: cc.entries.filter(e => ks.has(groupKeyOf(e))) });
+          const p = Engine.rotPlan(part, S(), Object.assign(rotRules(cc), cc.rot ? { order: cc.rot.order, final: cc.rot.final } : {}, { joins: tc.length > 1 ? [{ g: G, cats: tc }] : [], apart: [], seen: tc.map(cat => ({ g: G, cat })), allM: true, maxGroup: D.mg0 || mg, subOrder: [] }), { clubName });
+          const sig = l => l.map(s => JSON.stringify([...s.keys].sort())).sort().join('|');
+          return sig(p.subs.filter(s => s.g === G)) === sig(T);
+        };
         for (const j of Array.isArray(sr.joins) ? sr.joins : []) {
           const G = j.g === 'M' ? 'M' : 'F', inn = j.cats.filter(x => pres[G].has(x)), out = j.cats.filter(x => !pres[G].has(x));
-          if (!out.length) continue;
           if (!inn.length) { joins.push({ g: G, cats: [...j.cats] }); continue; }
+          // (una sola categoria: els seus nivells junts encara que passin del màxim; si avui els ha posat separats, ja no)
+          if (keep && (j.cats.length === 1 ? subsOf(G, inn).size === 1 : subsOf(G, inn).size === 1 || sizeSplit(G, inn))) { joins.push({ g: G, cats: [...j.cats] }); continue; }
+          if (!out.length) continue;
           const s = subs0.find(x => x.g === G && x.keys.some(k => rotCatOf(k) === inn[0]));
           joins.push({ g: G, cats: [...new Set((s ? s.keys.map(rotCatOf) : [inn[0]]).concat(out))] });
         }
+        // (separades: es queda si avui no n'ha posat dos nivells a la mateixa subdivisió)
+        for (const a of sr.apart) { const G = a.g === 'M' ? 'M' : 'F'; if (!pres[G].has(a.cat) || (keep && !twoInOne(G, a.cat))) apart.push({ g: G, cat: a.cat }); }
         // (les que comparteixen alguna categoria, en una sola)
         const jm = [];
         for (const j of joins) {
@@ -7829,8 +7963,8 @@ Object.assign(forms, {
         }
         const mSubs = subs0.filter(s => s.g === 'M');
         sr.joins = jm; sr.maxGroup = mg;
-        sr.apart = sr.apart.filter(a => !pres[a.g === 'M' ? 'M' : 'F'].has(a.cat)).concat(apart);
-        if (pres.M.size > 1) sr.allM = mSubs.length === 1;
+        sr.apart = apart.filter((a, i) => apart.findIndex(b => b.g === a.g && b.cat === a.cat) === i);
+        if (pres.M.size > 1) sr.allM = mSubs.length === 1 || (keep && sr.allM && D.allM !== false && sizeSplit('M', [...pres.M]));
         // les categories que ja ha vist (i decidit): les petites que no hi són s'ajuntaran soles a les properes
         sr.seen = (sr.seen || []).filter(x => !pres[x.g === 'M' ? 'M' : 'F'].has(x.cat)).concat(['F', 'M'].flatMap(G => [...pres[G]].filter(Boolean).map(cat => ({ g: G, cat })))).slice(-200);
         const sigs = subs0.map(s => Engine.rotSig2(s.g, s.keys));
@@ -7950,6 +8084,7 @@ Object.assign(changes, {
   rotNotes: el => { const c = curComp(); if (!rotGuard(c)) { render(); return; } c.rot.notes = el.value.slice(0, 4000); rotSet().notes = c.rot.notes; commit(); },
   rotDraftAllM: el => {
     const D = ui.rotDraft; if (!D) return;
+    D.allM = el.checked;
     const ms = D.subs.filter(s => s.g === 'M');
     if (el.checked) {
       if (ms.length > 1) { ms[0].keys = rotDraftSort(D, ms.flatMap(s => s.keys)); D.subs = D.subs.filter(s => s.g !== 'M' || s === ms[0]); }

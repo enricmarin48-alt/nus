@@ -510,3 +510,31 @@ test('inscripcions sense categoria o sense nivell: subdivisió pròpia i noms se
   assert.ok(labels.some(([l]) => l === 'ALEVÍ A, B i SENSE NIVELL'), JSON.stringify(labels));
   for (const [l, g] of labels) for (const x of [l, ...g]) assert.ok(!/ i $| – $|–  /.test(x), x);
 });
+
+// ── segona revisió
+test('una categoria petita al costat d’una partida per nivells: es diu per què no s’hi ha ajuntat', () => {
+  const notes = spec => plain(E.rotPlan(mkc(spec), settings, R2({ joins: null }), {}).notes.filter(x => x.t === 'small'));
+  // Prebenjamí 5 i Benjamí 55 (A 26 i B 29, partit per nivells): les parts per nivell no s'ajunten mai amb res
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 26], ['Benjamí', 'F', 'B', 29]]),
+    [{ t: 'small', label: 'Prebenjamí', nc: 1, n: 5, cap: 45, lv: 'Benjamí', lvc: 1, big: false }]);
+  // a un costat una de massa gran i a l'altre una partida per nivells: es diuen totes dues coses
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 42], ['Benjamí', 'F', 'A', 5], ['Aleví', 'F', 'A', 30], ['Aleví', 'F', 'B', 20]]),
+    [{ t: 'small', label: 'Benjamí', nc: 1, n: 5, cap: 45, lv: 'Aleví', lvc: 1, big: true }]);
+  // les dades reals amb només 5 Prebenjamí: la nota hi és (i la de Benjamí partit, abans)
+  const c = fixture(); let keep = 5; c.entries = c.entries.filter(e => !(e.gender === 'F' && e.category === 'Prebenjamí') || keep-- > 0);
+  const ts = plain(E.rotPlan(c, settings, RULES(), { clubName }).notes.map(x => x.t + (x.lv ? ':' + x.lv : '')));
+  assert.ok(ts.includes('small:Benjamí') && ts.indexOf('split') < ts.indexOf('small:Benjamí'), ts.join());
+});
+
+test('un bloc de categories que van juntes partit per nivells: cada part amb els seus nivells i primer el «l’he partit»', () => {
+  const J = R2({ joins: [{ g: 'F', cats: ['Infantil', 'Cadet', 'Juvenil'] }] });
+  const p = plain(E.rotPlan(mkc([['Infantil', 'F', 'A', 2], ['Cadet', 'F', 'A', 46], ['Juvenil', 'F', 'A', 46]]), settings, J, {}).notes);
+  assert.deepEqual(p.map(x => x.t), ['split', 'big', 'big']);
+  assert.deepEqual(p[0].parts, ['Infantil A i Cadet A', 'Juvenil A']);
+  assert.deepEqual(p.slice(1).map(x => x.label), ['Infantil A i Cadet A', 'Juvenil A']);
+  // dos nivells: «Infantil A, Cadet A i Juvenil A» i «Infantil B i Cadet B»
+  const q = plain(E.rotPlan(mkc([['Infantil', 'F', 'A', 12], ['Infantil', 'F', 'B', 14], ['Cadet', 'F', 'A', 10], ['Cadet', 'F', 'B', 6], ['Juvenil', 'F', 'A', 5]]), settings, J, {}).notes);
+  assert.deepEqual(q.find(x => x.t === 'split').parts, ['Infantil A, Cadet A i Juvenil A', 'Infantil B i Cadet B']);
+  // una sola categoria, com sempre: «Benjamí A» i «Benjamí B»
+  assert.deepEqual(plain(E.rotPlan(fixture(), settings, RULES(), { clubName }).notes.find(x => x.t === 'split').parts), ['Benjamí A', 'Benjamí B']);
+});

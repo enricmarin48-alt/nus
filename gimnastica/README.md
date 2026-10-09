@@ -102,7 +102,8 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   s'ajunten amb la del costat (com Cadet i Juvenil amb Infantil). **Quines categories van juntes…**
   deixa ajuntar o separar categories, separar els nois, canviar el màxim per grup o triar la
   subdivisió de cada categoria i nivell. L'ordre del dia es canvia amb ↑ ↓. Tot això es recorda per a
-  les properes competicions, i «Jornada següent» copia les subdivisions.
+  les properes competicions (un dia que una regla no hi fa res, p. ex. perquè d'una categoria només hi
+  ha un nivell, no s'oblida), i «Jornada següent» copia les subdivisions.
 - **Com es fan els grups** (per ordre d'importància): 1) un equip no se separa mai, i les individuals
   d'una entitat i d'un mateix nivell van juntes; 2) si s'ha dit quantes **entrenadores** porta una
   entitat, les seves gimnastes no van en més grups dels que pot portar; 3) cada categoria i nivell al
@@ -113,8 +114,9 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   («→ Grup 3 · Terra (6 → 12)»). Queda fixat (📌): «Reequilibra» no el mourà. **Reequilibra** torna a
   repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què es mourà. «comença
   a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
-  «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta es
-  queda on era i l'avís ho diu («Mou-la amb l'equip»; a la pestanya, «Ajunta-les»).
+  «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
+  Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i
+  l'avís ho diu («Mou-la amb l'equip»; a la pestanya, «Ajunta-les»).
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
   junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell.
 - **Horari**: comença a les 8:30, amb 30 minuts d'escalfament general abans de cada subdivisió.

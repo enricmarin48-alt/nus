@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +23,7 @@ func parse(t *testing.T, s string) map[string]any {
 }
 
 const sample = `{
+ "settings":{"dataGen":2},
  "gymnasts":[{"id":"g1","name":"Anna","surname":"Puig"},{"id":"g2","name":"Pau","surname":"Gil"}],
  "clubs":[{"id":"c1","name":"CG Lleida"}],
  "competitions":[{"id":"k1","name":"Fase","tutorsOn":true,"tutorPin":"1234","scoring":"simple",
@@ -414,5 +416,66 @@ func TestPutSameDataDoesNotRewrite(t *testing.T) {
 	r.Body.Close()
 	if r.StatusCode != 200 || s.dirty || s.dataRev != rev {
 		t.Fatalf("dades iguals: %d dirty=%v rev %d→%d", r.StatusCode, s.dirty, rev, s.dataRev)
+	}
+}
+
+// dades de les versions de proves (sense settings.dataGen): es guarden apart i es comença de zero; les d'ara, no
+func TestOldTestDataStartsFresh(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	_ = os.WriteFile(path, []byte(`{"gymnasts":[{"id":"g1","name":"Anna"}],"settings":{"rev":4}}`), 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.fresh == "" || hasData(s.db) {
+		t.Fatalf("havia de començar de zero: %q %v", s.fresh, s.db)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("el fitxer de les proves havia de quedar apart: %v", err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, s.fresh))
+	if err != nil || !strings.Contains(string(b), `"Anna"`) {
+		t.Fatalf("les dades de les proves no s'han d'esborrar: %v %s", err, b)
+	}
+	// la taula ho sap (api/info) fins que hi desa per primer cop; les tutores no
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	info := func() map[string]any {
+		r, err := http.Get(srv.URL + "/api/info")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var m map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&m)
+		return m
+	}
+	if m := info(); m["fresh"] != s.fresh || m["role"] != "admin" {
+		t.Fatalf("api/info havia de dir que es comença de zero: %v", m)
+	}
+	pb, _ := json.Marshal(map[string]any{"db": parse(t, `{"settings":{"dataGen":2},"gymnasts":[]}`), "base": s.dataRev})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(pb))
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if m := info(); r.StatusCode != 200 || m["fresh"] != "" {
+		t.Fatalf("després de desar, l'avís ja no hi ha de ser: %d %v", r.StatusCode, m)
+	}
+	if b, _ := os.ReadFile(path); !strings.Contains(string(b), `"dataGen"`) {
+		t.Fatalf("el fitxer nou havia de ser de les dades d'ara: %s", b)
+	}
+	// un fitxer buit (sense gimnastes ni competicions) no cal guardar-lo apart
+	_ = os.WriteFile(path, []byte(`{"settings":{"rev":4}}`), 0o644)
+	if s2, err := newStore(path); err != nil || s2.fresh != "" {
+		t.Fatalf("un fitxer sense dades no es toca: %v %q", err, s2.fresh)
+	}
+	// les dades d'ara (amb dataGen 2) s'obren tal qual
+	_ = os.WriteFile(path, []byte(sample), 0o644)
+	s3, err := newStore(path)
+	if err != nil || s3.fresh != "" || len(arr(s3.db["gymnasts"])) != 2 {
+		t.Fatalf("les dades d'ara s'havien d'obrir: %v %q", err, s3.fresh)
 	}
 }

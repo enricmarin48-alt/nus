@@ -33,6 +33,7 @@ const PORT = 18765, dataFile = path.join(out, 'notesgim-dades.json');
 const now = Date.now();
 writeFileSync(dataFile, JSON.stringify({
   app: 'notesgim', version: 1,
+  settings: { dataGen: 2 },
   clubs: [{ id: 'c1', name: 'CG Lleida' }],
   gymnasts: [
     { id: 'g1', name: 'Anna', surname: 'Puig', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' },
@@ -301,6 +302,57 @@ try {
   });
   await admin.screenshot({ path: path.join(out, 'taula.png'), fullPage: true });
   await tutor.screenshot({ path: path.join(out, 'tutora.png'), fullPage: true });
+
+  await step('«Esborra-ho tot» amb el programa: abans se’n guarda una còpia a copies-notesgim; Desfés ho torna', async () => {
+    const copies = path.join(out, 'copies-notesgim');
+    const n0 = readdirSync(copies).filter(f => f.endsWith('-abans-de-restaurar.json')).length;
+    await admin.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
+    await admin.click('button[data-act=wipe]');
+    await admin.waitForSelector('#dlg form[data-form=wipe] >> text=copies-notesgim');
+    await admin.click('#dlg form[data-form=wipe] button.danger');
+    await admin.waitForSelector('.toast:has-text("Abans se n’ha guardat una còpia a copies-notesgim")');
+    await new Promise(r => setTimeout(r, 1500));
+    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.equal(d.gymnasts.length + d.competitions.length + d.clubs.length, 0, 'el fitxer queda buit');
+    const made = readdirSync(copies).filter(f => f.endsWith('-abans-de-restaurar.json')).sort();
+    assert.ok(made.length > n0, 'abans d’esborrar es guarda una còpia');
+    assert.equal(JSON.parse(readFileSync(path.join(copies, made[made.length - 1]), 'utf8')).gymnasts.length, 3);
+    await admin.locator('.toast button:has-text("Desfés")').last().click();
+    await admin.waitForSelector('.toast:has-text("Desfet.")');
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal(JSON.parse(readFileSync(dataFile, 'utf8')).gymnasts.length, 3, 'Desfés ho torna al fitxer');
+  });
+
+  await step('el programa nou comença de zero: les dades de les proves d’abans es guarden apart i la finestra no les recupera', async () => {
+    await stopServer();
+    // un fitxer d'una versió de proves (sense settings.dataGen); la finestra encara té les seves dades
+    writeFileSync(dataFile, JSON.stringify({ app: 'notesgim', version: 1, clubs: [{ id: 'cv', name: 'Club Vell' }],
+      gymnasts: [{ id: 'gv', name: 'Vella', surname: 'Proves', clubId: 'cv', gender: 'F', category: 'Aleví', level: 'A' }], teams: [], competitions: [],
+      settings: { rev: 4 }, meta: { updated: new Date().toISOString(), dbId: 'proves-velles' } }));
+    assert.ok(await admin.evaluate(() => JSON.parse(localStorage.getItem('notesgim.db')).gymnasts.length) > 0);
+    await startServer();
+    await admin.goto(`http://127.0.0.1:${PORT}/#/gimnastes`); await admin.reload();
+    await admin.waitForSelector('.toast:has-text("Comences de zero")');
+    assert.equal(await admin.evaluate(() => db.gymnasts.length + db.competitions.length + db.clubs.length), 0, 'no hi ha res de les dades d’abans');
+    const kept = readdirSync(out).filter(f => /^notesgim-dades-proves-.*\.json$/.test(f));
+    assert.equal(kept.length, 1, 'les dades de les proves no s’esborren');
+    assert.ok(readFileSync(path.join(out, kept[0]), 'utf8').includes('Vella'));
+    await new Promise(r => setTimeout(r, 1500));
+    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.equal(d.settings.dataGen, 2); assert.equal(d.gymnasts.length, 0);
+    // tornar a obrir: continua buit i l'avís ja no hi surt
+    await admin.reload();
+    await admin.waitForSelector('text=Desat al fitxer');
+    await new Promise(r => setTimeout(r, 500));
+    assert.equal(await admin.locator('.toast:has-text("Comences de zero")').count(), 0);
+    assert.equal(await admin.evaluate(() => db.gymnasts.length), 0);
+    // i un altre cop amb el programa tancat i tornat a obrir
+    await stopServer(); await startServer();
+    await admin.reload();
+    await admin.waitForSelector('text=Desat al fitxer');
+    assert.equal(await admin.evaluate(() => db.gymnasts.length), 0);
+    assert.equal(readdirSync(out).filter(f => /^notesgim-dades-proves-.*\.json$/.test(f)).length, 1);
+  });
 } finally {
   await browser.close();
   if (proc && proc.exitCode === null) await stopServer();

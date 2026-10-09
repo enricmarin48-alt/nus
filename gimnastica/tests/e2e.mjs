@@ -501,8 +501,7 @@ await step('còpia de seguretat: es descarrega i es pot restaurar', async () => 
   await dl.saveAs(file);
   // esborrem-ho tot i restaurem
   await page.click('button[data-act=wipe]');
-  await page.fill('#confirm input[name=typed]', 'ESBORRA');
-  await page.click('#confirm button[value=ok]');
+  await Promise.all([page.waitForEvent('download'), page.click('#dlg form[data-form=wipe] button.danger')]);
   await page.goto(url + '#/gimnastes');
   await page.waitForSelector('text=Encara no hi ha cap gimnasta');
   await page.goto(url + '#/configuracio');

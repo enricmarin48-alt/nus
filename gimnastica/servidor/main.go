@@ -56,6 +56,7 @@ type store struct {
 	dirty     bool         // l'últim intent de desar al fitxer ha fallat: es torna a provar sol
 	saveErr   string       // per què no s'ha pogut desar (es mostra a la finestra de la taula)
 	recovered string       // el fitxer de dades estava malmès i s'ha obert una còpia (què se n'ha de dir)
+	fresh     string       // les dades eren de les versions de proves (d'abans de dataGen 2): s'han guardat apart amb aquest nom i es comença de zero
 	dataRev   int64        // canvia cada vegada que la taula desa (no amb les notes de les tutores); < 2^53 perquè JavaScript el llegeixi exacte
 	quit      chan struct{}
 	quitOnce  sync.Once
@@ -96,8 +97,35 @@ func newStore(path string) (*store, error) {
 		if s.db == nil {
 			s.db = map[string]any{}
 		}
+		// dades de les versions de proves (cap versió d'ara no les desa sense settings.dataGen): es comença de zero.
+		// No s'esborren: el fitxer es queda al costat amb un altre nom («…-proves-<data>.json») i es pot restaurar
+		if s.recovered == "" && hasData(s.db) && dataGen(s.db) < 2 {
+			old := strings.TrimSuffix(path, ".json") + "-proves-" + time.Now().Format("2006-01-02_150405") + ".json"
+			if err := os.Rename(path, old); err != nil {
+				return nil, fmt.Errorf("no s'ha pogut guardar apart el fitxer de dades de les proves (%v)", err)
+			}
+			s.db = map[string]any{}
+			s.fresh = filepath.Base(old)
+		}
 	}
 	return s, nil
+}
+
+// hi ha gimnastes, equips, entitats o competicions
+func hasData(db map[string]any) bool {
+	for _, k := range []string{"gymnasts", "teams", "clubs", "competitions"} {
+		if l, ok := db[k].([]any); ok && len(l) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// generació de les dades (settings.dataGen): 2 a partir de les versions que comencen de zero
+func dataGen(db map[string]any) float64 {
+	st, _ := db["settings"].(map[string]any)
+	g, _ := st["dataGen"].(float64)
+	return g
 }
 
 // la còpia de seguretat més nova que es pugui llegir (nom del fitxer i dades)
@@ -672,7 +700,13 @@ func (s *store) routes(port int) http.Handler {
 			role = "admin"
 			s.lastAdmin.Store(time.Now().UnixMilli())
 		}
-		writeJSON(w, 200, map[string]any{"app": "notesgim", "version": appVersion, "role": role, "urls": lanURLs(port), "dataFile": s.path})
+		info := map[string]any{"app": "notesgim", "version": appVersion, "role": role, "urls": lanURLs(port), "dataFile": s.path}
+		if role == "admin" {
+			s.mu.Lock()
+			info["fresh"] = s.fresh
+			s.mu.Unlock()
+		}
+		writeJSON(w, 200, info)
 	})
 
 	// l'app de l'ordinador de la taula (només des del mateix ordinador)
@@ -739,6 +773,7 @@ func (s *store) routes(port int) http.Handler {
 				writeJSON(w, 500, resp)
 				return
 			}
+			s.fresh = "" // (l'avís «comences de zero» ja s'ha vist: la taula ja hi ha desat)
 			resp := map[string]any{"version": s.version, "dataRev": s.dataRev, "taken": taken}
 			if taken > 0 {
 				resp["db"] = s.db
@@ -1136,6 +1171,9 @@ func main() {
 			}
 			appExited.Store(true)
 		}()
+	}
+	if s.fresh != "" {
+		log.Printf("dades de les proves guardades apart com a %s: es comença de zero", s.fresh)
 	}
 	if s.recovered != "" {
 		log.Print(s.recovered)

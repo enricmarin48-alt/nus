@@ -132,6 +132,10 @@
   .badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--line2);color:var(--muted)}
   .badge.ok{background:var(--ok-soft);color:var(--ok)}
   .badge.warn{background:var(--warn-soft);color:var(--warn)}
+  .selbox{width:18px;height:18px;margin:0;vertical-align:middle;cursor:pointer;accent-color:var(--pri)}
+  th.c-sel,td.c-sel{width:28px;text-align:center}
+  .selbar{margin-bottom:10px}
+  .comp-sel{display:inline-flex;vertical-align:-2px;margin-right:4px}
   .chg{color:var(--warn);font-weight:600;margin-top:2px;white-space:normal}
   .badge.bad{background:var(--bad-soft);color:var(--bad)}
   .badge.pri{background:var(--pri-soft);color:var(--pri)}
@@ -294,14 +298,14 @@
     table.cardify tr{display:grid;gap:6px 10px;padding:10px 4px;border-bottom:1px solid var(--line2);align-items:center}
     table.cardify td{display:block;padding:0;border:0}
     table.cardify select,table.cardify input[type=text]{width:100%;max-width:none}
-    table.ins tr{grid-template-columns:60px minmax(0,1fr) 44px;grid-template-areas:"bib name del" "bib team team" "bib st st"}
-    table.ins .c-bib{grid-area:bib}.ins .c-name{grid-area:name}.ins .c-del{grid-area:del}.ins .c-team{grid-area:team}.ins .c-st{grid-area:st}
+    table.ins tr{grid-template-columns:28px 60px minmax(0,1fr) 44px;grid-template-areas:"sel bib name del" "sel bib team team" "sel bib st st"}
+    table.ins .c-sel{grid-area:sel}.ins .c-bib{grid-area:bib}.ins .c-name{grid-area:name}.ins .c-del{grid-area:del}.ins .c-team{grid-area:team}.ins .c-st{grid-area:st}
     table.ins .c-bib input{width:100%}
     table.apps tr{grid-template-columns:1fr 1fr;grid-template-areas:"name name" "f m" "att rule" "act act"}
     table.apps .c-name{grid-area:name}.apps .c-f{grid-area:f}.apps .c-m{grid-area:m}.apps .c-att{grid-area:att}.apps .c-rule{grid-area:rule}.apps .c-act{grid-area:act;text-align:left}
     .ph-lbl{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:2px}
     .gym-cards{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:var(--r)}
-    .gym-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;padding:10px 12px;border-bottom:1px solid var(--line2);align-items:center}
+    .gym-card{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 8px;padding:10px 12px;border-bottom:1px solid var(--line2);align-items:center}
     .gym-card .nm{font-weight:700;font-size:16px;text-decoration:none;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .gym-card .mt{grid-column:1/-1;font-size:13px;color:var(--muted)}
     .gym-card select{grid-column:1/-1;width:100%;max-width:none}
@@ -312,8 +316,8 @@
     dialog#dlg .dlg-actions{position:sticky;bottom:calc(-14px - env(safe-area-inset-bottom));background:#fff;padding:10px 0 calc(10px + env(safe-area-inset-bottom));margin-bottom:calc(-14px - env(safe-area-inset-bottom));border-top:1px solid var(--line2)}
     dialog#dlg .dlg-actions .btn{flex:1;justify-content:center}
     .pick-list{max-height:none}
-    table.clubs tr{grid-template-columns:minmax(0,1fr) auto auto;grid-template-areas:"name name del" "ng nt merge"}
-    table.clubs .c-name{grid-area:name}.clubs .c-ng{grid-area:ng}.clubs .c-nt{grid-area:nt}.clubs .c-merge{grid-area:merge}.clubs .c-del{grid-area:del}
+    table.clubs tr{grid-template-columns:28px minmax(0,1fr) auto auto;grid-template-areas:"sel name name del" "sel ng nt merge"}
+    table.clubs .c-sel{grid-area:sel}.clubs .c-name{grid-area:name}.clubs .c-ng{grid-area:ng}.clubs .c-nt{grid-area:nt}.clubs .c-merge{grid-area:merge}.clubs .c-del{grid-area:del}
     /* amb el teclat gran, o mentre s'escriu, la barra de baix no hi és (no tapa res) */
     body.has-qe nav.bottom,body.kb nav.bottom{display:none}
     body.has-qe main{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
@@ -982,6 +986,7 @@ function defaultDb() {
       levels: ['A', 'B'],
       compDefaults: COMP_DEFAULTS(),
       rev: 4,
+      dataGen: 2,   // dades d'aquestes versions (el programa NotesGim guarda apart les de les versions de proves)
     },
     clubs: [], gymnasts: [], teams: [], competitions: [],
     meta: { created: new Date().toISOString(), updated: null, lastBackup: null, dbId: uid() },
@@ -1039,6 +1044,7 @@ function migrate(d) {
   d.app = 'notesgim'; d.version = 1;
   d.settings = Object.assign({}, base.settings, d.settings || {});
   d.settings.compDefaults = Object.assign(COMP_DEFAULTS(), d.settings.compDefaults || {});
+  d.settings.dataGen = 2;
   if (!Array.isArray(d.settings.levels)) d.settings.levels = base.settings.levels;
   d.settings.categories = normalizeCategories(d.settings.categories);
   d.settings.compDefaults.apparatus = normalizeApps(d.settings.compDefaults.apparatus);
@@ -1193,7 +1199,14 @@ async function serverInit() {
   const rm = (remote.db && remote.db.meta) || {};
   let note = '', before = null;
   await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
-  if (has(remote.db) && has(db)) {
+  let fresh = '';
+  if (info.fresh && !has(remote.db)) {
+    // el programa comença de zero (les dades de les versions de proves s'han guardat apart): les que hi havia en
+    // aquesta finestra tampoc no es fan servir (es guarden, per si de cas)
+    if (has(db)) { before = JSON.stringify(db); keepBefore(before); }
+    db = migrate(remote.db);
+    fresh = `Comences de zero. Les dades de les proves d’abans no s’han esborrat: són al fitxer «${info.fresh}», a la mateixa carpeta que les dades (es poden recuperar amb «Restaura una còpia…», a Configuració).`;
+  } else if (has(remote.db) && has(db)) {
     if (rm.dbId && db.meta.dbId && rm.dbId !== db.meta.dbId) {
       // el fitxer és d'unes altres dades (un altre ordinador, un USB, una còpia posada a mà): manen les del fitxer.
       // Les d'aquesta finestra es poden descarregar des de l'avís
@@ -1209,6 +1222,7 @@ async function serverInit() {
   flush();
   render();
   if (note) toast(note + ' També des de Configuració → Dades.', 'bad', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
+  if (fresh) toast(fresh, 'ok');
   setSaveErr(remote.saveErr);
   serverWaitLoop();
   return true;
@@ -1692,7 +1706,7 @@ function route() {
     ui.compId = parts[1]; ui.tab = parts[2] || null;
   }
 }
-addEventListener('hashchange', () => { route(); render(); window.scrollTo(0, 0); });
+addEventListener('hashchange', () => { ui.sel = {}; route(); render(); window.scrollTo(0, 0); });
 const go = hash => { if (location.hash === hash) render(); else location.hash = hash; };
 
 /* ═══════════════════════════════════════════ avisos, diàlegs, desfer */
@@ -1920,10 +1934,10 @@ views.competicions = () => {
   return `<section>
     <div class="page-head"><h1>Competicions</h1><div class="actions"><button class="btn primary" data-act="newComp">＋ Nova competició</button></div></div>
     ${intro}${feat}
-    ${comps.length ? `<div class="cards">${comps.map(c => {
+    ${comps.length ? `${selBar('comps', { all: 'Marca-les totes', del: 'Esborra les marcades', act: 'delCompsSel' })}<div class="cards">${comps.map(c => {
       const st = compStats(c);
       return `<div class="card comp-card">
-        <h3>${h(c.name)} ${c.locked ? '<span class="badge">bloquejada</span>' : ''}</h3>
+        <h3><label class="comp-sel">${selBox('comps', c.id, c.name)}</label> ${h(c.name)} ${c.locked ? '<span class="badge">bloquejada</span>' : ''}</h3>
         <div class="meta">${fmtDate(c.date)}${c.place ? ' · ' + h(c.place) : ''}${c.season ? ' · Curs ' + h(c.season) : ''}</div>
         <div class="stats"><div><b>${st.entries}</b>${st.entries === 1 ? 'gimnasta' : 'gimnastes'}</div><div><b>${st.teams}</b>${st.teams === 1 ? 'equip' : 'equips'}</div>
           <div><b>${st.total ? Math.round(100 * st.done / st.total) : 0}%</b>notes entrades</div></div>
@@ -2025,7 +2039,8 @@ function tabInscripcions(c) {
     <div class="right hide-ph">${more}</div><div class="right show-ph">${menu(more)}</div></div>`;
   if (!groups.length) return tools + `<div class="empty">Encara no hi ha cap gimnasta inscrita.<br>Clica «Inscriu gimnastes»: els equips es fan sols (els de les fitxes i, si no en tenen, per entitat).</div>`;
   const q = norm(ui.insQ || '');
-  return tools + groups.map(g => {
+  const selK = 'entries:' + c.id;
+  return tools + insSelBar(c) + groups.map(g => {
     const teams = compTeamsOf(c, g);
     const teamChips = teams.map(t => {
       const n = teamSize(c, t), np = teamNP(c, t);
@@ -2038,6 +2053,7 @@ function tabInscripcions(c) {
       const gym = gymById(e.gymnastId), club = clubName(e.clubId);
       const hit = !q || norm(`${gymName(gym)} ${club} ${e.bib}`).includes(q) || String(e.bib) === q;
       return `<tr class="${e.status === 'np' ? 'np' : ''} ${hit ? '' : 'hidden'}" data-q="${h(norm(`${gymName(gym)} ${club} ${e.bib}`))}" data-bib="${h(e.bib)}">
+        <td class="c-sel">${dis ? '' : selBox(selK, e.id, gymName(gym))}</td>
         <td class="c-bib"><input type="text" inputmode="numeric" pattern="[0-9]*" class="bib" value="${h(e.bib)}" data-chg="bib" data-id="${e.id}" ${dis} aria-label="Dorsal de ${h(gymName(gym))}" autocomplete="off"></td>
         <td class="c-name"><a href="#" data-act="editEntry" data-id="${e.id}">${h(gymName(gym))}</a>${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}${(w => w ? ` <span class="badge warn" title="${h(w)}">pot fer equip</span>` : '')(couldTeam(c, e, g))}<span class="sub-ph">${h(club)}</span></td>
         <td class="c-club hide-ph">${h(club)}</td>
@@ -2050,8 +2066,8 @@ function tabInscripcions(c) {
       <div class="card-head"><h3>${h(groupLabel(g))}</h3><span class="muted">${plural(g.entries.length, 'gimnasta', 'gimnastes')} · ${plural(teams.length, 'equip', 'equips')}</span>
         <div class="actions"><button class="btn sm" data-act="newGymHere" data-g="${h(g.key)}" ${dis}>＋ Gimnasta nova</button><button class="btn sm" data-act="newCompTeam" data-g="${h(g.key)}" ${dis}>＋ Equip</button></div></div>
       ${teams.length ? `<div class="chips" style="margin-bottom:10px">${teamChips}</div>` : ''}
-      <div class="tbl-wrap"><table class="tbl cardify ins"><thead><tr><th>Dorsal</th><th>Gimnasta</th><th class="hide-ph">Entitat</th><th>Equip</th><th>Estat</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="6" class="muted">Cap gimnasta en aquest grup.</td></tr>`}</tbody></table></div></div>`;
+      <div class="tbl-wrap"><table class="tbl cardify ins"><thead><tr><th class="c-sel"></th><th>Dorsal</th><th>Gimnasta</th><th class="hide-ph">Entitat</th><th>Equip</th><th>Estat</th><th></th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="muted">Cap gimnasta en aquest grup.</td></tr>`}</tbody></table></div></div>`;
   }).join('');
 }
 
@@ -3042,18 +3058,19 @@ function gymTable() {
   if (!list.length) return `<div class="empty">Cap gimnasta coincideix amb la cerca.</div>`;
   const usage = {};
   for (const c of db.competitions) for (const e of c.entries) usage[e.gymnastId] = (usage[e.gymnastId] || 0) + 1;
-  if (isPhone()) return `<div class="gym-cards">${list.map(g => {
+  const bar = selBar('gyms', { all: 'Marca-les totes', del: 'Esborra les marcades', act: 'delGymsSel' });
+  if (isPhone()) return bar + `<div class="gym-cards">${list.map(g => {
     const wrong = catMismatch(g);
-    return `<div class="gym-card ${g.archived ? 'np' : ''}"><a href="#" class="nm" data-act="editGym" data-id="${g.id}">${h(gymName(g))}</a>
+    return `<div class="gym-card ${g.archived ? 'np' : ''}">${selBox('gyms', g.id, gymName(g))}<a href="#" class="nm" data-act="editGym" data-id="${g.id}">${h(gymName(g))}</a>
       <span class="small muted">${usage[g.id] ? plural(usage[g.id], 'competició', 'competicions') : ''}</span>
       <div class="mt">${h(clubName(g.clubId) || 'sense entitat')} · ${h(g.category || '¿categoria?')} ${h(g.level)} ${genderShort(g.gender).toLowerCase()}${g.birthYear ? ' · ' + h(g.birthYear) : ''}${wrong ? ` <span class="badge warn">→ ${h(wrong)}</span>` : ''}${g.archived ? ' <span class="badge">arxivada</span>' : ''}</div>
       <select class="teamsel" data-chg="gymTeamInline" data-id="${g.id}" aria-label="Equip de ${h(gymName(g))}">${teamOptionsFor(g, gymTeamValue(g))}</select></div>`;
   }).join('')}</div>`;
-  return `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nom</th><th>Cognoms</th><th>Entitat</th><th>Gènere</th><th>Categoria</th><th>Nivell</th><th>Any</th><th>Equip</th><th class="num">Compet.</th><th></th></tr></thead><tbody>
+  return bar + `<div class="tbl-wrap"><table class="tbl"><thead><tr><th class="c-sel"></th><th>Nom</th><th>Cognoms</th><th>Entitat</th><th>Gènere</th><th>Categoria</th><th>Nivell</th><th>Any</th><th>Equip</th><th class="num">Compet.</th><th></th></tr></thead><tbody>
     ${list.map(g => {
       const teams = `<select class="teamsel" data-chg="gymTeamInline" data-id="${g.id}" aria-label="Equip de ${h(gymName(g))}">${teamOptionsFor(g, gymTeamValue(g))}</select>`;
       const wrong = catMismatch(g);
-      return `<tr class="${g.archived ? 'np' : ''}"><td><a href="#" data-act="editGym" data-id="${g.id}">${h(g.name)}</a>${g.archived ? ' <span class="badge">arxivada</span>' : ''}</td><td>${h(g.surname)}</td>
+      return `<tr class="${g.archived ? 'np' : ''}"><td class="c-sel">${selBox('gyms', g.id, gymName(g))}</td><td><a href="#" data-act="editGym" data-id="${g.id}">${h(g.name)}</a>${g.archived ? ' <span class="badge">arxivada</span>' : ''}</td><td>${h(g.surname)}</td>
       <td>${h(clubName(g.clubId))}</td><td>${genderShort(g.gender)}</td>
       <td>${h(g.category)}${wrong ? ` <span class="badge warn" title="Per l’any de naixement li toca ${h(wrong)}">→ ${h(wrong)}</span>` : ''}</td><td>${h(g.level)}</td><td>${h(g.birthYear)}</td><td class="small">${teams}</td>
       <td class="num">${usage[g.id] || 0}</td>
@@ -3628,14 +3645,15 @@ views.equips = () => {
       <button class="btn" data-act="autoTeams" title="Proposa equips amb les gimnastes de cada entitat, gènere, categoria i nivell que encara no en tenen">Fes equips per entitat</button></div></div>
     <div class="note">Els equips són de ${S().compDefaults.teamMin} a ${S().compDefaults.teamMax} gimnastes del mateix gènere, categoria i nivell, i són els que surten a la fitxa de cada gimnasta. No cal fer-los a mà: en inscriure les gimnastes a una competició, les de cada entitat formen equip soles. Si un dia canvia alguna gimnasta d’equip, es canvia dins la competició i aquí no es toca.</div>
     ${cats.length > 1 ? `<div class="pills"><button class="pill ${!ui.tCat ? 'on' : ''}" data-act="pickTCat" data-c="">Totes</button>${cats.map(c => `<button class="pill ${ui.tCat === c ? 'on' : ''}" data-act="pickTCat" data-c="${h(c)}">${h(c)}</button>`).join('')}</div>` : ''}
+    ${db.teams.length ? selBar('teams', { all: 'Marca’ls tots', del: 'Esborra els marcats', act: 'delTeamsSel' }) : ''}
     ${!db.teams.length ? `<div class="empty">Encara no hi ha cap equip.</div>` : groups.filter(g => !ui.tCat || g.category === ui.tCat).map(g => {
       const teams = db.teams.filter(t => sameGroup(t, g)).sort((a, b) => coll(a.name, b.name));
       return `<div class="card"><div class="card-head"><h3>${h(groupLabel(g))}</h3><span class="muted">${plural(teams.length, 'equip', 'equips')}</span></div>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Equip</th><th class="hide-ph">Entitat</th><th>Gimnastes</th><th></th></tr></thead><tbody>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th class="c-sel"></th><th>Equip</th><th class="hide-ph">Entitat</th><th>Gimnastes</th><th></th></tr></thead><tbody>
         ${teams.map(t => {
           const n = t.memberIds.length, mn = S().compDefaults.teamMin, mx = S().compDefaults.teamMax;
           const off = t.memberIds.map(gymById).filter(m => m && !sameGroup(m, t));
-          return `<tr><td><a href="#" data-act="editTeam" data-id="${t.id}"><b>${h(t.name)}</b></a><span class="sub-ph">${h(clubName(t.clubId))}</span></td><td class="hide-ph">${h(clubName(t.clubId))}</td>
+          return `<tr><td class="c-sel">${selBox('teams', t.id, t.name)}</td><td><a href="#" data-act="editTeam" data-id="${t.id}"><b>${h(t.name)}</b></a><span class="sub-ph">${h(clubName(t.clubId))}</span></td><td class="hide-ph">${h(clubName(t.clubId))}</td>
           <td><span class="badge ${n < mn ? 'bad' : n > mx ? 'warn' : 'ok'}">${n}</span> <span class="small">${t.memberIds.map(id => h(gymName(gymById(id)))).join(', ')}</span>
             ${off.length ? `<br><span class="badge warn" title="Ara tenen una altra categoria, gènere o nivell a la fitxa">No són d’aquest grup: ${off.map(m => h(gymName(m)) + ' (' + h(m.category) + ')').join(', ')}</span>` : ''}</td>
           <td class="num nowrap"><button class="icon-btn" data-act="editTeam" data-id="${t.id}" title="Edita" aria-label="Edita ${h(t.name)}">✎</button><button class="icon-btn hide-ph" data-act="delTeam" data-id="${t.id}" title="Esborra" aria-label="Esborra ${h(t.name)}">✕</button></td></tr>`;
@@ -3715,8 +3733,8 @@ views.entitats = () => {
   return `<section><div class="page-head"><h1>Entitats</h1><span class="muted">${plural(clubs.length, 'entitat', 'entitats')}</span>
     <div class="actions"><button class="btn primary" data-act="newClub">＋ Nova entitat</button></div></div>
     <p class="muted small">Les entitats es creen soles quan les escrius a la fitxa d’una gimnasta. Aquí les pots reanomenar o, si n’hi ha dues que són la mateixa (p. ex. «CG Lleida» i «C.G. Lleida»), fusionar-les.</p>
-    ${clubs.length ? `<div class="tbl-wrap"><table class="tbl cardify clubs"><thead><tr><th>Nom</th><th class="num">Gimnastes</th><th class="num">Equips</th><th>Fusiona amb…</th><th></th></tr></thead><tbody>
-    ${clubs.map(c => `<tr><td class="c-name"><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat">
+    ${clubs.length ? `${selBar('clubs', { all: 'Marca-les totes', del: 'Esborra les marcades', act: 'delClubsSel' })}<div class="tbl-wrap"><table class="tbl cardify clubs"><thead><tr><th class="c-sel"></th><th>Nom</th><th class="num">Gimnastes</th><th class="num">Equips</th><th>Fusiona amb…</th><th></th></tr></thead><tbody>
+    ${clubs.map(c => `<tr><td class="c-sel">${selBox('clubs', c.id, c.name)}</td><td class="c-name"><input type="text" value="${h(c.name)}" data-chg="clubName" data-id="${c.id}" style="width:100%;max-width:360px" aria-label="Nom de l’entitat">
         ${(c.contacts || []).length ? `<div class="small muted" style="margin-top:4px">${c.contacts.map(p => `${h(p.role)}: ${h(p.name || '—')}${p.phones ? ` · ${h(p.phones)}` : ''}${p.email ? ` · ${h(p.email)}` : ''}`).join('<br>')}</div>` : ''}</td>
       <td class="num c-ng"><span class="ph-lbl">Gimnastes</span>${nG(c.id)}</td><td class="num c-nt"><span class="ph-lbl">Equips</span>${nT(c.id)}</td>
       <td class="c-merge"><span class="ph-lbl">Fusiona amb…</span><select data-chg="clubMerge" data-id="${c.id}" aria-label="Fusiona ${h(c.name)} amb"><option value="">—</option>${clubs.filter(o => o.id !== c.id).map(o => `<option value="${o.id}">${h(o.name)}</option>`).join('')}</select></td>
@@ -3744,14 +3762,14 @@ views.configuracio = () => {
       <div class="note">Les dades es desen al fitxer <b>${h(server.dataFile || 'notesgim-dades.json')}</b> d’aquest ordinador, i cada 10 minuts se’n fa una còpia a la carpeta <b>copies-notesgim</b>, al costat. ${lastBk}</div>
       <div id="offstat" class="small" style="margin-bottom:10px"></div>
       <div class="toolbar" style="margin-top:10px"><button class="btn" data-act="revealData">Obre la carpeta de les dades</button><button class="btn" data-act="backup">Descarrega còpia de seguretat</button><button class="btn" data-act="restore">Restaura una còpia…</button>
-        <div class="right"><button class="btn danger" data-act="wipe">Esborra totes les dades</button></div></div></div>`
+        <div class="right"><button class="btn danger" data-act="wipe" title="Tria què vols esborrar (o tot) i s’esborra d’un cop">🗑 Esborra-ho tot…</button></div></div></div>`
     : `<div class="card"><h3 style="margin-bottom:10px">Dades i còpies de seguretat</h3>
       <div class="note">Les dades es desen soles en <b>aquest ${isPhone() ? 'aparell' : 'ordinador'}</b> (en aquest navegador). En un altre aparell o un altre navegador no hi seran: porta-hi una còpia. ${lastBk}</div>
       <div id="offstat" class="small" style="margin-bottom:10px"></div>
       ${fileBox}
       <p class="small muted">Espai fet servir: ${Math.max(1, Math.round(JSON.stringify(db).length / 1024))} kB de ~5.000 kB.</p>
       <div class="toolbar" style="margin-top:10px"><button class="btn" data-act="backup">${canShareFiles() ? 'Desa o envia una còpia' : 'Descarrega còpia de seguretat'}</button><button class="btn" data-act="restore">Restaura una còpia…</button>
-        <div class="right"><button class="btn danger" data-act="wipe">Esborra totes les dades</button></div></div></div>`;
+        <div class="right"><button class="btn danger" data-act="wipe" title="Tria què vols esborrar (o tot) i s’esborra d’un cop">🗑 Esborra-ho tot…</button></div></div></div>`;
   return `<section><div class="page-head"><h1>Configuració</h1></div>
     ${server.on || isStandalone() ? '' : `<div class="card"><div class="card-head"><h3>Instal·la NotesGim com una app</h3><div class="actions"><button class="btn primary" data-act="install">${installEvt ? 'Instal·la l’app' : 'Com s’instal·la'}</button></div></div>
       <p class="small muted" style="margin:0">Amb icona pròpia i sense internet: a l’ordinador, el programa NotesGim.exe (o «Instal·la» de Chrome o Edge); al mòbil o la tauleta, «Instal·la» o «Afegeix a la pantalla d’inici».</p></div>`}
@@ -4450,14 +4468,6 @@ const actions = {
   },
   fileConflict: () => resolveFileConflict(),
   linkFile: () => linkFile('new'), openLinkFile: () => linkFile('open'), unlinkFile: () => unlinkFile(), regrantFile: () => regrantFile(),
-  wipe: async () => {
-    const ok = await confirmBox(`Segur que vols <b>esborrar totes les dades</b> (gimnastes, equips, competicions i notes)?<br>Abans es descarregarà una còpia de seguretat${fileHandle ? ` i el fitxer «${h(fileHandle.name)}» es desvincularà (no es tocarà)` : ''}.`, { ok: 'Esborra-ho tot', danger: true, typed: 'ESBORRA' });
-    if (!ok) return;
-    db.meta.lastBackup = new Date().toISOString(); flush();
-    downloadBlob(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }), `notesgim-copia-${stamp()}.json`);
-    if (fileHandle) await unlinkFile();
-    withUndo('S’han esborrat totes les dades (s’ha descarregat una còpia abans).', () => { const s = db.settings; db = defaultDb(); db.settings = s; }, { replace: true });
-  },
 
   // competicions
   // competició nova: si ja n'hi ha d'aquest curs, es proposa copiar la darrera (jornada següent)
@@ -5623,6 +5633,9 @@ const inputs = {
       $$('tr[data-q]', card).forEach(tr => { const hit = !q || tr.dataset.q.includes(q) || tr.dataset.bib === q; tr.classList.toggle('hidden', !hit); any = any || hit; });
       card.classList.toggle('hidden', !any);
     });
+    // «Marca-les totes» i «Treu les marcades» compten només les que es veuen
+    const c = curComp();
+    if (c) { insSelBar(c); selRefresh('entries:' + c.id); }
   },
   // en escriure l'any de naixement, la categoria es posa sola
   gymYear: el => {
@@ -5794,6 +5807,189 @@ document.addEventListener('focusout', () => setTimeout(() => { if (mqLater && !a
 // en girar el mòbil amb el teclat gran, es torna a posar a la vista
 try { matchMedia('(orientation: landscape)').addEventListener('change', () => { if ($('#qe') && isPhone() && !anyField()) qeIntoView(); }); } catch (_) {}
 document.addEventListener('click', e => { if (!e.target.closest || !e.target.closest('.menu')) closeMenus(); }, true);
+
+/* ─── esborrar de cop: a cada llista, caselles per marcar, «Marca-les totes» i «Esborra les marcades» */
+const selSet = k => { ui.sel = ui.sel || {}; return ui.sel[k] || (ui.sel[k] = new Set()); };
+const selClear = k => { if (ui.sel) delete ui.sel[k]; };
+const selBox = (k, id, label) => `<input type="checkbox" class="selbox" data-chg="selOne" data-k="${h(k)}" data-id="${h(id)}" ${selSet(k).has(id) ? 'checked' : ''} aria-label="Marca ${h(label)}">`;
+// les que es veuen ara a la llista (amb la cerca i els filtres): «Marca-les totes» i «Esborra» només fan servir aquestes
+function selVisible(k) {
+  if (k === 'gyms') return filteredGyms().map(g => g.id);
+  if (k === 'teams') return db.teams.filter(t => !ui.tCat || t.category === ui.tCat).map(t => t.id);
+  if (k === 'clubs') return db.clubs.map(c => c.id);
+  if (k === 'comps') return db.competitions.map(c => c.id);
+  if (k.startsWith('entries:')) {
+    const c = compById(k.slice(8)), q = norm(ui.insQ || '');
+    return c ? c.entries.filter(e => !q || norm(`${entryName(e)} ${clubName(e.clubId)} ${e.bib}`).includes(q) || String(e.bib) === q).map(e => e.id) : [];
+  }
+  return [];
+}
+const selPicked = k => { const s = selSet(k); return selVisible(k).filter(id => s.has(id)); };
+const insSelBar = c => selBar('entries:' + c.id, { all: 'Marca-les totes', del: 'Treu les marcades de la competició', act: 'delEntriesSel', dis: c.locked ? 'disabled' : '' });
+const selOpts = {};
+function selBar(k, { all, del, act, dis = '' }) {
+  selOpts[k] = { all, del, act, dis };
+  const ids = selVisible(k), n = selPicked(k).length, every = ids.length > 0 && n === ids.length;
+  return `<div class="toolbar selbar" data-k="${h(k)}"><label class="chk"><input type="checkbox" data-chg="selAll" data-k="${h(k)}" ${every ? 'checked' : ''} ${ids.length && !dis ? '' : 'disabled'}> ${all} (${ids.length})</label>
+    <button class="btn sm danger" data-act="${act}" ${n && !dis ? '' : 'disabled'}>🗑 ${del}${n ? ` (${n})` : ''}</button>
+    ${n ? `<button class="btn sm ghost" data-act="selNone" data-k="${h(k)}">Desmarca-les</button>` : ''}</div>`;
+}
+// en marcar-ne una no es torna a pintar la llista (no es mou res de lloc): només les caselles i la barra
+function selRefresh(k) {
+  const s = selSet(k), o = selOpts[k];
+  $$('input.selbox').forEach(i => { if (i.dataset.k === k) i.checked = s.has(i.dataset.id); });
+  if (!o) return;
+  $$('.selbar').forEach(b => {
+    if (b.dataset.k !== k) return;
+    const a = document.activeElement, was = a && b.contains(a) ? (a.getAttribute('data-chg') || a.getAttribute('data-act')) : null;
+    const tmp = document.createElement('div'); tmp.innerHTML = selBar(k, o);
+    const nb = tmp.firstElementChild; b.replaceWith(nb);
+    const f = was && [...nb.querySelectorAll('[data-chg],[data-act]')].find(x => (x.getAttribute('data-chg') || x.getAttribute('data-act')) === was && !x.disabled);
+    if (f) f.focus();
+  });
+}
+changes.selOne = el => { const s = selSet(el.dataset.k); if (el.checked) s.add(el.dataset.id); else s.delete(el.dataset.id); selRefresh(el.dataset.k); };
+changes.selAll = el => { const s = selSet(el.dataset.k), ids = selVisible(el.dataset.k); for (const id of ids) { if (el.checked) s.add(id); else s.delete(id); } selRefresh(el.dataset.k); };
+Object.assign(actions, {
+  selNone: el => { selClear(el.dataset.k); selRefresh(el.dataset.k); },
+  delGymsSel: async () => {
+    const gs = selPicked('gyms').map(gymById).filter(Boolean);
+    if (!gs.length) return;
+    const used = gs.filter(g => db.competitions.some(c => c.entries.some(e => e.gymnastId === g.id)));
+    const N = plural(gs.length, 'gimnasta', 'gimnastes');
+    let pick = 'delete';
+    if (used.length) {
+      pick = await choiceBox(`Esborrar ${N}? ${used.length === gs.length ? (gs.length === 1 ? 'Surt' : 'Totes surten') : `${plural(used.length, 'surt', 'surten')}`} a alguna competició.<br><br>
+        <b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.<br><b>Arxivar</b>: deixen de sortir a les llistes i surten de les competicions que vénen on encara no tenen notes; les passades es mantenen.`,
+        [{ value: 'delete', label: 'Esborra-les del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva-les' }]);
+      if (!pick) return;
+    } else if (!(await confirmBox(`Esborrar ${N}? Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
+    withUndo(pick === 'archive' ? `${plural(gs.length, 'gimnasta arxivada', 'gimnastes arxivades')}.` : `${plural(gs.length, 'gimnasta esborrada', 'gimnastes esborrades')}.`, () => {
+      const set = new Set(gs.map(g => g.id));
+      if (pick === 'archive') { for (const id of set) { const g = gymById(id); if (g) archiveGym(g); } }
+      else {
+        const touched = new Set(db.teams.filter(t => t.memberIds.some(id => set.has(id))).map(t => t.id));
+        db.gymnasts = db.gymnasts.filter(g => !set.has(g.id));
+        db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => !set.has(id)); });
+        // (els equips que es queden sense ningú per aquest esborrat, també fora)
+        db.teams = db.teams.filter(t => !(touched.has(t.id) && !t.memberIds.length));
+        db.competitions.forEach(c => { c.entries = c.entries.filter(e => !set.has(e.gymnastId)); pruneAutoTeams(c); });
+      }
+      selClear('gyms');
+    });
+  },
+  // (com «Esborra» d'un equip: les gimnastes es tornen a agrupar soles o queden com a individuals; les dels equips que
+  // va dir l'entitat al full d'inscripció, sempre com a individuals)
+  delTeamsSel: async () => {
+    const ts = selPicked('teams').map(teamById).filter(Boolean);
+    if (!ts.length) return;
+    const declared = t => t.form === true || clubDeclared(null, t.clubId, t);
+    const nD = ts.filter(declared).length, N = plural(ts.length, 'equip', 'equips');
+    const pick = await choiceBox(`Esborrar ${N}? Les gimnastes no s’esborren, i les competicions passades no canvien.<br><br>
+      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):${nD ? `<br><span class="small muted">(${nD === ts.length ? (ts.length === 1 ? 'És un equip que va dir l’entitat' : 'Són equips que van dir les entitats') : `${plural(nD, 'és un equip que va dir l’entitat', 'són equips que van dir les entitats')}`} al full d’inscripció: les seves gimnastes queden com a individuals; si cal, posa-les a un altre equip a mà.)</span>` : ''}`,
+      nD === ts.length ? [{ value: 'solo', label: ts.length === 1 ? 'Esborra’l (queden com a individuals)' : 'Esborra’ls (queden com a individuals)', cls: 'danger' }]
+        : [{ value: 'auto', label: 'Es tornen a agrupar soles', cls: '' }, { value: 'solo', label: 'Queden com a individuals', cls: 'danger' }]);
+    if (!pick) return;
+    withUndo(`${plural(ts.length, 'equip esborrat', 'equips esborrats')}: ${pick === 'solo' ? 'les seves gimnastes queden com a individuals' : 'les seves gimnastes es tornen a agrupar soles'}${pick === 'auto' && nD ? ` (les de ${nD === 1 ? 'l’equip que va dir l’entitat' : 'els equips que van dir les entitats'}, com a individuals)` : ''}.`, () => {
+      const solo = new Set(ts.filter(t => pick === 'solo' || declared(t)).map(t => t.id)), set = new Set(ts.map(t => t.id));
+      for (const t of ts) if (solo.has(t.id)) for (const id of t.memberIds) { const g = gymById(id); if (g) g.noTeam = true; }
+      db.teams = db.teams.filter(t => !set.has(t.id));
+      for (const c of db.competitions.filter(followsRecords)) {
+        const cts = c.teams.filter(x => set.has(x.sourceTeamId));
+        if (!cts.length) continue;
+        const again = [];
+        for (const ct of cts) {
+          const freed = c.entries.filter(e => e.teamId === ct.id), alone = solo.has(ct.sourceTeamId);
+          freed.forEach(e => { e.teamId = null; if (alone) e.noAuto = true; else { delete e.noAuto; again.push(e); } });
+        }
+        c.teams = c.teams.filter(x => !cts.includes(x));
+        if (again.length && c.autoTeams) autoCompTeams(c, again);
+        pruneAutoTeams(c);
+      }
+      selClear('teams');
+    });
+  },
+  delClubsSel: async () => {
+    const cs = selPicked('clubs').map(clubById).filter(Boolean);
+    if (!cs.length) return;
+    const set = new Set(cs.map(c => c.id)), nG = db.gymnasts.filter(g => set.has(g.clubId)).length;
+    const N = plural(cs.length, 'entitat', 'entitats');
+    let pick = 'only';
+    if (nG || db.competitions.some(c => c.entries.some(e => set.has(e.clubId)))) {
+      pick = await choiceBox(`Esborrar ${N}? Hi ${nG === 1 ? 'ha 1 gimnasta' : `ha ${nG} gimnastes`} d’aquestes entitats.<br><br>
+        <b>Amb les seves gimnastes</b>: també s’esborren les fitxes, els equips i les inscripcions i notes d’aquestes entitats a totes les competicions.<br><b>Només les entitats</b>: les gimnastes es queden sense entitat.`,
+        [{ value: 'all', label: 'Esborra-les amb les seves gimnastes', cls: 'danger' }, { value: 'only', label: 'Només les entitats' }]);
+      if (!pick) return;
+    } else if (!(await confirmBox(`Esborrar ${N}? Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
+    withUndo(pick === 'all' ? `${plural(cs.length, 'entitat esborrada', 'entitats esborrades')}, amb les seves gimnastes.` : `${plural(cs.length, 'entitat esborrada', 'entitats esborrades')}; les seves gimnastes es queden sense entitat.`, () => {
+      if (pick === 'all') {
+        const gyms = new Set(db.gymnasts.filter(g => set.has(g.clubId)).map(g => g.id));
+        db.gymnasts = db.gymnasts.filter(g => !gyms.has(g.id));
+        db.teams = db.teams.filter(t => !set.has(t.clubId));
+        db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => !gyms.has(id)); });
+        db.competitions.forEach(c => { c.entries = c.entries.filter(e => !set.has(e.clubId) && !gyms.has(e.gymnastId)); c.teams = c.teams.filter(t => !set.has(t.clubId)); pruneAutoTeams(c); });
+      } else {
+        const fix = o => { if (set.has(o.clubId)) o.clubId = null; };
+        db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+      }
+      db.clubs = db.clubs.filter(c => !set.has(c.id));
+      selClear('clubs');
+    });
+  },
+  delCompsSel: async () => {
+    const cs = selPicked('comps').map(compById).filter(Boolean);
+    if (!cs.length) return;
+    const N = plural(cs.length, 'competició', 'competicions');
+    if (!(await confirmBox(`Esborrar ${N} (${cs.map(c => h(c.name)).join(', ')}) amb totes les seves inscripcions i notes? Les gimnastes no s’esborren. Es pot desfer.`, { ok: 'Esborra', danger: true }))) return;
+    withUndo(`${plural(cs.length, 'competició esborrada', 'competicions esborrades')}.`, () => { const set = new Set(cs.map(c => c.id)); db.competitions = db.competitions.filter(c => !set.has(c.id)); selClear('comps'); });
+  },
+  delEntriesSel: async () => {
+    const c = curComp(); if (!c || c.locked) return;
+    const k = 'entries:' + c.id, es = selPicked(k).map(id => c.entries.find(e => e.id === id)).filter(Boolean);
+    if (!es.length) return;
+    const sc = es.filter(hasScores).length, N = plural(es.length, 'gimnasta', 'gimnastes');
+    if (!(await confirmBox(`Treure ${N} d’aquesta competició?${sc ? ` <b>${plural(sc, 'ja té notes', 'ja tenen notes')}</b>: també es perdran.` : ''} Les fitxes de les gimnastes no s’esborren. Es pot desfer.`, { ok: 'Treu-les', danger: true }))) return;
+    withUndo(`${N} fora de la competició.`, () => { const cc = compById(c.id), set = new Set(es.map(e => e.id)); cc.entries = cc.entries.filter(e => !set.has(e.id)); pruneAutoTeams(cc); selClear(k); });
+  },
+  // «Esborra dades…»: es marca què (o tot) i s'esborra d'un cop
+  wipe: () => {
+    const nG = db.gymnasts.length, nT = db.teams.length, nC = db.competitions.length, nE = db.clubs.length;
+    openDialog(`<form data-form="wipe"><h2>Esborra dades</h2>
+      <p>Marca el que vols esborrar. Abans ${server.on && server.role === 'admin' ? 'se’n guarda una còpia a la carpeta <b>copies-notesgim</b>' : 'se’n descarrega una còpia de seguretat'}, i després encara es pot desfer.</p>
+      <div class="pick-list">
+        <label class="chk"><input type="checkbox" name="w" value="comps" checked> <span><b>Competicions</b> (${nC}): inscripcions, notes i equips de cada dia</span></label>
+        <label class="chk"><input type="checkbox" name="w" value="gyms" checked> <span><b>Gimnastes i equips</b> (${plural(nG, 'gimnasta', 'gimnastes')}, ${plural(nT, 'equip', 'equips')}); també se’n treuen de les competicions</span></label>
+        <label class="chk"><input type="checkbox" name="w" value="clubs" checked> <span><b>Entitats</b> (${nE}), amb els seus contactes</span></label>
+        <label class="chk"><input type="checkbox" name="w" value="cfg"> <span><b>Configuració</b>: categories, nivells, aparells, logos i noms dels fulls tornen a ser els del Consell</span></label></div>
+      <div class="toolbar" style="margin-top:8px"><button type="button" class="btn sm" data-act="wipeMarkAll">Marca-ho tot</button></div>
+      <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn danger solid">🗑 Esborra</button></div></form>`);
+  },
+  wipeMarkAll: () => $$('#dlg input[name=w]').forEach(i => { i.checked = true; }),
+});
+forms.wipe = async f => {
+  const w = new FormData(f).getAll('w');
+  closeDialog();
+  if (!w.length) { toast('No has marcat res: no s’ha esborrat res.', 'bad'); return; }
+  const all = ['comps', 'gyms', 'clubs'].every(k => w.includes(k));
+  // una còpia de com era (al programa NotesGim la fa ell mateix a copies-notesgim, abans de substituir les dades)
+  db.meta.lastBackup = new Date().toISOString(); flush();
+  if (!(server.on && server.role === 'admin')) downloadBlob(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }), `notesgim-copia-${stamp()}.json`);
+  if (all && fileHandle) await unlinkFile();
+  const what = [w.includes('comps') && 'les competicions', w.includes('gyms') && 'les gimnastes i els equips', w.includes('clubs') && 'les entitats', w.includes('cfg') && 'la configuració'].filter(Boolean);
+  const txt = what.length > 1 ? `${what.slice(0, -1).join(', ')} i ${what[what.length - 1]}` : what[0];
+  withUndo(`Esborrat: ${txt}. ${server.on && server.role === 'admin' ? 'Abans se n’ha guardat una còpia a copies-notesgim.' : 'Abans se n’ha descarregat una còpia.'}`, () => {
+    if (w.includes('comps')) db.competitions = [];
+    if (w.includes('gyms')) { db.gymnasts = []; db.teams = []; for (const c of db.competitions) { c.entries = []; c.teams = []; } }
+    if (w.includes('clubs')) {
+      db.clubs = [];
+      const fix = o => { o.clubId = null; };
+      db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
+    }
+    if (w.includes('cfg')) db.settings = defaultDb().settings;
+    ui.sel = {}; ui.insQ = ''; ui.gSearch = ''; ui.gClub = ''; ui.gCat = ''; ui.gLevel = ''; ui.gGender = ''; ui.gArchived = false; ui.gWrong = false; ui.tCat = '';
+  }, { replace: true });
+  if (all) go('#/competicions');
+};
 
 /* ═══════════════════════════════════════════ esdeveniments */
 document.addEventListener('click', e => {

@@ -305,12 +305,15 @@ await step('un equip que es queda amb 2 per una NP s’anul·la', async () => {
   assert.equal(await page.locator('tr.team-row').count(), 3);
 });
 
-await step('les dades es mantenen després de tancar i tornar a obrir', async () => {
+await step('les dades es mantenen després de tancar i tornar a obrir (i, amb dues pestanyes, només la de l’última pot canviar-les)', async () => {
   const p2 = await ctx.newPage();
   await p2.goto(url + '#/gimnastes');
   await p2.waitForSelector('#gymtable >> text=Laia');
   assert.equal(await p2.locator('#gymtable tbody tr').count(), 12);
+  // mentre l'altra és oberta, aquesta és en pausa; quan es tanca, aquesta continua
+  await page.waitForSelector('#pause[open] >> text=Aquesta finestra està en pausa: NotesGim s’està fent servir en una altra finestra.');
   await p2.close();
+  await page.waitForFunction(() => !win.paused && !document.querySelector('#pause[open]'));
 });
 
 await step('jornada següent: es proposa copiar l’anterior, i els equips surten de les fitxes', async () => {

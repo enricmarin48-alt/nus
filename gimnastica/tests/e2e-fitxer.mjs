@@ -93,6 +93,53 @@ try {
     assert.deepEqual(r[1], [['Dana', 'Club Gimnàstic Lleida'], ['Elna', 'Club']]);
   });
 
+  // ─── dues pestanyes del mateix navegador amb el fitxer vinculat: només una pot canviar les dades (l'altra és en pausa i
+  // no hi escriu), i en passar d'una a l'altra no hi ha cap «té altres dades»
+  await step('dues pestanyes amb el fitxer vinculat: la que és en pausa no hi escriu, i en passar d’una a l’altra no hi ha cap conflicte', async () => {
+    const ctx = await browser.newContext();
+    await ctx.addInitScript(() => {
+      const P = FileSystemHandle.prototype;
+      P.queryPermission = async () => 'granted';
+      P.requestPermission = async () => 'granted';
+      window.showSaveFilePicker = async () => (await navigator.storage.getDirectory()).getFileHandle('d.json', { create: true });
+    });
+    const gym = name => ({ id: 'g-' + name, name, surname: 'S', clubId: null, gender: 'F', category: '', level: '' });
+    const add = (p, name) => p.evaluate(g => { db.gymnasts.push(g); commit(); }, gym(name));
+    const A = await ctx.newPage();
+    const read = () => A.evaluate(async () => JSON.parse(await (await (await (await navigator.storage.getDirectory()).getFileHandle('d.json')).getFile()).text()).gymnasts.map(g => g.name).sort().join(','));
+    await A.goto(url + '#/configuracio');
+    await A.click('button[data-act=linkFile]'); await A.waitForSelector('text=+ d.json');
+    await add(A, 'Anna'); await A.waitForTimeout(600);
+    assert.equal(await read(), 'Anna');
+    const B = await ctx.newPage();
+    await B.goto(url + '#/configuracio'); await B.waitForSelector('text=+ d.json');
+    await A.waitForSelector('#pause[open]');
+    await add(B, 'Berta'); await B.waitForTimeout(600);
+    assert.equal(await read(), 'Anna,Berta');
+    assert.equal(await A.evaluate(() => db.gymnasts.map(g => g.name).sort().join(',')), 'Anna,Berta', 'la que és en pausa ho veu');
+    // (un canvi que arribés a la de la pausa sense passar per la pantalla: no es desa enlloc, es guarda per descarregar)
+    await add(A, 'Intrusa'); await A.waitForTimeout(600);
+    assert.equal(await read(), 'Anna,Berta', 'la de la pausa no escriu al fitxer');
+    assert.ok(!(await B.evaluate(() => localStorage.getItem('notesgim.db'))).includes('Intrusa'), 'ni al navegador');
+    assert.ok(await A.evaluate(() => !!win.unsent && !!document.querySelector('#pause button#pauseunsent')), 'es pot descarregar');
+    assert.equal(await A.evaluate(() => db.gymnasts.map(g => g.name).sort().join(',')), 'Anna,Berta');
+    // la de la pausa torna a manar
+    await A.click('#pause button:has-text("Treballa en aquesta finestra")');
+    await A.waitForFunction(() => !win.paused);
+    await B.waitForSelector('#pause[open]');
+    await add(A, 'Carla'); await A.waitForTimeout(800);
+    assert.equal(await read(), 'Anna,Berta,Carla');
+    for (const p of [A, B]) assert.equal(await p.locator('button[data-act=fileConflict]').count(), 0, 'cap conflicte amb el fitxer');
+    assert.equal(await B.evaluate(() => db.gymnasts.map(g => g.name).sort().join(',')), 'Anna,Berta,Carla');
+    // es tanca la que mana: l'altra continua i hi escriu
+    await A.close();
+    await B.waitForFunction(() => !win.paused);
+    await add(B, 'Dana'); await B.waitForTimeout(800);
+    assert.equal(await B.evaluate(async () => JSON.parse(await (await (await (await navigator.storage.getDirectory()).getFileHandle('d.json')).getFile()).text()).gymnasts.length), 4);
+    assert.equal(await B.locator('button[data-act=fileConflict]').count(), 0);
+    await ctx.close();
+  });
+
   // ─── un fitxer (o un navegador) que només té entitats o la configuració (el començament d'un curs) també té dades:
   // es pregunta abans de tocar res, com amb el programa NotesGim
   const cfgOnly = (dbId, updated, clubs, line2) => ({ app: 'notesgim', version: 1, settings: { dataGen: 2, rev: 4, line2 },

@@ -436,6 +436,16 @@
   .dlg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
   .dlg-actions .left{margin-right:auto}
   #confirm .dlg-actions{flex-direction:row-reverse;justify-content:flex-start}
+  /* finestra en pausa: NotesGim es fa servir en una altra finestra de la taula (tapa tota la pàgina) */
+  dialog#pause{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;box-shadow:none;
+    background:rgba(232,236,244,.93);align-items:center;justify-content:center;padding:16px}
+  dialog#pause[open]{display:flex}
+  dialog#pause:focus,#pause .pause-box:focus{outline:none}
+  dialog#pause::backdrop{background:transparent}
+  #pause .pause-box{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(10,20,40,.25);padding:22px 22px 18px;max-width:440px;width:100%;text-align:center}
+  #pause .pause-box p{margin:0 0 14px;font-size:16px;line-height:1.45}
+  #pause .pause-box p.small{font-size:13px;margin:16px 0 4px}
+  #pause .pause-box .btn{width:100%;justify-content:center;margin-top:6px}
   .pick-list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px}
   .dropzone{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;border:2px dashed var(--line2);border-radius:10px;padding:16px;margin:10px 0 14px;cursor:pointer;text-align:center}
   .dropzone:hover,.dropzone:focus-within{border-color:var(--pri);background:var(--pri-soft)}
@@ -597,6 +607,7 @@
 <div id="print"></div>
 <dialog id="dlg"></dialog>
 <dialog id="confirm"></dialog>
+<dialog id="pause"></dialog>
 <div id="toasts" aria-live="polite" popover="manual"></div>
 <input type="file" id="filepick" class="hidden">
 
@@ -1882,18 +1893,29 @@ function commit() {
   renderSaveState(true);
 }
 function flush() {
+  const had = !!saveTimer;
   clearTimeout(saveTimer); saveTimer = null;
-  // si una altra finestra ha desat entretant, no se'n perden les notes: s'hi afegeixen les més noves
-  // (amb el programa NotesGim no cal: les dades manen al fitxer i les altres finestres les reben d'allà)
-  // Es carreguen les de l'altra pestanya i s'hi afegeixen les notes d'aquí (com amb el programa): així no se
-  // n'esborra res sense dir-ho; un canvi d'aquí que no sigui una nota s'ha de tornar a fer
+  // en pausa no es desa res (no hi hauria d'arribar cap canvi): el que hi hagi es guarda per descarregar
+  if (win.paused && !win.yielding) { if (had) { keepUnsent(); if (server.on) serverRefetch(); else tabShowOther(true); } return; }
+  // sense el programa: una altra pestanya fa servir NotesGim i aquesta no se n'havia assabentat (vegeu tabMine): no s'hi
+  // escriu a sobre, i el que hi hagi aquí es guarda per descarregar
+  if (tabOn && !win.yielding && !tabMine()) {
+    pauseStart(); clearTimeout(saveTimer); saveTimer = null;
+    if (JSON.stringify(db) !== lastRaw) keepUnsent();
+    tabShowOther(true); return;
+  }
+  // si una altra pestanya hi ha desat entretant (una d'una versió anterior, que no es posa en pausa), no se'n perden les
+  // notes: es carreguen les seves i s'hi afegeixen les notes d'aquí (com amb el programa); un canvi d'aquí que no
+  // sigui una nota s'ha de tornar a fer
   let other = false;
   try {
     const raw = localStorage.getItem(LS_KEY);
+    // (la pestanya que ara mana ja hi ha desat: el que hi ha aquí no s'hi escriu a sobre, es guarda per descarregar)
+    if (!server.on && win.yielding && lastRaw !== null && raw && raw !== lastRaw) { keepUnsent(); tabShowOther(true); return; }
     if (!server.on && lastRaw !== null && raw && raw !== lastRaw) {
       const mine = db; db = migrate(JSON.parse(raw));
       if (db.meta.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);
-      remotePending = false; other = true;
+      other = true;
     }
   } catch (_) {}
   if (other) { renderKeepFocus(); toast('Les dades s’havien canviat des d’una altra pestanya: ara es veuen les de totes dues (les notes d’aquí hi són). Si el teu darrer canvi que no era una nota no hi és, torna’l a fer. Treballa només en una pestanya.', 'bad'); }
@@ -1913,6 +1935,286 @@ function flush() {
 const blankDb = d => !d || (!['gymnasts', 'competitions', 'clubs', 'teams'].some(k => (d[k] || []).length) && !(d.meta && d.meta.updated));
 const server = { on: false, role: null, version: null, dataRev: null, sentStamp: null, urls: [], urlsAt: 0, pushing: false, again: false, mine: new Set(),
   online: true, deferred: false, replaceNext: false, closed: false, conflicts: 0, saveErr: '', retrySave: false, diskStamp: null };
+/* ─── només una finestra de la taula pot canviar les dades alhora
+   La que s'obre (o on es clica «Treballa en aquesta finestra») és l'activa; les altres queden en pausa: no desen res (el
+   programa tampoc no ho acceptaria: 423) i mostren el que hi ha al fitxer, també les notes de les tutores. Abans de
+   passar-ho a una altra, l'activa desa el que té (yield); si no ho pot desar a temps, es queda aquí i es pot descarregar.
+   Sense el programa (dues pestanyes del navegador), el mateix amb localStorage (TAB_KEY) i BroadcastChannel. */
+const WIN = uid() + Math.random().toString(36).slice(2, 8);   // l'id d'aquesta finestra (cada vegada que s'obre)
+// paused: en pausa (no s'hi pot canviar res); yielding: desa el que hi havia abans de deixar-ho a l'altra; taking: ho
+// està demanant; unsent: el que s'hi havia canviat i no s'ha pogut desar (per descarregar; unsentStamp: la seva hora);
+// mine: les dades d'aquí són aquestes (encara no s'hi han posat les del fitxer); stale: s'hi han posat les de l'altra
+// finestra mentre era en pausa (un diàleg que hi hagués obert era de les d'abans); theirs: les del programa per mostrar
+// quan acabi el que s'estava desant; focus: on era el focus en posar-se en pausa
+// settling: s'ha de mirar si hi ha res per guardar abans de posar-hi les dades del programa (vegeu settlePause)
+// epoch: canvia cada vegada que es posa o es treu la pausa (una resposta d'api/wait demanada abans ja no diu res de qui mana)
+const win = { paused: false, yielding: false, taking: false, unsent: null, unsentStamp: null, mine: false, stale: false, theirs: null, focus: null, settling: false, epoch: 0 };
+const nap = ms => new Promise(r => setTimeout(r, ms));
+// en pausa, cap tecla arriba a l'app (només als botons de la pausa) ni s'hi pot deixar anar cap fitxer
+for (const t of ['keydown', 'keypress', 'keyup']) document.addEventListener(t, e => {
+  if (!win.paused) return;
+  e.stopImmediatePropagation();
+  if (!(e.target && e.target.closest && e.target.closest('#pause'))) e.preventDefault();
+}, true);
+for (const t of ['dragover', 'drop', 'paste']) document.addEventListener(t, e => { if (win.paused) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+// aquí hi ha alguna cosa que el programa encara no té
+const hasUnsent = () => !!saveTimer || server.replaceNext || win.mine
+  || (!!db.meta.updated && db.meta.updated !== server.sentStamp && db.meta.updated !== server.diskStamp);
+// el que s'està escrivint en un camp de la pàgina (una nota sense Intro, un dorsal, un nom…) entra a les dades
+// (en un diàleg no: s'hi ha de clicar «Desa»)
+function commitPending() {
+  const el = document.activeElement;
+  if (!el || el === document.body || !el.closest || !el.closest('#main')) return;
+  try { commitTyping(); el.blur(); } catch (e) { console.error(e); }
+}
+function renderPause() {
+  const d = $('#pause'); if (!d) return;
+  // (el focus, al quadre i no al botó: un Intro de quan s'escrivia aquí no ha de fer res)
+  d.innerHTML = `<div class="pause-box" tabindex="-1" autofocus>
+    <p>Aquesta finestra està en pausa: NotesGim s’està fent servir en una altra finestra.</p>
+    <button type="button" class="btn primary" id="pausetake" ${win.taking ? 'disabled' : ''}>${win.taking ? 'Un moment…' : 'Treballa en aquesta finestra'}</button>
+    ${win.unsent ? `<p class="small">Els últims canvis d’aquesta finestra no s’han pogut desar.</p>
+    <button type="button" class="btn" id="pauseunsent">Descarrega els canvis que no s’han desat</button>` : ''}</div>`;
+  d.querySelector('#pausetake').onclick = () => takeOver();
+  const b = d.querySelector('#pauseunsent'); if (b) b.onclick = dlUnsent;
+  if (d.open && !d.contains(document.activeElement)) pauseFocus();
+}
+const pauseFocus = () => { const b = $('#pause .pause-box'); if (b) b.focus(); };
+const dlUnsent = () => { if (win.unsent) downloadBlob(new Blob([win.unsent], { type: 'application/json' }), `notesgim-canvis-no-desats-${stamp()}.json`); };
+// es posa en pausa (es tapa tota la pàgina). El focus i el que s'escrivia: abans, vegeu pauseStart
+function pauseShow() {
+  if (win.paused) return;
+  win.paused = true; win.epoch++;
+  $$('#toasts .toast').forEach(t => t.remove()); toastsShown();   // (cap «Desfés» que es pugui clicar)
+  $$('.menu.open').forEach(m => m.classList.remove('open'));
+  hideFixTip();
+  renderPause();
+  const d = $('#pause');
+  try { if (!d.open) d.showModal(); } catch (_) { d.setAttribute('open', ''); }
+  pauseFocus();
+}
+function pauseStart() {
+  if (win.paused) return false;
+  win.focus = focusMark($('#main'));
+  commitPending();
+  pauseShow();
+  return true;
+}
+$('#pause').addEventListener('cancel', e => e.preventDefault());   // (amb Esc no es treu)
+// un diàleg que s'obre mentre és en pausa (p. ex. al final d'una cosa que ja s'estava fent): la pausa sempre a sobre
+function pauseOnTop() { const d = $('#pause'); if (win.paused && d.open) try { d.close(); d.showModal(); pauseFocus(); } catch (_) {} }
+$('#pause').addEventListener('close', () => { if (win.paused) setTimeout(() => { const d = $('#pause'); if (win.paused && !d.open) try { d.showModal(); pauseFocus(); } catch (_) {} }, 0); });
+// el que s'havia canviat aquí i no s'ha pogut desar: es guarda (Configuració → Dades) i es pot descarregar
+function keepUnsent() {
+  const raw = JSON.stringify(db);
+  win.mine = true;
+  if (win.unsent === raw) return;
+  win.unsent = raw; win.unsentStamp = db.meta.updated || null;
+  keepBefore(raw); renderPause();
+}
+// torna a ser l'activa: es treu la pausa. Si mentrestant s'hi han posat les dades de l'altra finestra, el que hi hagués
+// obert (un formulari, un «Segur?») era de les d'abans: es tanca
+function resumeHere() {
+  if (!win.paused) return;
+  win.paused = win.yielding = win.taking = win.settling = false; win.theirs = null; win.epoch++;
+  const d = $('#pause'); if (d.open) d.close();
+  let closed = false;
+  if (win.stale) {
+    if ($('#confirm').open) { $('#confirm').close(); closed = true; }
+    if ($('#dlg').open) { closeDialog(); closed = true; }
+  }
+  win.stale = false;
+  const m = win.focus; win.focus = null;
+  if (m) { m.val = undefined; m.sel = null; }   // (el que s'hi escrivia ja és a les dades, o es pot descarregar)
+  renderSame(m || null);
+  if (closed) toast('Mentrestant les dades havien canviat a l’altra finestra: s’ha tancat el que tenies obert aquí. Torna-ho a obrir si cal.');
+  if (win.unsent) {
+    const raw = win.unsent;
+    toast('Els canvis d’aquesta finestra que no s’havien pogut desar es poden descarregar (també des de Configuració → Dades).', 'bad', { actions: [{ label: 'Descarrega’ls', fn: () => downloadBlob(new Blob([raw], { type: 'application/json' }), `notesgim-canvis-no-desats-${stamp()}.json`) }] });
+    win.unsent = win.unsentStamp = null;
+  }
+}
+// «Treballa en aquesta finestra»
+async function takeOver() {
+  if (!win.paused || win.taking) return;
+  if (!server.on) { tabTake(true); return; }
+  win.taking = true; renderPause();
+  try {
+    const r = await api('api/claim', { method: 'POST', body: JSON.stringify({ window: WIN }) }, 15000);
+    serverResume(r);
+  } catch (_) {
+    win.taking = false; renderPause();
+    toast('NotesGim no respon: torna-ho a provar d’aquí a un moment.', 'bad');
+  }
+}
+
+// ─── amb el programa
+// el programa demana a aquesta finestra (l'activa) que la deixi a una altra: es desa el que hi ha i es deixa
+async function serverYield() {
+  if (win.paused) return;
+  win.yielding = true;
+  pauseStart();
+  await nap(30);   // (el que es desa en sortir del camp)
+  for (let i = 0; i < 50 && win.yielding; i++) {
+    if (saveTimer) flush();
+    if (!saveTimer && !server.pushing && !server.again) break;
+    await nap(50);
+  }
+  if (!win.yielding) return;   // (mentrestant el programa ja l'ha passat a l'altra: 423, vegeu pauseHere)
+  // (si no s'ha pogut desar —p. ex. el programa no ho rep—, es queda aquí per descarregar: vegeu settlePause)
+  if (hasUnsent()) win.settling = true;
+  try { await api('api/release', { method: 'POST', body: JSON.stringify({ window: WIN }) }, 3000); } catch (_) {}
+  if (!win.yielding) return;
+  win.yielding = false;
+  if (win.settling) settlePause();
+}
+// el programa diu que aquesta finestra ja no és l'activa (state: el que hi ha al programa)
+function pauseHere(state) {
+  pauseStart();
+  win.yielding = false; win.settling = true;
+  if (state && state.db) win.theirs = state;
+  // (primer el que es desa en sortir del camp; si s'està desant, quan torni la resposta: vegeu serverPush)
+  if (!server.pushing) setTimeout(settlePause, 30);
+}
+function settlePause() {
+  if (!win.settling || server.pushing) return;
+  win.settling = false;
+  const st = win.theirs, t = st && st.db, unsent = hasUnsent(); win.theirs = null;
+  clearTimeout(saveTimer); saveTimer = null;
+  // (si el programa ja té aquesta mateixa versió, no hi ha res per guardar)
+  if (unsent && !(t && (t.meta || {}).updated === db.meta.updated)) keepUnsent();
+  server.again = false; server.retrySave = false;
+  if (server.replaceNext) { const m = replaceMarkGet(); if (m && m.stamp === db.meta.updated) replaceMarkClear(); server.replaceNext = false; }
+  serverRefetch();   // (el que hi ha ara al programa)
+}
+const serverRefetch = () => api('api/db', {}, 10000).then(r => { if (win.paused && r) showTheirs(r.db, r.dataRev); }).catch(() => {});
+// en pausa: es mostra el que hi ha al programa (les notes de les tutores, o el que ha desat la finestra activa)
+function showTheirs(t, rev) {
+  if (!t) return;
+  const tu = (t.meta || {}).updated || null;
+  if (win.unsent && tu && tu === win.unsentStamp) { win.unsent = win.unsentStamp = null; renderPause(); }   // (al final sí que hi són)
+  if (!win.mine && rev != null && rev === server.dataRev) { showMerged(Engine.mergeScores(db, t)); return; }
+  db = migrate(t);
+  if (rev != null) server.dataRev = rev;
+  server.sentStamp = server.diskStamp = tu;
+  win.mine = false; win.stale = true;
+  renderKeepFocus();
+}
+// el programa diu que aquesta finestra torna a ser l'activa (r: les dades, com GET api/db)
+function serverResume(r) {
+  if (!win.paused) return;
+  const t = r && r.db;
+  if (t) {
+    if (win.mine || win.stale || r.dataRev !== server.dataRev) { db = migrate(t); win.stale = true; }
+    else Engine.mergeScores(db, t);
+    server.dataRev = r.dataRev; server.sentStamp = server.diskStamp = (t.meta || {}).updated || null;
+    fileSaw(server.sentStamp);
+  }
+  if (r && r.version != null) server.version = r.version;
+  if (r) setSaveErr(r.saveErr);
+  win.mine = false;
+  resumeHere();
+  saveLocal();
+}
+// no hi ha cap finestra activa (l'altra s'ha tancat): aquesta continua sola
+async function serverAutoTake() {
+  if (!win.paused || win.taking) return;
+  win.taking = true;
+  try { serverResume(await api('api/claim', { method: 'POST', body: JSON.stringify({ window: WIN, ifFree: true }) }, 15000)); }
+  catch (_) {}
+  win.taking = false;
+}
+// les dades d'aquí al navegador (en pausa no: aquí no es desa res)
+function saveLocal() {
+  if (win.paused) return;
+  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+}
+
+// ─── sense el programa: dues pestanyes del navegador. La que mana s'apunta a localStorage (TAB_KEY) i ho diu a les
+// altres (BroadcastChannel; si no n'hi ha, l'avís «storage» de localStorage)
+const TAB_KEY = 'notesgim.finestra-activa';
+let tabOn = false, bc = null, tabAck = null, pingT = 0;
+try { if (typeof BroadcastChannel === 'function') bc = new BroadcastChannel('notesgim'); } catch (_) {}
+const tabHolder = () => { try { const v = JSON.parse(localStorage.getItem(TAB_KEY) || 'null'); return v && v.id ? v.id : null; } catch (_) { return null; } };
+const tabWrite = () => { try { localStorage.setItem(TAB_KEY, JSON.stringify({ id: WIN, at: Date.now() })); } catch (_) {} };
+const tabSay = m => { if (bc) try { bc.postMessage(Object.assign({ id: WIN }, m)); } catch (_) {} };
+// aquesta pestanya pot desar? (si no n'hi ha cap altra apuntada, ara mana aquesta)
+function tabMine() { const h = tabHolder(); if (h === WIN) return true; if (h) return false; tabWrite(); return true; }
+// aquesta passa a manar: la que manava desa el que tingui i es posa en pausa (diu «paused»). wait: s'espera que ho digui
+function tabClaim(wait) {
+  tabWrite(); tabSay({ t: 'claim' });
+  if (!wait) return Promise.resolve();
+  if (!bc) return nap(300);
+  return new Promise(res => {
+    const end = () => { if (tabAck === end) tabAck = null; res(); };
+    tabAck = end; setTimeout(end, 1200);
+  });
+}
+function tabStart() {
+  tabOn = true;
+  // (el que la que manava hagi desat just abans de deixar-ho: es carrega si aquí encara no s'ha fet res)
+  tabClaim(true).then(() => { if (!win.paused && !saveTimer && !typing() && !dialogOpen()) tabShowOther(false); });
+}
+// les dades que ha desat l'altra pestanya (raw: les de localStorage). Torna si n'hi havia de noves
+function tabShowOther(paused) {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw || (raw === lastRaw && !win.mine)) return false;
+    db = migrate(JSON.parse(raw)); lastRaw = raw;
+    // (el fitxer vinculat el pot haver escrit l'altra pestanya amb aquestes mateixes dades: no és d'un altre ordinador)
+    sessionStamp = fileStamp = db.meta.updated || null;
+    win.mine = false;
+    if (paused) { win.stale = true; if (win.unsent && db.meta.updated === win.unsentStamp) { win.unsent = win.unsentStamp = null; renderPause(); } }
+    renderKeepFocus();
+    return true;
+  } catch (_) { return false; }
+}
+// una altra pestanya mana ara: es desa el que hi ha aquí (ella ho carrega) i es posa en pausa
+async function tabYield() {
+  if (win.paused) return;
+  win.yielding = true;
+  pauseStart();
+  await nap(30);   // (el que es desa en sortir del camp)
+  if (saveTimer) flush();
+  win.yielding = false;
+  tabSay({ t: 'paused' });
+}
+async function tabTake(wait) {
+  if (!win.paused || win.taking) return;
+  win.taking = true; renderPause();
+  await tabClaim(wait);
+  win.taking = false;
+  tabShowOther(true);
+  resumeHere();
+}
+// la que manava s'ha tancat: aquesta continua sola (si n'hi ha més d'una en pausa, la primera)
+const tabReleased = () => { if (win.paused && !win.taking) setTimeout(() => { if (win.paused && !win.taking && !tabHolder()) tabTake(false); }, 20 + Math.random() * 150); };
+// en tornar a una pestanya en pausa: si la que manava ja no hi és (no contesta), aquesta continua
+function tabPing() {
+  if (!tabOn || !bc || !win.paused || win.taking || pingT) return;
+  tabSay({ t: 'ping' });
+  pingT = setTimeout(() => { pingT = 0; if (win.paused && !win.taking) tabTake(false); }, 800);
+}
+function tabMsg(m) {
+  if (!tabOn || !m || typeof m !== 'object' || m.id === WIN) return;
+  if (m.t === 'claim') tabYield();
+  else if (m.t === 'paused') { if (tabAck) tabAck(); }
+  else if (m.t === 'release') tabReleased();
+  else if (m.t === 'ping') { if (!win.paused) tabSay({ t: 'pong' }); }
+  else if (m.t === 'pong') { clearTimeout(pingT); pingT = 0; }
+}
+if (bc) bc.onmessage = ev => tabMsg(ev.data);
+addEventListener('focus', tabPing);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') tabPing(); });
+// en tancar la finestra activa, les altres continuen (si encara hi havia alguna cosa per desar al programa, no: el
+// programa ho sap igualment al cap d'una estona, i mentrestant no se li escriu a sobre)
+addEventListener('pagehide', () => {
+  if (win.paused) return;
+  leaving();   // (primer el que s'escrivia: si encara s'ha d'enviar, no es deixa)
+  if (server.on && server.role === 'admin' && !server.closed) {
+    if (nothingUnsent() && !server.pushing) try { navigator.sendBeacon('api/release', new Blob([JSON.stringify({ window: WIN })], { type: 'application/json' })); } catch (_) {}
+  } else if (tabOn && tabHolder() === WIN) { try { localStorage.removeItem(TAB_KEY); } catch (_) {} tabSay({ t: 'release' }); }
+});
 async function api(path, opts = {}, timeout = 0) {
   const ctl = timeout ? new AbortController() : null;
   const t = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
@@ -2008,7 +2310,8 @@ async function serverInit() {
   server.on = true; server.role = info.role; server.urls = info.urls || []; server.urlsAt = Date.now(); server.dataFile = info.dataFile || '';
   addManifest();
   if (info.role === 'tutor') { await tutorStart(); return true; }
-  const remote = await api('api/db');
+  // aquesta finestra passa a ser la que pot canviar les dades (si n'hi ha una altra, abans desa el que té i es posa en pausa)
+  const remote = await api('api/claim', { method: 'POST', body: JSON.stringify({ window: WIN }) });
   const rm = (remote.db && remote.db.meta) || {};
   let note = '', before = null;
   await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
@@ -2072,14 +2375,14 @@ async function serverInit() {
   return true;
 }
 function serverPush() {
-  if (!server.on || server.role !== 'admin' || server.closed) return;
+  if (!server.on || server.role !== 'admin' || server.closed || (win.paused && !win.yielding)) return;
   // (una còpia restaurada per enviar: es recorda amb les dades, per si es tanca abans que arribi; vegeu serverInit)
   if (server.replaceNext) replaceMarkSet();
   if (server.pushing) { server.again = true; return; }
   server.pushing = true;
   const replace = server.replaceNext, rAt = server.replaceAt, stamp = db.meta.updated;
   // (amb replace, el programa hi afegeix només les notes de tutora arribades després de restaurar)
-  api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, replace, since: replace ? server.replaceAt || 0 : 0 }) })
+  api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, replace, since: replace ? server.replaceAt || 0 : 0, window: WIN }) })
     .then(resp => {
       server.online = true; server.conflicts = 0; setSaveErr('');
       server.version = resp.version; server.dataRev = resp.dataRev; server.sentStamp = server.diskStamp = stamp;
@@ -2089,7 +2392,9 @@ function serverPush() {
       if (resp.taken && resp.db) applyRemote(resp.db, resp.dataRev);
     })
     .catch(err => {
-      if (err && err.status === 409 && err.body && err.body.db) serverConflict(err.body);
+      // ara mana una altra finestra: aquesta es posa en pausa i el que no s'ha desat es queda aquí (vegeu settlePause)
+      if (err && err.status === 423) pauseHere(err.body);
+      else if (err && err.status === 409 && err.body && err.body.db) serverConflict(err.body);
       else if (err && err.status === 500 && err.body && err.body.dataRev != null) {
         // el programa ja té les dades però no les ha pogut escriure al fitxer (disc ple, OneDrive, USB fora):
         // es diu per què i es torna a provar d'aquí a una estona (no és cap altra finestra)
@@ -2102,6 +2407,7 @@ function serverPush() {
     })
     .finally(() => {
       server.pushing = false; renderSaveState(false);
+      if (win.paused && !win.yielding) { if (win.settling || hasUnsent()) { win.settling = true; settlePause(); } return; }
       if (server.again) { server.again = false; serverPush(); }
       else if (!server.online || server.retrySave) { server.retrySave = false; setTimeout(serverPush, 4000); }
     });
@@ -2169,16 +2475,24 @@ function serverConflict(r) {
 async function serverWaitLoop() {
   while (!server.closed) {
     try {
-      const resp = await api('api/wait?since=' + server.version);
+      // (w: aquesta finestra; on: es pensa que és la que pot canviar les dades)
+      const ep = win.epoch;
+      const resp = await api(`api/wait?since=${server.version}&w=${WIN}${win.paused ? '' : '&on=1'}`);
       if (server.closed) return;
       // (en tornar la connexió, s'envia el que encara no hi és; si no hi ha res, no: el que hagi canviat al fitxer
       // mentrestant arriba tot seguit, sense cap conflicte)
-      if (!server.online) { server.online = true; renderSaveState(false); if (!nothingUnsent()) serverPush(); }
+      if (!server.online) { server.online = true; renderSaveState(false); if (!win.paused && !nothingUnsent()) serverPush(); }
       if (resp) {
         server.version = resp.version;
-        fileSaw((resp.db && resp.db.meta || {}).updated);
-        setSaveErr(resp.saveErr);
-        applyRemote(resp.db, resp.dataRev);
+        if (resp.db) { fileSaw((resp.db.meta || {}).updated); setSaveErr(resp.saveErr); }
+        // ara mana una altra finestra (o en vol manar: abans es desa el que hi ha aquí), o ja no en mana cap (o, si s'havia
+        // perdut la resposta, aquesta). Una resposta d'abans de l'última pausa (o de treure-la) ja no compta
+        if (ep === win.epoch) {
+          if (resp.active === false && (!win.paused || win.yielding)) pauseHere(resp);
+          else if (resp.yield && !win.paused) serverYield();
+          else if ((resp.free || resp.active) && win.paused && !win.yielding) serverAutoTake();
+        }
+        if (resp.db) applyRemote(resp.db, resp.dataRev);
       }
     } catch (_) {
       if (server.online) { server.online = false; renderSaveState(false); }
@@ -2197,10 +2511,11 @@ async function refreshUrls() {
   } catch (_) {}
 }
 // mentre la finestra d'impressió és oberta la pàgina no pot parlar amb el programa: que no es tanqui sol
-const keepAlive = ms => { if (server.on && server.role === 'admin' && !server.closed) try { navigator.sendBeacon('api/keepalive', new Blob([JSON.stringify({ ms })], { type: 'application/json' })); } catch (_) {} };
+const keepAlive = ms => { if (server.on && server.role === 'admin' && !server.closed) try { navigator.sendBeacon('api/keepalive', new Blob([JSON.stringify({ ms, window: WIN })], { type: 'application/json' })); } catch (_) {} };
 addEventListener('beforeprint', () => keepAlive(3 * 3600 * 1000));
 addEventListener('afterprint', () => keepAlive(0));
-const typingScore = () => { const el = document.activeElement; return !!(el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value); };
+// (una nota que no pot ser —«835», amb «Volies dir 8,35?»— també: encara s'hi està)
+const typingScore = () => { const el = document.activeElement; return !!(el && el.matches && el.matches('input.sc') && (el.dataset.last !== el.value || el.classList.contains('invalid'))); };
 // s'està escrivint en un camp de text de la pàgina (un nom, un dorsal…): no es torna a dibuixar a sota
 const editing = () => { const el = document.activeElement; return !!(el && el.closest && el.closest('#main') && el.matches('input:not([type=checkbox]):not([type=radio]):not(.sc),textarea')); };
 // s'hi ha escrit (una nota, un nom, una hora…) i encara no s'ha desat: no es torna a pintar a sota (es perdria el que
@@ -2210,7 +2525,7 @@ const editing = () => { const el = document.activeElement; return !!(el && el.cl
 const typing = () => {
   const el = document.activeElement;
   if (!(el && el.closest && el.closest('#main'))) return false;
-  if (el.matches('input.sc')) return el.dataset.last !== el.value;
+  if (el.matches('input.sc')) return el.dataset.last !== el.value || el.classList.contains('invalid');
   if (el.matches('input[type=time]')) return true;
   if (!el.matches('input:not([type=checkbox]):not([type=radio]),textarea')) return false;
   return el.value !== (el._saved !== undefined ? el._saved : el.defaultValue);
@@ -2219,25 +2534,32 @@ document.addEventListener('change', e => { const t = e.target; if (t && t.matche
 const dialogOpen = () => !!(($('#dlg') || {}).open || ($('#confirm') || {}).open);
 const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la tutora ' + a.who : 'una tutora'}${a.at ? ' a les ' + new Date(a.at).toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' }) : ''}. Si la canvies, compta com a revisada.` : '';
 // arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint.
-// Si una altra finestra de la taula ha desat dades (rev diferent) i aquí no hi ha res per desar, es carreguen. Si ara no
-// es pot (un diàleg obert, s'escriu en un camp, o aquí hi ha canvis per desar), es guarden (server.pendingDb) i es
-// carreguen tan aviat com es pugui (applyDeferred), o just abans d'un canvi d'aquí: mai no es llencen (si no, aquesta
-// finestra continuaria mostrant les d'abans i el seu canvi següent toparia al programa amb el de l'altra i es perdria)
+// Si les dades del programa han canviat sense que les hagi desat aquesta finestra (p. ex. s'ha tornat a obrir NotesGim)
+// i aquí no hi ha res per desar ni a mig fer, es carreguen. (Una altra finestra de la taula no hi pot desar mentre
+// aquesta és l'activa: vegeu win)
 function applyRemote(remoteDb, rev) {
+  // en pausa: es mostra el que hi ha al programa (si s'està desant, quan acabi: vegeu settlePause)
+  if (win.paused && !win.yielding) { if (!server.pushing && !win.settling) showTheirs(remoteDb, rev); return; }
   // s'acaba de restaurar una còpia (encara no s'ha enviat): de les dades del programa, només les notes noves d'ara
   if (server.replaceNext) {
     const ch = Engine.mergeScores(db, remoteDb, { since: server.replaceAt || 0 });
-    if (ch.length) { try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {} renderKeepFocus(); }
+    if (ch.length) { saveLocal(); renderKeepFocus(); }
     return;
   }
-  if (rev != null && server.dataRev != null && rev !== server.dataRev && remoteDb && (remoteDb.meta || {}).updated !== server.sentStamp) {
-    server.pendingDb = { db: remoteDb, rev };
-    if (!dialogOpen() && !typingScore() && !editing() && loadPending()) { renderKeepFocus(); return; }
-    deferSafety();
+  if (rev != null && server.dataRev != null && rev !== server.dataRev && remoteDb && !saveTimer && !server.pushing && !server.again && !win.yielding
+    && !dialogOpen() && !typingScore() && !editing() && (remoteDb.meta || {}).updated !== server.sentStamp) {
+    db = migrate(remoteDb); server.dataRev = rev; server.sentStamp = (remoteDb.meta || {}).updated || null;
+    saveLocal();
+    renderKeepFocus(); toast('Dades actualitzades des d’una altra finestra.');
+    return;
   }
-  const changed = Engine.mergeScores(db, remoteDb);
+  showMerged(Engine.mergeScores(db, remoteDb));
+}
+// les notes que han arribat: a la graella de notes es posen al seu lloc (sense tornar-la a pintar); si no, es torna a
+// pintar quan es pugui
+function showMerged(changed) {
   if (!changed.length) return;
-  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+  saveLocal();
   const c = curComp();
   if (ui.view === 'competicio' && c && ui.tab === 'notes' && $('#scoregrid')) {
     for (const ch of changed) {
@@ -2250,30 +2572,9 @@ function applyRemote(remoteDb, rev) {
     }
     tutorReviewRefresh(c);
     toast(`${plural(changed.length, 'nota nova', 'notes noves')} de les tutores.`);
-  } else if (dialogOpen() || editing()) { server.deferred = true; deferSafety(); }
+  } else if (!win.paused && (dialogOpen() || editing())) { server.deferred = true; deferSafety(); }
   else renderKeepFocus();
 }
-// les dades d'una altra finestra que s'havien guardat: es carreguen si aquí no hi ha res per desar ni cap canvi que el
-// programa encara no tingui (si n'hi ha, en enviar-lo el programa diu que han canviat i serverConflict les carrega amb les
-// notes d'aquí) i si encara són les més noves
-function loadPending() {
-  const p = server.pendingDb;
-  if (!p || saveTimer || server.pushing || server.again || server.replaceNext || (db.meta || {}).updated !== server.sentStamp) return false;
-  server.pendingDb = null;
-  if (server.dataRev != null && p.rev <= server.dataRev) return false;
-  db = migrate(p.db); server.dataRev = p.rev; server.sentStamp = (p.db.meta || {}).updated || null;
-  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
-  toast('Dades actualitzades des d’una altra finestra.');
-  return true;
-}
-// just abans d'un canvi d'aquí (un botó, desar el formulari d'un diàleg, sortir d'un camp que s'ha canviat): es carreguen
-// primer, i el canvi es fa sobre les dades noves (no topa amb les de l'altra finestra). Es torna a pintar després.
-// (no amb un botó que va per posició —data-i: «puja», «esborra» d'una llista—, que amb les dades noves podria ser una
-// altra fila, ni dins d'un diàleg de confirmació, que espera amb les dades d'abans)
-const loadPendingFirst = () => { if (server.pendingDb && loadPending()) { keepLater = true; deferSafety(); } };
-document.addEventListener('submit', e => { if (e.target.closest && e.target.closest('#dlg')) loadPendingFirst(); }, true);
-document.addEventListener('change', e => { const t = e.target; if (t && t.closest && t.closest('#main [data-chg]') && (isSc(t) || !t.hasAttribute('data-i'))) loadPendingFirst(); }, true);
-document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('[data-act]'); if (el && !dialogOpen() && !el.hasAttribute('data-i')) loadPendingFirst(); }, true);
 // el que ha arribat mentre hi havia un diàleg obert o s'escrivia un nom: es mostra quan s'acaba
 // (mai amb el botó del ratolí o el dit a mig clic, amb l'Espai o l'Intro premuts, ni amb un menú ⋯ obert: si es tornés a
 // pintar entre «prémer» i «deixar anar», el clic o la tecla anirien a parar a un botó que ja no hi és, o a un altre)
@@ -2301,8 +2602,7 @@ let keepLater = false;
 function applyDeferred() {
   setTimeout(() => {
     if (inHand() || typing()) return;
-    if (server.pendingDb && !dialogOpen() && loadPending()) { server.deferred = false; keepLater = false; renderSame(); }
-    else if (server.deferred && !dialogOpen() && !editing()) { server.deferred = false; keepLater = false; renderSame(); }
+    if (server.deferred && !dialogOpen() && !editing()) { server.deferred = false; keepLater = false; renderSame(); }
     else if (keepLater) { keepLater = false; renderSame(); }
   }, 0);
 }
@@ -2311,7 +2611,7 @@ function applyDeferred() {
 let deferT = 0;
 function deferSafety() {
   if (deferT) return;
-  deferT = setTimeout(() => { deferT = 0; if (keepLater || server.deferred || server.pendingDb) { applyDeferred(); deferSafety(); } }, 2000);
+  deferT = setTimeout(() => { deferT = 0; if (keepLater || server.deferred) { applyDeferred(); deferSafety(); } }, 2000);
 }
 document.addEventListener('focusout', applyDeferred);
 $('#dlg').addEventListener('close', applyDeferred);
@@ -2362,37 +2662,24 @@ addEventListener('beforeunload', e => {
   if (saveError || fileState === 'err' || (fileHandle && fileState === 'ok' && (fileDirty || fileWriting))) { e.preventDefault(); e.returnValue = ''; }
 });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') leaving(); });
-// una altra finestra ha desat: carreguem el que hi ha de nou, però mai a sobre d'una nota a mig escriure
-// (amb el programa NotesGim no: cada finestra rep els canvis del programa, i aquí només faria perdre el que s'escriu)
+// sense el programa, una altra pestanya: ara mana ella (TAB_KEY), l'ha deixada (s'ha tancat) o hi ha desat
+// (amb el programa NotesGim no: cada finestra rep els canvis del programa)
+let lastRaw = null;
 addEventListener('storage', e => {
-  if (e.key !== LS_KEY || !e.newValue || server.on) return;
-  if (saveTimer || typingScore() || editing() || dialogOpen()) { remotePending = true; otherWindowWarning(); return; }
-  try { db = migrate(JSON.parse(e.newValue)); lastRaw = e.newValue; renderKeepFocus(); toast('Dades actualitzades des d’una altra finestra.'); } catch (_) {}
+  if (server.on || !tabOn) return;
+  if (e.key === TAB_KEY) {
+    let v = null; try { v = JSON.parse(e.newValue || 'null'); } catch (_) {}
+    if (v && v.id && v.id !== WIN) tabYield(); else if (!v) tabReleased();
+    return;
+  }
+  if (e.key !== LS_KEY || !e.newValue) return;
+  // en pausa: es veu el que ha desat la que mana
+  if (win.paused && !win.yielding) { tabShowOther(true); return; }
+  // (la que manava hi ha desat el que tenia just abans de deixar-ho a aquesta: es carrega si aquí no hi ha res a mig fer;
+  // si n'hi ha, en desar es veu i no es perd cap nota: vegeu flush)
+  if (win.yielding || saveTimer || typingScore() || editing() || dialogOpen()) return;
+  if (tabShowOther(false)) toast('Dades actualitzades des d’una altra finestra.');
 });
-// el que una altra finestra ha desat mentre aquesta escrivia: es carrega al primer clic (abans de cap acció), i es
-// torna a pintar després del clic sense treure el focus d'on s'ha clicat (si s'ha clicat una casella per escriure-hi,
-// el que s'hi escriu no es perd)
-let remotePending = false, lastRaw = null;
-document.addEventListener('click', () => {
-  if (!remotePending || saveTimer) return;
-  remotePending = false;
-  try { const raw = localStorage.getItem(LS_KEY); if (raw && raw !== lastRaw) { db = migrate(JSON.parse(raw)); lastRaw = raw; renderKeepFocus(); } } catch (_) {}
-}, true);
-// avís si l'app està oberta en més d'una finestra (cada una pot trepitjar el que desa l'altra)
-let others = 0;
-let bc = null;
-try { if (typeof BroadcastChannel === 'function') bc = new BroadcastChannel('notesgim'); } catch (_) {}
-if (bc) {
-  bc.onmessage = ev => {
-    if (ev.data === 'hola') { bc.postMessage('soc-aqui'); otherWindowWarning(); }
-    if (ev.data === 'soc-aqui') otherWindowWarning();
-  };
-  bc.postMessage('hola');
-}
-function otherWindowWarning() {
-  if (others++) return;
-  toast('NotesGim està obert en una altra finestra o pestanya. Treballa només en una perquè no es trepitgin les dades.', 'bad');
-}
 
 // IndexedDB mínima, només per recordar el fitxer vinculat entre sessions
 function idb(mode, fn) {
@@ -2663,7 +2950,8 @@ const go = hash => { if (location.hash === hash) render(); else location.hash = 
 /* ═══════════════════════════════════════════ avisos, diàlegs, desfer */
 // avís a baix (al mòbil, a dalt). opts.actions: [{ label, fn }] (botons com «Desfés»)
 function toast(msg, type = '', opts = {}) {
-  const acts = opts.actions || (opts.action ? [{ label: opts.action, fn: opts.onAction }] : []);
+  // (en pausa, cap botó: un «Desfés» canviaria les dades)
+  const acts = win.paused ? [] : opts.actions || (opts.action ? [{ label: opts.action, fn: opts.onAction }] : []);
   const el = document.createElement('div');
   el.className = 'toast ' + type;
   el.setAttribute('role', type === 'bad' ? 'alert' : 'status');
@@ -2690,9 +2978,9 @@ function openDialog(html, { wide = false } = {}) {
   d.className = wide ? 'wide' : '';
   d.innerHTML = `<div class="dlg">${html}</div>`;
   d.showModal();
-  toastsShown();
+  toastsShown(); pauseOnTop();
   const first = d.querySelector('[autofocus]') || d.querySelector('input:not([type=checkbox]):not([type=hidden]),select,textarea');
-  if (first) first.focus();
+  if (first && !win.paused) first.focus();
 }
 const closeDialog = () => { const d = $('#dlg'); if (d.open) d.close(); };
 function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}) {
@@ -2707,9 +2995,9 @@ function confirmBox(msg, { ok = 'D’acord', danger = false, typed = null } = {}
       if (d.returnValue === 'ok' && !typedOk) toast(`No has escrit ${typed}: no s’ha esborrat res.`, 'bad');
       res(d.returnValue === 'ok' && typedOk);
     };
-    d.showModal(); toastsShown();
+    d.showModal(); toastsShown(); pauseOnTop();
     const inp = d.querySelector('input');
-    if (inp) inp.focus(); else if (danger) d.querySelector('button[value=no]').focus();
+    if (win.paused) return; else if (inp) inp.focus(); else if (danger) d.querySelector('button[value=no]').focus();
   });
 }
 // Desfés torna a l'estat d'abans, però només si després no s'ha canviat res més (si no, es perdria)
@@ -2721,8 +3009,8 @@ function promptBox(msg, value = '') {
       <div class="dlg-actions"><button value="ok" class="btn primary">D’acord</button><button value="no" class="btn">Cancel·la</button></div></form>`;
     d.returnValue = '';
     d.onclose = () => res(d.returnValue === 'ok' ? d.querySelector('input[name=v]').value.trim() : null);
-    d.showModal(); toastsShown();
-    const i = d.querySelector('input'); i.focus(); i.select();
+    d.showModal(); toastsShown(); pauseOnTop();
+    const i = d.querySelector('input'); if (!win.paused) { i.focus(); i.select(); }
   });
 }
 // diàleg amb diverses opcions: torna el value del botó triat o null
@@ -2732,8 +3020,8 @@ function choiceBox(msg, buttons) {
     d.innerHTML = `<form method="dialog" class="dlg"><div>${msg}</div><div class="dlg-actions">${buttons.map(b => `<button value="${b.value}" class="btn ${b.cls || ''}">${h(b.label)}</button>`).join('')}<button value="" class="btn">Cancel·la</button></div></form>`;
     d.returnValue = '';
     d.onclose = () => res(d.returnValue || null);
-    d.showModal(); toastsShown();
-    d.querySelector('button[value=""]').focus();
+    d.showModal(); toastsShown(); pauseOnTop();
+    if (!win.paused) d.querySelector('button[value=""]').focus();
   });
 }
 // label: text, o una funció que es crida després del canvi i torna el text o { msg, type, actions }
@@ -2816,8 +3104,9 @@ function focusBack(root, m, ids = null, set = null, scroll = false) {
 }
 // torna a pintar la mateixa pantalla ara mateix: el focus es queda al mateix camp i les taules amb barra pròpia (la
 // graella de notes) no tornen a dalt (si no, la casella amb el focus quedaria amagada i s'hi escriuria a cegues)
-function renderSame() {
-  const main = $('#main'), m = focusMark(main), ids = new Map(focusIds);
+// (mark: on ha de tornar el focus, si no és on és ara; p. ex. en treure la pausa)
+function renderSame(mark) {
+  const main = $('#main'), m = mark !== undefined ? mark : focusMark(main), ids = new Map(focusIds);
   const wraps = $$('#main .tbl-wrap').map(w => [w.scrollTop, w.scrollLeft]);
   // (els apartats desplegables, com estan ara: el navegador avisa d'haver-ne obert un una mica més tard)
   $$('#main details[data-open]').forEach(x => { ui[x.dataset.open] = x.open; });
@@ -6434,7 +6723,7 @@ const forms = {
     if (fd.get('archived') !== 'on' && (!vals.category || !vals.level)) { toast('Tria la categoria i el nivell (sense, competiria sola en un grup a part).', 'bad'); return; }
     if (id) {
       const g = gymById(id);
-      if (!g) { closeDialog(); return; }
+      if (!g) { closeDialog(); toast('Aquesta fitxa ja no hi és (s’ha esborrat): no s’ha desat res.'); return; }
       // arxivar-la: es desa (i es pot desfer) i es diu de quines competicions i equips surt
       if (fd.get('archived') === 'on' && !g.archived) {
         closeDialog();
@@ -6500,8 +6789,9 @@ const forms = {
   team: f => {
     const fd = new FormData(f), id = f.dataset.id;
     const vals = { name: fd.get('name').trim(), clubId: fd.get('clubId') || null, gender: fd.get('gender') === 'M' ? 'M' : 'F', category: fd.get('category'), level: fd.get('level') };
-    const members = fd.getAll('m');
+    const members = fd.getAll('m').filter(m => gymById(m));   // (una fitxa que s'ha esborrat mentre el diàleg era obert, no)
     if (!vals.name || !vals.category || !vals.level) { toast('Cal el nom, la categoria i el nivell.', 'bad'); return; }
+    if (id && !teamById(id)) { closeDialog(); toast('Aquest equip ja no hi és (s’ha esborrat): no s’ha desat res.'); return; }
     if (db.teams.some(x => x.id !== id && (x.clubId || null) === (vals.clubId || null) && sameGroup(x, vals) && norm(x.name) === norm(vals.name))) { toast(`Aquesta entitat ja té un equip «${vals.name}» en aquest grup. Posa-li un altre nom (per exemple «${vals.name} 2»).`, 'bad'); return; }
     let t = id && teamById(id), touched = [], rotNote = '';
     closeDialog();
@@ -6549,7 +6839,9 @@ const forms = {
     });
   },
   entry: f => {
-    const c = curComp(), e = c.entries.find(x => x.id === f.dataset.id), fd = new FormData(f);
+    const c = curComp(), e = c && c.entries.find(x => x.id === f.dataset.id), fd = new FormData(f);
+    // (s'ha esborrat mentre el diàleg era obert: no es torna a posar)
+    if (!e) { closeDialog(); toast('Aquesta inscripció ja no hi és (s’ha esborrat): no s’ha desat res.'); return; }
     const cat = fd.get('category'), level = fd.get('level'), gender = fd.get('gender') === 'M' ? 'M' : 'F';
     let left = null;
     if (!sameGroup(e, { category: cat, gender, level }) && e.teamId) { left = c.teams.find(t => t.id === e.teamId); e.teamId = null; }
@@ -8821,7 +9113,7 @@ document.addEventListener('click', () => { if (fileHandle && fileState === 'perm
 async function start() {
   loadDb();
   route();
-  if (!(await serverInit())) render();
+  if (!(await serverInit())) { render(); tabStart(); }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if (fsSupported()) {
     const hd = await idbGet('fileHandle');

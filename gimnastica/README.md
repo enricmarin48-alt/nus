@@ -12,8 +12,11 @@ en una finestra pròpia, com qualsevol programa, i funciona sense internet. Les 
 les notes des del mòbil. Si ja hi ha un `notesgim-dades.json` al costat del programa (per exemple en
 un USB), fa servir aquell. Si el tornes a obrir mentre ja està obert (encara que sigui fent doble
 clic dues vegades seguides), no s'engega un altre programa: s'obre una altra finestra del mateix, amb
-les mateixes dades (pots tancar la que no facis servir). Quan tanques la finestra, el programa es
-tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»). Si un dia no pot escriure al fitxer
+les mateixes dades. Només la finestra que has obert o fet servir l'última pot canviar les dades: l'altra
+queda en pausa (no desa res, però hi continuen arribant les notes de les tutores) fins que hi cliques
+«Treballa en aquesta finestra»; abans de deixar-ho, la que manava desa el que tenia. Si tanques la que
+manava, l'altra continua sola. Pots tancar la que no facis servir. Quan tanques la finestra, el
+programa es tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»). Si un dia no pot escriure al fitxer
 (disc ple, un USB que s'ha tret), ho diu a dalt de la finestra i ho torna a provar sol; si el fitxer
 s'hagués malmès (p. ex. per un tall de llum), obre sol la còpia de seguretat més nova.
 Les dades de les versions de proves d'abans no es fan servir: la primera vegada, el programa les
@@ -222,4 +225,4 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `servidor/` — el programa per a l'ordinador i les tutores (Go, sense dependències). `go test` dins
   la carpeta (després de `sh build.sh` o de copiar `index.html` i `icons/` a `servidor/web/`), i
   `node tests/e2e-servidor.mjs` prova la taula i un mòbil de tutora alhora, també tallant la
-  connexió.
+  connexió i amb dues finestres de la taula (només una pot canviar les dades).

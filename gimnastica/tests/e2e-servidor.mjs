@@ -65,6 +65,10 @@ const step = async (name, fn) => { process.stdout.write(`· ${name} … `); awai
 const browser = await playwright.chromium.launch();
 const errors = [];
 const watch = (p, who) => { p.on('pageerror', e => errors.push(`${who} pageerror: ${e.message}`)); };
+// només una finestra de la taula pot canviar les dades: «Treballa en aquesta finestra» la torna a fer manar
+const PAUSA = 'Aquesta finestra està en pausa: NotesGim s’està fent servir en una altra finestra.';
+const isPaused = p => p.evaluate(() => win.paused && !!document.querySelector('#pause[open]'));
+const takeOver = async p => { await p.click('#pause button:has-text("Treballa en aquesta finestra")'); await p.waitForFunction(() => !win.paused, null, { timeout: 10000 }); };
 try {
   await startServer();
   const admin = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage();
@@ -429,29 +433,120 @@ try {
     await admin.waitForSelector('#scoregrid');
   });
 
-  await step('una segona finestra de la taula amb dades velles no trepitja les noves', async () => {
-    const other = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage();
-    watch(other, 'altra finestra');
-    await other.goto(`http://127.0.0.1:${PORT}/#/gimnastes`);
-    await other.waitForSelector('#gymtable');
-    // la primera finestra reanomena una gimnasta
-    await admin.goto(`http://127.0.0.1:${PORT}/#/gimnastes`);
-    await admin.click('#gymtable a[data-act=editGym]:has-text("Anna")');
-    await admin.fill('#dlg input[name=name]', 'Anna Maria');
-    await admin.click('#dlg button.primary');
-    await new Promise(r => setTimeout(r, 1200));
-    // l'altra la veu sola, i el que hi canviï després no desfà el nom
-    await other.waitForSelector('#gymtable >> text=Anna Maria', { timeout: 10000 });
-    await other.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
-    await other.fill('input[data-k=org]', 'ORG DE PROVA'); await other.press('input[data-k=org]', 'Tab');
-    await new Promise(r => setTimeout(r, 1500));
-    const d = JSON.parse(readFileSync(dataFile, 'utf8'));
-    assert.equal(d.gymnasts.find(g => g.id === 'g1').name, 'Anna Maria');
-    assert.equal(d.settings.org, 'ORG DE PROVA');
-    await other.close();
-    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
-    await admin.waitForSelector('#scoregrid');
-  });
+  // ─── només una finestra de la taula pot canviar les dades alhora: la que s'obre (o on es clica «Treballa en aquesta
+  // finestra»); l'altra queda en pausa. Com a l'ordinador de la taula, les dues amb el mateix perfil del navegador
+  {
+    const nap = ms => new Promise(r => setTimeout(r, ms));
+    const file = () => JSON.parse(readFileSync(dataFile, 'utf8'));
+    const fileEntry = id => file().competitions[0].entries.find(e => e.id === id);
+    const spy = p => p.evaluate(() => { if (window.__t) return; window.__t = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__t.push(n.textContent); }).observe(document.body, { childList: true, subtree: true }); });
+    const alarms = p => p.evaluate(() => (window.__t || []).filter(x => /s’havien canviat/.test(x)));
+    const cellV = (p, e, a) => p.evaluate(([e, a]) => { const i = document.querySelector(`#scoregrid input.sc[data-e=${e}][data-a=${a}]`); return i && i.value; }, [e, a]);
+    let other;
+    await spy(admin);
+
+    await step('dues finestres de la taula: la que s’obre passa a manar i la d’abans queda en pausa; la nota que s’hi escrivia (sense Intro) es desa abans', async () => {
+      const cell = admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]');
+      await cell.click(); await admin.keyboard.type('6,6');
+      other = await admin.context().newPage(); watch(other, 'segona finestra');
+      await other.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`); await other.waitForSelector('#scoregrid'); await other.waitForSelector('text=Desat al fitxer');
+      await spy(other);
+      await admin.waitForSelector(`#pause[open] >> text=${PAUSA}`);
+      assert.equal(await isPaused(other), false, 'la nova mana');
+      await nap(400);
+      assert.equal(fileEntry('e1').scores.barra[0].v, 6.6, 'al fitxer');
+      assert.equal(await cellV(other, 'e1', 'barra'), '6,60', 'i a la finestra nova');
+    });
+
+    await step('la finestra en pausa no pot canviar res: ni el ratolí ni el teclat hi arriben, i el programa no n’accepta cap canvi (423)', async () => {
+      const before = readFileSync(dataFile, 'utf8');
+      const box = await admin.locator('#scoregrid input.sc[data-e=e2][data-a=barra]').boundingBox();
+      await admin.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await admin.keyboard.type('1,5'); await admin.keyboard.press('Enter'); await admin.keyboard.press('Escape');
+      await nap(300);
+      assert.ok(await isPaused(admin), 'continua en pausa');
+      assert.equal(await admin.evaluate(() => api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, window: WIN }) }).then(() => 200, e => e.status)), 423);
+      await nap(300);
+      assert.equal(readFileSync(dataFile, 'utf8'), before, 'el fitxer no ha canviat');
+    });
+
+    await step('les notes de les tutores arriben a totes dues finestres (a la de la pausa, per veure-les)', async () => {
+      const pin = file().competitions[0].tutorPin;
+      const r = await fetch(`http://${lan.address}:${PORT}/api/score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin, compId: 'k1', entryId: 'e2', appId: 'terra', i: 0, value: 8.25, who: 'Marta' }) });
+      assert.equal(r.status, 200);
+      for (const p of [admin, other]) await p.waitForFunction(() => { const i = document.querySelector('#scoregrid input.sc[data-e=e2][data-a=terra]'); return i && i.value === '8,25' && i.classList.contains('tutor'); }, null, { timeout: 8000 });
+      assert.ok(await isPaused(admin));
+    });
+
+    await step('«Treballa en aquesta finestra» la torna a fer manar (l’altra queda en pausa), i al revés; cap no trepitja el que ha desat l’altra', async () => {
+      await takeOver(admin);
+      assert.ok(await isPaused(other));
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]').click(); await admin.keyboard.type('9,35'); await admin.keyboard.press('Enter');
+      await other.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e1][data-a=barra]').value === '9,35', null, { timeout: 8000 });
+      await takeOver(other);
+      assert.ok(await isPaused(admin));
+      await other.locator('#scoregrid input.sc[data-e=e2][data-a=barra]').click(); await other.keyboard.type('7,45'); await other.keyboard.press('Enter');
+      await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e2][data-a=barra]').value === '7,45', null, { timeout: 8000 });
+      await nap(400);
+      assert.deepEqual([fileEntry('e1').scores.barra[0].v, fileEntry('e2').scores.barra[0].v, fileEntry('e2').scores.terra[0].v], [9.35, 7.45, 8.25]);
+    });
+
+    await step('el que no s’ha pogut desar en el moment de la pausa (el programa no ho rebia) es queda a la finestra i es pot descarregar; mai no s’escriu a sobre del fitxer', async () => {
+      const bib0 = fileEntry('e1').bib;
+      await other.evaluate(() => go('#/competicio/k1/inscripcions')); await other.waitForSelector('input[data-chg=bib][data-id=e1]');
+      await other.route('**/api/db', r => (r.request().method() === 'PUT' ? r.abort('connectionreset') : r.continue()));
+      await other.locator('input[data-chg=bib][data-id=e1]').click(); await other.keyboard.press('Control+A'); await other.keyboard.type('901'); await other.keyboard.press('Tab');
+      await nap(600);
+      await takeOver(admin);
+      await other.waitForSelector('#pause[open] #pauseunsent');
+      const [dl] = await Promise.all([other.waitForEvent('download'), other.click('#pause #pauseunsent')]);
+      assert.equal(JSON.parse(readFileSync(await dl.path(), 'utf8')).competitions[0].entries.find(e => e.id === 'e1').bib, 901, 'el canvi es pot descarregar');
+      assert.equal(await other.evaluate(async () => JSON.parse((await idbGet('abansServidor')).raw).competitions[0].entries.find(e => e.id === 'e1').bib), 901, 'i és a Configuració → Dades');
+      await other.unroute('**/api/db');
+      await nap(5000);   // (la finestra en pausa no el torna a enviar)
+      assert.equal(fileEntry('e1').bib, bib0);
+      assert.equal(await admin.evaluate(() => curComp().entries.find(e => e.id === 'e1').bib), bib0);
+      assert.equal(await other.evaluate(() => curComp().entries.find(e => e.id === 'e1').bib), bib0, 'la de la pausa ja mostra el que hi ha al fitxer');
+    });
+
+    await step('una fitxa oberta a la finestra que queda en pausa: si no ha canviat res, en tornar-hi es pot desar; si l’altra ha esborrat la inscripció, es tanca i es diu (no torna)', async () => {
+      await admin.evaluate(() => go('#/competicio/k1/inscripcions')); await admin.waitForSelector('a[data-act=editEntry][data-id=e2]');
+      await admin.click('a[data-act=editEntry][data-id=e2]'); await admin.waitForSelector('#dlg[open] input[name=bib]');
+      await takeOver(other);
+      assert.ok(await isPaused(admin));
+      await takeOver(admin);
+      assert.ok(await admin.evaluate(() => $('#dlg').open), 'la fitxa continua oberta');
+      await admin.fill('#dlg input[name=bib]', '222'); await admin.click('#dlg button.primary'); await nap(800);
+      assert.equal(fileEntry('e2').bib, 222);
+      const e2 = fileEntry('e2');
+      await admin.click('a[data-act=editEntry][data-id=e2]'); await admin.waitForSelector('#dlg[open] input[name=bib]');
+      await admin.fill('#dlg input[name=bib]', '333');
+      await takeOver(other);
+      await other.evaluate(() => { const c = curComp(); c.entries = c.entries.filter(e => e.id !== 'e2'); commit(); });
+      await nap(800);
+      await takeOver(admin);
+      await admin.waitForSelector('.toast:has-text("s’ha tancat el que tenies obert")');
+      assert.equal(await admin.evaluate(() => $('#dlg').open), false);
+      await nap(500);
+      assert.equal(fileEntry('e2'), undefined, 'l’esborrada no torna');
+      // (es deixa com era)
+      await admin.evaluate(e => { curComp().entries.push(e); db.competitions = migrate(db).competitions; commit(); }, e2);
+      await nap(800);
+      assert.equal(fileEntry('e2').bib, 222);
+    });
+
+    await step('es tanca la finestra que mana: l’altra continua sola (i no hi ha hagut cap alarma)', async () => {
+      await takeOver(other);
+      assert.deepEqual([...await alarms(admin), ...await alarms(other)], []);
+      await other.close();
+      await admin.waitForFunction(() => !win.paused, null, { timeout: 8000 });
+      await admin.evaluate(() => go('#/competicio/k1/notes')); await admin.waitForSelector('#scoregrid');
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]').click(); await admin.keyboard.type('9,1'); await admin.keyboard.press('Enter');
+      await nap(800);
+      assert.equal(fileEntry('e1').scores.barra[0].v, 9.1);
+      assert.deepEqual(await alarms(admin), []);
+    });
+  }
 
   await step('restaurar una còpia amb el programa: tornen les notes de la còpia', async () => {
     const backup = JSON.parse(readFileSync(dataFile, 'utf8'));
@@ -492,42 +587,6 @@ try {
     await admin.waitForSelector('.toast:has-text("Ja es torna a desar al fitxer")', { timeout: 12000 });
     admin.off('request', count);
     assert.equal(JSON.parse(readFileSync(dataFile, 'utf8')).settings.org, 'ORG SENSE DISC');
-    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
-    await admin.waitForSelector('#scoregrid');
-  });
-
-  await step('dues finestres de la taula: el que desa l’altra mentre aquí hi ha una fitxa oberta (o el cursor a «Cerca…») es carrega, i el canvi d’aquí no es perd', async () => {
-    const nap = ms => new Promise(r => setTimeout(r, ms));
-    const other = await (await browser.newContext({ viewport: { width: 1200, height: 800 } })).newPage();
-    watch(other, 'altra finestra (fitxa oberta)');
-    await other.goto(`http://127.0.0.1:${PORT}/#/gimnastes`); await other.waitForSelector('#gymtable');
-    const club = () => admin.evaluate(() => db.clubs.find(c => c.id === 'c1').name);
-    const file = () => JSON.parse(readFileSync(dataFile, 'utf8'));
-    const bibs0 = file().competitions[0].entries.map(e => [e.id, e.bib]);
-    await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/inscripcions`);
-    await admin.click('a[data-act=editEntry][data-id=e2]'); await admin.waitForSelector('#dlg[open] input[name=bib]');
-    await other.evaluate(() => { db.clubs.find(c => c.id === 'c1').name = 'CG Lleida (B)'; commit(); });
-    await nap(1500);
-    await admin.fill('#dlg input[name=bib]', '555'); await admin.click('#dlg button.primary');
-    await nap(1500);
-    assert.deepEqual([file().competitions[0].entries.find(e => e.id === 'e2').bib, file().clubs.find(c => c.id === 'c1').name], [555, 'CG Lleida (B)']);
-    assert.equal(await club(), 'CG Lleida (B)');
-    // el cursor a «Cerca…»; l'altra finestra desa; aquí es clica el dorsal d'una altra gimnasta i s'hi escriu
-    await admin.click('input[data-inp=insSearch]');
-    await other.evaluate(() => { db.clubs.find(c => c.id === 'c1').name = 'CG Lleida (C)'; commit(); });
-    await nap(1500);
-    const bib = admin.locator('input[data-chg=bib][data-id=e3]');
-    await bib.click(); await nap(200);
-    assert.equal(await admin.evaluate(() => document.activeElement.dataset.id), 'e3', 'el focus es queda al dorsal');
-    await admin.keyboard.press('Control+A'); await admin.keyboard.type('777'); await admin.keyboard.press('Tab');
-    await nap(1500);
-    assert.deepEqual([file().competitions[0].entries.find(e => e.id === 'e3').bib, file().clubs.find(c => c.id === 'c1').name], [777, 'CG Lleida (C)']);
-    assert.equal(await club(), 'CG Lleida (C)');
-    await other.close();
-    // (es deixa com era)
-    await admin.evaluate(b => { for (const [id, n] of b) curComp().entries.find(e => e.id === id).bib = n; db.clubs.find(c => c.id === 'c1').name = 'CG Lleida'; commit(); }, bibs0);
-    await nap(1200);
-    assert.equal(file().clubs.find(c => c.id === 'c1').name, 'CG Lleida');
     await admin.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
     await admin.waitForSelector('#scoregrid');
   });
@@ -648,6 +707,8 @@ try {
     assert.equal(await e.evaluate(async () => { const r = await idbGet('abansServidor'); return r && JSON.parse(r.raw).gymnasts.length; }), 3, 'les de la finestra es guarden');
     await e.context().close();
     // però si el fitxer s'ha perdut (no hi és), la finestra hi torna a posar les seves (les d'ara)
+    // (la c era en pausa des que s'ha obert la e: hi torna a manar)
+    await takeOver(c);
     await c.evaluate(() => { db.gymnasts.push({ id: 'n2', name: 'Nova', surname: 'Dara', clubId: null, gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
     await new Promise(r => setTimeout(r, 1200));
     assert.equal(gyms(), 1);
@@ -1079,6 +1140,10 @@ try {
       const A = await open(ctx, '#/gimnastes');
       assert.deepEqual(await kept(A), ['Gimnasta de l’altre fitxer']);
       const B = await open(ctx, '#/gimnastes');
+      // (la B, la que s'ha obert, mana: s'hi torna a fer manar l'A, i la B queda en pausa, quieta)
+      assert.ok(await isPaused(A));
+      await takeOver(A);
+      assert.ok(await isPaused(B));
       let block = false;
       await B.route('**/api/**', r => (block ? r.abort() : r.continue()));
       await sleep(800);

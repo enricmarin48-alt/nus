@@ -532,7 +532,8 @@ try {
     await p3.keyboard.press('Tab'); await p3.waitForTimeout(150);
     assert.equal(await cell.inputValue(), '9,50', 'en sortir sense canviar res, la que hi ha desada');
     assert.equal(await p3.textContent(`[data-out="tot:${eid}"]`), await p3.evaluate(id => fmt(Engine.entryTotal(curComp(), curComp().entries.find(e => e.id === id))), eid));
-    // un grup llarg, avall de tot: una altra pestanya desa i la graella no torna a dalt (la casella es continua veient)
+    // un grup llarg, avall de tot: s'obre una altra pestanya (aquesta queda en pausa), hi desa i es tanca: aquesta continua
+    // amb les seves dades, i la graella no torna a dalt (la casella es continua veient i té el focus)
     await p3.evaluate(() => { const g = groupsOf(curComp()).sort((a, b) => b.entries.length - a.entries.length)[0]; ui.group = g.key; ui.app = 'all'; render(); });
     const ids = await p3.evaluate(() => $$('#scoregrid input.sc[data-a=salt]').map(x => x.dataset.e));
     const low = p3.locator(`#scoregrid input.sc[data-a=salt][data-e=${ids[ids.length - 2]}]`);
@@ -540,29 +541,61 @@ try {
     const top0 = await p3.evaluate(() => $('#scoregrid').closest('.grid-wrap').scrollTop);
     assert.ok(top0 > 100, 'la graella té la seva barra i és avall: ' + top0);
     const other = await ctx3.newPage(); await other.goto(url + '#/gimnastes'); await other.waitForTimeout(200);
+    await p3.waitForSelector('#pause[open]');
     await other.evaluate(() => { db.clubs.push({ id: 'cx', name: 'Club nou' }); commit(); flush(); });
     await other.close();
-    await p3.waitForFunction(() => db.clubs.some(c => c.id === 'cx'));
+    await p3.waitForFunction(() => !win.paused && db.clubs.some(c => c.id === 'cx'));
     await p3.waitForTimeout(150);
     const inf = await p3.evaluate(() => { const w = $('#scoregrid').closest('.grid-wrap'), a = document.activeElement, wr = w.getBoundingClientRect(), r = a.getBoundingClientRect(); return { top: w.scrollTop, e: a.dataset.e, vis: r.top >= wr.top && r.bottom <= wr.bottom }; });
     assert.deepEqual(inf, { top: top0, e: ids[ids.length - 2], vis: true });
   });
 
-  await step('dues pestanyes: si l’altra desa just després d’un Intro, la nota que s’està escrivint no es perd (8,50 i 9,25)', async () => {
+  // només una pestanya pot canviar les dades alhora: la que s'obre (o on es clica «Treballa en aquesta finestra»); l'altra
+  // queda en pausa
+  const paused = p => p.evaluate(() => win.paused && !!document.querySelector('#pause[open]'));
+  await step('dues pestanyes: se n’obre una altra just mentre aquí s’escriu una nota (sense Intro): es desa abans de la pausa i l’altra la té (8,50 i 9,25)', async () => {
     await load3('#/competicio/c418/notes');
     await p3.evaluate(() => flush());
-    const other = await ctx3.newPage(); await other.goto(url + '#/gimnastes'); await other.waitForTimeout(200);
-    await p3.bringToFront();
     const ids = await p3.evaluate(() => $$('#scoregrid input.sc[data-a=salt]').map(x => x.dataset.e));
     await p3.click(`#scoregrid input.sc[data-a=salt][data-e=${ids[0]}]`);
     await p3.keyboard.type('8,5'); await p3.keyboard.press('Enter');
+    await p3.keyboard.type('9,25');
+    const other = await ctx3.newPage(); await other.goto(url + '#/competicio/c418/notes'); await other.waitForTimeout(400);
+    assert.ok(await paused(p3), 'aquesta queda en pausa');
+    assert.equal(await paused(other), false, 'la que s’ha obert és la que mana');
+    const v = p => p.evaluate(ids => ids.map(id => (((curComp().entries.find(e => e.id === id).scores || {}).salt || [])[0] || {}).v ?? null), ids.slice(0, 2));
+    assert.deepEqual(await v(other), [8.5, 9.25], 'l’altra té les dues notes');
+    assert.equal(await p3.evaluate(() => $$('.toast').filter(t => /altra pestanya/.test(t.textContent)).length), 0);
     await other.evaluate(() => { db.clubs.push({ id: 'cz', name: 'Club Z' }); commit(); flush(); });
-    await p3.keyboard.type('9,25', { delay: 70 }); await p3.keyboard.press('Enter'); await p3.waitForTimeout(500);
     await other.close();
-    const v = await p3.evaluate(ids => ids.map(id => (((curComp().entries.find(e => e.id === id).scores || {}).salt || [])[0] || {}).v ?? null), ids.slice(0, 2));
-    assert.deepEqual(v, [8.5, 9.25]);
+    await p3.waitForFunction(() => !win.paused, null, { timeout: 5000 });
+    assert.deepEqual(await v(p3), [8.5, 9.25]);
     assert.ok(await p3.evaluate(() => db.clubs.some(c => c.id === 'cz')), 'i les dades de l’altra pestanya hi són');
     await p3.evaluate(() => $$('#fixtip').forEach(t => t.remove()));
+  });
+
+  await step('un formulari obert d’una inscripció, una fitxa o un equip que s’ha esborrat mentrestant: «Desa» no peta ni el torna a crear', async () => {
+    const before = errors.length;
+    await load3('#/competicio/c418/inscripcions');
+    const eid = await p3.evaluate(() => curComp().entries[0].id);
+    await p3.click(`a[data-act=editEntry][data-id=${eid}]`); await p3.waitForSelector('#dlg[open] form[data-form=entry]');
+    await p3.evaluate(id => { const c = curComp(); c.entries = c.entries.filter(e => e.id !== id); }, eid);
+    await p3.click('#dlg button.primary');
+    await p3.waitForSelector('.toast:has-text("Aquesta inscripció ja no hi és")');
+    assert.equal(await p3.evaluate(id => curComp().entries.some(e => e.id === id), eid), false);
+    const gid = await p3.evaluate(() => db.gymnasts[0].id);
+    await p3.evaluate(() => go('#/gimnastes')); await p3.click(`#gymtable a[data-act=editGym][data-id=${gid}]`); await p3.waitForSelector('#dlg[open] form[data-form=gym]');
+    await p3.evaluate(id => { db.gymnasts = db.gymnasts.filter(g => g.id !== id); }, gid);
+    await p3.click('#dlg button.primary');
+    await p3.waitForSelector('.toast:has-text("Aquesta fitxa ja no hi és")');
+    assert.equal(await p3.evaluate(id => db.gymnasts.some(g => g.id === id), gid), false);
+    const t = await p3.evaluate(() => { const t = db.teams.find(x => x.memberIds.length > 1); return t && { id: t.id, m: t.memberIds }; });
+    await p3.evaluate(() => go('#/equips')); await p3.click(`a[data-act=editTeam][data-id="${t.id}"]`); await p3.waitForSelector('#dlg[open] form[data-form=team]');
+    await p3.evaluate(id => { db.teams = db.teams.filter(x => x.id !== id); }, t.id);
+    await p3.click('#dlg button.primary');
+    await p3.waitForSelector('.toast:has-text("Aquest equip ja no hi és")');
+    assert.equal(await p3.evaluate(id => db.teams.some(x => x.id === id), t.id), false, 'l’equip no torna');
+    assert.equal(errors.length, before, 'cap error a la pàgina');
   });
 
   await step('clicar al final d’un camp de text just després d’haver-ne canviat un altre: el cursor es queda on s’ha clicat («Terra lliure»)', async () => {
@@ -751,22 +784,43 @@ try {
     await tryClick('button[data-act=toggleQe]', 'qe');
   });
 
-  await step('dues pestanyes: si l’altra desa mentre aquí s’escriu a «Cerca…», el clic següent a un dorsal no en treu el focus (777 es desa)', async () => {
+  await step('dues pestanyes: la que és en pausa no pot canviar res; «Treballa en aquesta finestra» passa d’una a l’altra i cap no trepitja el que ha desat l’altra', async () => {
     await load3('#/competicio/c418/inscripcions');
     await p3.evaluate(() => flush());
-    const other = await ctx3.newPage(); await other.goto(url + '#/gimnastes'); await other.waitForTimeout(300);
+    const bibOf = (p, id) => p.evaluate(id => curComp().entries.find(e => e.id === id).bib, id);
+    const bib = p3.locator('input[data-chg=bib]:visible').first(), id = await bib.getAttribute('data-id'), bib0 = await bibOf(p3, id);
+    const other = await ctx3.newPage(); await other.goto(url + '#/competicio/c418/inscripcions'); await other.waitForTimeout(400);
+    assert.ok(await paused(p3));
+    // en pausa: ni el ratolí ni el teclat no hi arriben
     await p3.bringToFront();
-    await p3.click('input[data-inp=insSearch]'); await p3.keyboard.type('Laia');
-    await other.evaluate(() => { db.clubs.push({ id: 'cq', name: 'Club Q' }); commit(); flush(); });
+    const r0 = await p3.evaluate(() => localStorage.getItem('notesgim.db'));
+    await p3.mouse.click((await bib.boundingBox()).x + 10, (await bib.boundingBox()).y + 8);
+    await p3.keyboard.type('999'); await p3.keyboard.press('Enter'); await p3.keyboard.press('Escape'); await p3.keyboard.press('Escape');
     await p3.waitForTimeout(300);
-    assert.ok(await p3.evaluate(() => remotePending));
-    const bib = p3.locator('input[data-chg=bib]:visible').first(), id = await bib.getAttribute('data-id');
-    await bib.click(); await p3.waitForTimeout(100);
-    assert.deepEqual(await act3(), { tag: 'INPUT', chg: 'bib', act: '', id });
-    await p3.keyboard.press('Control+A'); await p3.keyboard.type('777'); await p3.keyboard.press('Tab'); await p3.waitForTimeout(300);
+    assert.ok(await paused(p3), 'continua en pausa');
+    assert.equal(await bibOf(p3, id), bib0, 'no ha canviat res');
+    assert.equal(await p3.evaluate(() => localStorage.getItem('notesgim.db')), r0, 'no ha desat res');
+    // «Treballa en aquesta finestra»: ara mana aquesta, l'altra queda en pausa
+    await p3.click('#pause button:has-text("Treballa en aquesta finestra")');
+    await p3.waitForFunction(() => !win.paused);
+    assert.ok(await paused(other));
+    await bib.click(); await p3.keyboard.press('Control+A'); await p3.keyboard.type('777'); await p3.keyboard.press('Tab'); await p3.waitForTimeout(300);
+    assert.equal(await bibOf(p3, id), 777);
+    await other.waitForFunction(id => curComp().entries.find(e => e.id === id).bib === 777, id);   // (l'altra ho veu)
+    // i al revés
+    await other.bringToFront();
+    await other.click('#pause button:has-text("Treballa en aquesta finestra")');
+    await other.waitForFunction(() => !win.paused);
+    assert.ok(await paused(p3));
+    await other.evaluate(() => { db.clubs.push({ id: 'cq', name: 'Club Q' }); commit(); flush(); });
+    await p3.waitForFunction(() => db.clubs.some(c => c.id === 'cq'));
     await other.close();
-    assert.equal(await p3.evaluate(id => curComp().entries.find(e => e.id === id).bib, id), 777);
+    await p3.waitForFunction(() => !win.paused, null, { timeout: 5000 });
+    assert.equal(await bibOf(p3, id), 777);
     assert.ok(await p3.evaluate(() => db.clubs.some(c => c.id === 'cq')), 'i les dades de l’altra pestanya hi són');
+    const ls = await p3.evaluate(() => JSON.parse(localStorage.getItem('notesgim.db')));
+    assert.ok(ls.clubs.some(c => c.id === 'cq') && ls.competitions.find(c => c.id === 'c418').entries.find(e => e.id === id).bib === 777);
+    assert.equal(await p3.evaluate(() => $$('.toast').filter(t => /altra pestanya/.test(t.textContent)).length), 0, 'cap alarma');
   });
 
   await step('graella de Notes: el que arriba de les tutores no mou cap casella (nota sota el mínim «→ 3,00», primer salt amb «la mitjana»), i la pastilla d’un altre grup compta bé', async () => {

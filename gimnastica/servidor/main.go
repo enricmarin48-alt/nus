@@ -166,6 +166,18 @@ func (s *store) backupOriginalLocked() {
 	}
 }
 
+// abans de restaurar una còpia (o d'esborrar-ho tot), es guarda com eren les dades
+func (s *store) backupBeforeRestoreLocked() {
+	b, err := json.MarshalIndent(s.db, "", " ")
+	if err != nil || len(s.db) == 0 {
+		return
+	}
+	if err := os.MkdirAll(s.backups, 0o755); err == nil {
+		_ = writeFileSync(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-abans-de-restaurar.json"), b)
+		s.pruneBackups(60)
+	}
+}
+
 // desa de manera segura: primer a un fitxer temporal i després el reanomena (mai queda a mitges).
 // Si no es pot (disc ple, OneDrive, USB fora), es torna a provar sol cada pocs segons.
 func (s *store) saveLocked() error {
@@ -313,7 +325,10 @@ func guarded(a map[string]any) bool {
 // mergeScores: a base hi posa, de cada intent de nota, la versió d'other si és més recent (excepte que una
 // nota de tutora no passa mai per sobre d'una de la taula o ja revisada).
 // Retorna quants intents s'han agafat d'other. (Igual que Engine.mergeScores a index.html.)
-func mergeScores(base, other map[string]any) int {
+func mergeScores(base, other map[string]any) int { return mergeScoresSince(base, other, 0) }
+
+// com mergeScores, però de l'altra còpia només els intents desats després de since (ms)
+func mergeScoresSince(base, other map[string]any, since float64) int {
 	taken := 0
 	for _, c := range arr(base["competitions"]) {
 		cm := obj(c)
@@ -344,7 +359,7 @@ func mergeScores(base, other map[string]any) int {
 					if i < len(list) {
 						ym = obj(list[i])
 					}
-					if num(xm["at"]) > num(ym["at"]) && !(str(xm["by"]) == "tutor" && guarded(ym)) {
+					if num(xm["at"]) > num(ym["at"]) && num(xm["at"]) > since && !(str(xm["by"]) == "tutor" && guarded(ym)) {
 						for len(list) <= i {
 							list = append(list, map[string]any{})
 						}
@@ -675,6 +690,7 @@ func (s *store) routes(port int) http.Handler {
 				DB      map[string]any `json:"db"`
 				Base    int64          `json:"base"`
 				Replace bool           `json:"replace"`
+				Since   float64        `json:"since"`
 			}
 			if err := json.NewDecoder(io.LimitReader(r.Body, 50<<20)).Decode(&body); err != nil || body.DB == nil {
 				fail(w, 400, "dades incorrectes")
@@ -695,6 +711,13 @@ func (s *store) routes(port int) http.Handler {
 			taken := 0
 			if !body.Replace {
 				taken = mergeScores(body.DB, s.db) // notes de tutores més noves que les que té l'ordinador
+			} else {
+				// es restaura una còpia: abans, una còpia de com era (per si s'ha triat la que no era), i només
+				// s'hi afegeixen les notes arribades després de restaurar
+				s.backupBeforeRestoreLocked()
+				if body.Since > 0 {
+					taken = mergeScoresSince(body.DB, s.db, body.Since)
+				}
 			}
 			s.backupOriginalLocked()
 			s.db = body.DB

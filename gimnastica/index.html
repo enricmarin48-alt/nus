@@ -128,7 +128,11 @@
   .pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
   .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px}
   .pill.on{background:var(--pri2);border-color:var(--pri2);color:#fff}
-  .pill .n{font-size:11px;opacity:.75}
+  .pill .n{font-size:11px;opacity:.75;display:inline-block;font-variant-numeric:tabular-nums}
+  /* (el comptador d'una pastilla —«12 · falten 3», «12 ✓», «3/12»— té sempre l'amplada del més llarg que hi pot sortir:
+     si la pastilla s'eixamplés o s'estrenyés quan arriba una nota, les pastilles podrien passar a ocupar una ratlla més o
+     menys i la graella es mouria just quan s'hi clica) */
+  .pill .n[data-w]::after{content:attr(data-w);display:block;height:0;overflow:hidden;visibility:hidden;font-weight:800}
   .pill svg{width:16px;height:16px}
   .badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;background:var(--line2);color:var(--muted)}
   .badge.ok{background:var(--ok-soft);color:var(--ok)}
@@ -179,9 +183,16 @@
   .st{display:inline-block;width:16px;margin-left:4px;font-weight:800}
   .st.ok{color:var(--ok)} .st.err{color:var(--bad)} .st.wait{color:var(--warn)}
   td.out{color:#26324a;font-weight:700}
-  .minhint{color:var(--warn);font-weight:700;margin-right:4px;font-size:12px}
+  /* «→ 3,00» (nota mínima): a sobre del cantó de la casella, sense ocupar lloc. Si n'ocupés, quan arriba una nota així
+     d'una tutora les columnes s'eixamplarien i un clic just llavors aniria a parar a una altra casella (o enlloc) */
+  #scoregrid td.num{position:relative}
+  .minhint{position:absolute;top:0;right:4px;color:var(--warn);font-weight:700;font-size:10px;line-height:12px;background:#fff;border-radius:4px;padding:0 3px;white-space:nowrap;pointer-events:none}
   .minhint:empty{display:none}
   .progress{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 10px}
+  /* (amb un aparell de dos intents que compten tots dos, l'avís «… amb 1 intent» hi pot sortir quan arriba una nota
+     d'una tutora: la línia hi és sempre, d'una ratlla, perquè la graella no baixi just quan s'hi clica) */
+  .progress.resv{flex-wrap:nowrap;overflow:hidden;height:18px;align-items:center}
+  .progress.resv .badge{flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ico{width:18px;height:18px;vertical-align:-4px;display:inline-block}
   html{scroll-padding-top:70px}
   .grid-wrap{max-height:calc(100vh - 150px)}
@@ -221,17 +232,24 @@
   .qe-app small{margin-left:auto;font-size:14px;opacity:.9}
   .qe-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;align-items:center}
   .qe-bib{grid-row:span 2;font-size:40px;font-weight:900;color:var(--pri);min-width:64px;text-align:center;font-variant-numeric:tabular-nums}
-  .qe-who b{display:block;font-size:21px;line-height:1.2;overflow:hidden;text-overflow:ellipsis}
-  .qe-who span{font-size:13px;color:var(--muted)}
-  .qe-saved{font-size:14px;color:var(--muted)}
+  /* (el que hi ha a sobre del teclat, sempre de la mateixa alçada: d'una gimnasta a la següent —un nom o una entitat
+     llargs— i quan apareix un avís, el teclat no es mou de lloc i el dit no prem una altra tecla) */
+  .qe-who{min-width:0}
+  .qe-who b{display:block;font-size:21px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qe-who span{display:block;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .qe-saved{font-size:14px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;height:21px;line-height:21px}
+  .qe-saved .badge{line-height:15px;vertical-align:middle}
   .qe-saved b{color:var(--ink);font-size:16px}
   .qe-card .seg{grid-column:1/-1;margin:6px 0 0}
-  .qe-card .seg .pill{flex:1;justify-content:center;min-height:40px}
+  .qe-card .seg .pill{flex:1;justify-content:center;min-height:40px;min-width:0;white-space:nowrap;overflow:hidden}
   .qe-display{margin:10px 0 4px;background:#fff;border:2px solid var(--line);border-radius:14px;font-size:46px;font-weight:800;text-align:center;
     padding:6px 10px;font-variant-numeric:tabular-nums;min-height:72px;letter-spacing:.02em}
   .qe-display.empty{color:#b5bccb}
   .qe-display.invalid{border-color:var(--bad);background:var(--bad-soft);color:var(--bad)}
-  .qe-hint{min-height:22px;font-size:14px;text-align:center;color:var(--warn);font-weight:700;display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap}
+  .qe-hint{height:28px;font-size:14px;text-align:center;color:var(--warn);font-weight:700;display:flex;gap:8px;justify-content:center;align-items:center;
+    white-space:nowrap;overflow:hidden}
+  .qe-hint .btn{flex:none}
+  @media (pointer:coarse){ .qe-hint{height:40px} }
   .qe-hint.bad{color:var(--bad)}
   .qe-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 10px}
   .qe-keys button{min-height:64px;font-size:28px;font-weight:800;border:1px solid var(--line);background:#fff;border-radius:14px;cursor:pointer;
@@ -248,7 +266,6 @@
   .qe-strip button.lock{background:#eef1f5}
   .qe-strip button.cur{outline:3px solid var(--pri2);outline-offset:1px}
   .banner{border-radius:10px;padding:10px 12px;margin-bottom:10px;font-weight:700;font-size:14px}
-  #tutbanner{position:sticky;top:var(--top,0px);z-index:6}
   .banner.bad{background:#fde3c8;color:#6b3300}
   .banner.ok{background:var(--ok-soft);color:var(--ok)}
 
@@ -360,15 +377,26 @@
     #toasts .toast:not(:last-child){display:none}
     #toasts .toast{padding:4px 10px;min-height:40px}
     #toasts .toast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    #tutbanner .banner{padding:4px 10px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    html #tutbanner .banner{padding:4px 10px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     body.kb dialog#dlg .dlg-actions{position:static;margin-bottom:0}
   }
-  /* amb el teclat gran, l'avís de connexió de la tutora (que també es veu a la barra de l'aparell) surt a la franja de
-     dalt, per sobre del nom de l'app, i no ocupa lloc a la pàgina: si n'ocupés, el teclat baixaria just quan s'hi toca
-     i el dit premeria una altra tecla */
-  body.has-qe #tutbanner{position:fixed;top:0;left:0;right:0;z-index:21;padding:calc(6px + env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 0 max(8px,env(safe-area-inset-left));pointer-events:none}
-  body.has-qe #tutbanner .banner{margin:0;padding:7px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(10,20,40,.18)}
-  .qe-net{font-size:12px;font-weight:700;background:rgba(0,0,0,.28);border-radius:6px;padding:2px 6px;margin-left:auto}
+  /* l'avís de connexió de la tutora (que també es veu a dalt, «Sense connexió», i a la barra de l'aparell) surt a la
+     franja de dalt, per sobre del nom de l'app, i no ocupa lloc a la pàgina, amb el teclat gran i a la llista: si
+     n'ocupés, el teclat o la llista baixarien just quan s'hi toca i el dit premeria una altra tecla o la casella d'una
+     altra gimnasta */
+  #tutbanner{position:fixed;top:0;left:0;right:0;z-index:21;padding:calc(6px + env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 0 max(8px,env(safe-area-inset-left));pointer-events:none}
+  #tutbanner .banner{margin:0;padding:7px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(10,20,40,.18)}
+  /* l'estat de la connexió al costat de «Surt»: sempre el lloc del més llarg, perquè el nom de la competició no canviï
+     de ratlles (i la pàgina no baixi) quan canvia */
+  #tutstatus{display:inline-grid;justify-items:end}
+  #tutstatus>*,#tutstatus::after{grid-area:1/1;white-space:nowrap}
+  #tutstatus::after{content:"Connectada · tot enviat";visibility:hidden;font-size:11px;font-weight:700;padding:0 7px;height:0;overflow:hidden}
+  /* la barra de l'aparell del teclat gran, sempre d'una ratlla (al mòbil de 360 px «Sense connexió · 2 al mòbil» no hi
+     cap): si creixés, el teclat baixaria just quan s'hi toca. Primer s'escurça l'estat de la connexió */
+  .qe-app>.ico,.qe-app small{flex:none;white-space:nowrap}
+  .qe-name{min-width:0;flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .qe-net{font-size:12px;font-weight:700;background:rgba(0,0,0,.28);border-radius:6px;padding:2px 6px;margin-left:auto;
+    min-width:0;flex:0 1000 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .qe-net:empty{display:none}
   .qe-net:not(:empty) + small{margin-left:8px}
   html:has(#qe){scroll-padding-top:0}
@@ -2184,20 +2212,25 @@ const typingScore = () => { const el = document.activeElement; return !!(el && e
 // s'està escrivint en un camp de text de la pàgina (un nom, un dorsal…): no es torna a dibuixar a sota
 const editing = () => { const el = document.activeElement; return !!(el && el.closest && el.closest('#main') && el.matches('input:not([type=checkbox]):not([type=radio]):not(.sc),textarea')); };
 // s'hi ha escrit (una nota, un nom, una hora…) i encara no s'ha desat: no es torna a pintar a sota (es perdria el que
-// s'escriu). Una hora, fins que se'n surt: el navegador avisa d'un canvi a cada part (l'hora, els minuts) i, si es
-// tornés a pintar, el que s'escrivís després aniria a parar a l'hora
+// s'escriu). Una hora, sempre fins que se'n surt: el navegador avisa d'un canvi a cada part (l'hora, els minuts) i, si es
+// tornés a pintar, el que s'escrivís després aniria a parar a l'hora (08:30 → «0845»: després del «08» torna a dir 08:30,
+// igual que abans, però encara falten els minuts; no es pot saber pel valor)
 const typing = () => {
   const el = document.activeElement;
   if (!(el && el.closest && el.closest('#main'))) return false;
   if (el.matches('input.sc')) return el.dataset.last !== el.value;
+  if (el.matches('input[type=time]')) return true;
   if (!el.matches('input:not([type=checkbox]):not([type=radio]),textarea')) return false;
-  return el.value !== (el.type !== 'time' && el._saved !== undefined ? el._saved : el.defaultValue);
+  return el.value !== (el._saved !== undefined ? el._saved : el.defaultValue);
 };
 document.addEventListener('change', e => { const t = e.target; if (t && t.matches && t.matches('input,textarea')) t._saved = t.value; }, true);
 const dialogOpen = () => !!(($('#dlg') || {}).open || ($('#confirm') || {}).open);
 const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la tutora ' + a.who : 'una tutora'}${a.at ? ' a les ' + new Date(a.at).toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' }) : ''}. Si la canvies, compta com a revisada.` : '';
 // arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint.
-// Si una altra finestra de la taula ha desat dades (rev diferent) i aquí no hi ha res per desar, es carreguen.
+// Si una altra finestra de la taula ha desat dades (rev diferent) i aquí no hi ha res per desar, es carreguen. Si ara no
+// es pot (un diàleg obert, s'escriu en un camp, o aquí hi ha canvis per desar), es guarden (server.pendingDb) i es
+// carreguen tan aviat com es pugui (applyDeferred), o just abans d'un canvi d'aquí: mai no es llencen (si no, aquesta
+// finestra continuaria mostrant les d'abans i el seu canvi següent toparia al programa amb el de l'altra i es perdria)
 function applyRemote(remoteDb, rev) {
   // s'acaba de restaurar una còpia (encara no s'ha enviat): de les dades del programa, només les notes noves d'ara
   if (server.replaceNext) {
@@ -2205,12 +2238,10 @@ function applyRemote(remoteDb, rev) {
     if (ch.length) { try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {} renderKeepFocus(); }
     return;
   }
-  if (rev != null && server.dataRev != null && rev !== server.dataRev && remoteDb && !saveTimer && !server.pushing && !server.again
-    && !dialogOpen() && !typingScore() && !editing() && (remoteDb.meta || {}).updated !== server.sentStamp) {
-    db = migrate(remoteDb); server.dataRev = rev; server.sentStamp = (remoteDb.meta || {}).updated || null;
-    try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
-    renderKeepFocus(); toast('Dades actualitzades des d’una altra finestra.');
-    return;
+  if (rev != null && server.dataRev != null && rev !== server.dataRev && remoteDb && (remoteDb.meta || {}).updated !== server.sentStamp) {
+    server.pendingDb = { db: remoteDb, rev };
+    if (!dialogOpen() && !typingScore() && !editing() && loadPending()) { renderKeepFocus(); return; }
+    deferSafety();
   }
   const changed = Engine.mergeScores(db, remoteDb);
   if (!changed.length) return;
@@ -2227,16 +2258,39 @@ function applyRemote(remoteDb, rev) {
     }
     tutorReviewRefresh(c);
     toast(`${plural(changed.length, 'nota nova', 'notes noves')} de les tutores.`);
-  } else if (dialogOpen() || editing()) server.deferred = true;
+  } else if (dialogOpen() || editing()) { server.deferred = true; deferSafety(); }
   else renderKeepFocus();
 }
+// les dades d'una altra finestra que s'havien guardat: es carreguen si aquí no hi ha res per desar ni cap canvi que el
+// programa encara no tingui (si n'hi ha, en enviar-lo el programa diu que han canviat i serverConflict les carrega amb les
+// notes d'aquí) i si encara són les més noves
+function loadPending() {
+  const p = server.pendingDb;
+  if (!p || saveTimer || server.pushing || server.again || server.replaceNext || (db.meta || {}).updated !== server.sentStamp) return false;
+  server.pendingDb = null;
+  if (server.dataRev != null && p.rev <= server.dataRev) return false;
+  db = migrate(p.db); server.dataRev = p.rev; server.sentStamp = (p.db.meta || {}).updated || null;
+  try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+  toast('Dades actualitzades des d’una altra finestra.');
+  return true;
+}
+// just abans d'un canvi d'aquí (un botó, desar el formulari d'un diàleg, sortir d'un camp que s'ha canviat): es carreguen
+// primer, i el canvi es fa sobre les dades noves (no topa amb les de l'altra finestra). Es torna a pintar després.
+// (no amb un botó que va per posició —data-i: «puja», «esborra» d'una llista—, que amb les dades noves podria ser una
+// altra fila, ni dins d'un diàleg de confirmació, que espera amb les dades d'abans)
+const loadPendingFirst = () => { if (server.pendingDb && loadPending()) { keepLater = true; deferSafety(); } };
+document.addEventListener('submit', e => { if (e.target.closest && e.target.closest('#dlg')) loadPendingFirst(); }, true);
+document.addEventListener('change', e => { const t = e.target; if (t && t.closest && t.closest('#main [data-chg]') && (isSc(t) || !t.hasAttribute('data-i'))) loadPendingFirst(); }, true);
+document.addEventListener('click', e => { const el = e.target.closest && e.target.closest('[data-act]'); if (el && !dialogOpen() && !el.hasAttribute('data-i')) loadPendingFirst(); }, true);
 // el que ha arribat mentre hi havia un diàleg obert o s'escrivia un nom: es mostra quan s'acaba
 // (mai amb el botó del ratolí o el dit a mig clic, amb l'Espai o l'Intro premuts, ni amb un menú ⋯ obert: si es tornés a
 // pintar entre «prémer» i «deixar anar», el clic o la tecla anirien a parar a un botó que ja no hi és, o a un altre)
 // (keyAt: la tecla premuda; si no arriba a la pàgina el «deixar anar» —p. ex. perquè s'ha obert la finestra
 // d'imprimir—, al cap d'un moment ja no compta: mentre es manté premuda, el navegador la repeteix)
 let ptrDown = false, keyAt = 0, tapAt = 0;
-const inHand = () => ptrDown || (keyAt > 0 && Date.now() - keyAt < 1500) || (tapAt > 0 && Date.now() - tapAt < 600) || !!$('.menu.open');
+// (un menú obert que no es veu —p. ex. el del mòbil, després de girar la tauleta— no compta: ningú no hi pot clicar)
+const menuShown = () => $$('.menu.open .menu-list').some(l => l.offsetParent !== null);
+const inHand = () => ptrDown || (keyAt > 0 && Date.now() - keyAt < 1500) || (tapAt > 0 && Date.now() - tapAt < 600) || menuShown();
 document.addEventListener('pointerdown', () => { ptrDown = true; }, true);
 // (amb el dit, el clic arriba després de deixar anar: s'espera el clic)
 document.addEventListener('pointerup', e => { ptrDown = false; tapAt = e.pointerType === 'mouse' ? 0 : Date.now(); applyDeferred(); if (tapAt) setTimeout(applyDeferred, 650); }, true);
@@ -2249,13 +2303,23 @@ document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Ente
 document.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') { keyAt = 0; applyDeferred(); } }, true);
 addEventListener('blur', () => { ptrDown = false; keyAt = tapAt = 0; applyDeferred(); });
 // keepLater: una pintada d'aquí mateix (renderKeepFocus) que ha arribat a mig clic o amb una nota a mig escriure
+// (les dades d'una altra finestra es carreguen també amb el focus en un camp, si no s'hi ha escrit res: el focus i el
+// cursor s'hi queden)
 let keepLater = false;
 function applyDeferred() {
   setTimeout(() => {
     if (inHand() || typing()) return;
-    if (server.deferred && !dialogOpen() && !editing()) { server.deferred = false; keepLater = false; renderSame(); }
+    if (server.pendingDb && !dialogOpen() && loadPending()) { server.deferred = false; keepLater = false; renderSame(); }
+    else if (server.deferred && !dialogOpen() && !editing()) { server.deferred = false; keepLater = false; renderSame(); }
     else if (keepLater) { keepLater = false; renderSame(); }
   }, 0);
+}
+// i, per si de cas, cada dos segons mentre n'hi hagi cap de pendent (que no s'hi quedi mai: p. ex. si el navegador no
+// ha avisat de deixar anar el botó)
+let deferT = 0;
+function deferSafety() {
+  if (deferT) return;
+  deferT = setTimeout(() => { deferT = 0; if (keepLater || server.deferred || server.pendingDb) { applyDeferred(); deferSafety(); } }, 2000);
 }
 document.addEventListener('focusout', applyDeferred);
 $('#dlg').addEventListener('close', applyDeferred);
@@ -2313,12 +2377,14 @@ addEventListener('storage', e => {
   if (saveTimer || typingScore() || editing() || dialogOpen()) { remotePending = true; otherWindowWarning(); return; }
   try { db = migrate(JSON.parse(e.newValue)); lastRaw = e.newValue; renderKeepFocus(); toast('Dades actualitzades des d’una altra finestra.'); } catch (_) {}
 });
-// el que una altra finestra ha desat mentre aquesta escrivia: es carrega al primer clic (abans de cap acció)
+// el que una altra finestra ha desat mentre aquesta escrivia: es carrega al primer clic (abans de cap acció), i es
+// torna a pintar després del clic sense treure el focus d'on s'ha clicat (si s'ha clicat una casella per escriure-hi,
+// el que s'hi escriu no es perd)
 let remotePending = false, lastRaw = null;
 document.addEventListener('click', () => {
   if (!remotePending || saveTimer) return;
   remotePending = false;
-  try { const raw = localStorage.getItem(LS_KEY); if (raw && raw !== lastRaw) { db = migrate(JSON.parse(raw)); lastRaw = raw; render(); } } catch (_) {}
+  try { const raw = localStorage.getItem(LS_KEY); if (raw && raw !== lastRaw) { db = migrate(JSON.parse(raw)); lastRaw = raw; renderKeepFocus(); } } catch (_) {}
 }, true);
 // avís si l'app està oberta en més d'una finestra (cada una pot trepitjar el que desa l'altra)
 let others = 0;
@@ -2681,7 +2747,9 @@ function choiceBox(msg, buttons) {
 // label: text, o una funció que es crida després del canvi i torna el text o { msg, type, actions }
 // replace: el canvi substitueix totes les dades (restaurar una còpia, esborrar-ho tot): al programa NotesGim no s'hi
 // han de barrejar les notes que hi havia (i el Desfés tampoc)
-function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace = false } = {}) {
+// later: es torna a pintar quan es pugui (renderKeepFocus: no a mig clic, p. ex. si el canvi ve de sortir d'una casella
+// clicant una pestanya; si es pintés ara, el clic aniria a parar a un botó que ja no hi és)
+function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace = false, later = false } = {}) {
   const snap = JSON.stringify(db);
   fn();
   if (replace && server.on) { server.replaceNext = true; server.replaceAt = Date.now(); }
@@ -2689,7 +2757,7 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace
   const stamp = db.meta.updated;
   let L = typeof label === 'function' ? label() : label;
   if (L && typeof L === 'object') { type = L.type || type; actions = L.actions || actions; L = L.msg; }
-  try { renderSame(); } finally {
+  try { if (later) renderKeepFocus(); else renderSame(); } finally {
     toast(L, type, { actions: [{ label: 'Desfés', fn: () => {
       if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
       if (beforeRestore) beforeRestore();
@@ -2723,7 +2791,8 @@ function focusMark(root) {
   if (bare && a.tagName !== 'SUMMARY') return null;
   const txt = bare ? a.textContent.trim() : null;
   const same = focusSame(root, a.tagName, key, txt);
-  const m = { tag: a.tagName, key, txt, n: same.indexOf(a), of: same.length };
+  // (tab: s'hi havia arribat amb el tabulador —un botó del teclat gran—; el botó nou també, encara que es torni a pintar)
+  const m = { tag: a.tagName, key, txt, n: same.indexOf(a), of: same.length, tab: a._tab };
   if (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|file|hidden|color|range)$/.test(a.type))) {
     m.val = a.value; m.base = a.matches('input.sc') ? a.dataset.last : a.defaultValue;
     try { m.sel = a.selectionStart === null ? null : [a.selectionStart, a.selectionEnd, a.selectionDirection]; } catch (_) { m.sel = null; }
@@ -2743,6 +2812,7 @@ function focusBack(root, m, ids = null, set = null, scroll = false) {
   const el = same.length === m.of ? same[m.n] : m.txt === null ? same[0] : null;
   if (!el || el.disabled) return null;
   el.focus({ preventScroll: !scroll });
+  if (m.tab !== undefined) el._tab = m.tab;
   if (m.val !== undefined && 'value' in el) {
     // la nota que s'hi estava escrivint es queda (si la desada no ha canviat: es desa en sortir-ne o amb Intro), i el
     // cursor on era: si s'hi acabava de clicar per afegir-hi alguna cosa, no se selecciona tot (ho esborraria)
@@ -2768,7 +2838,7 @@ function renderSame() {
 // pinta quan s'acaba (applyDeferred: en deixar anar el botó o la tecla, en tancar el menú o en sortir del camp)
 function renderKeepFocus() {
   setTimeout(() => {
-    if (inHand() || typing()) { keepLater = true; return; }
+    if (inHand() || typing()) { keepLater = true; deferSafety(); return; }
     keepLater = false;
     renderSame();
   }, 0);
@@ -2940,8 +3010,9 @@ function groupPicker({ groups, cur, act, all = false, badge = () => ({ html: '',
 function missBadge(c, g) {
   const m = Engine.missingScores(c, g).total, n = g.entries.length;
   if (!n) return { html: '', txt: '' };
-  return m ? { html: ` <span class="n" title="Hi falten ${plural(m, 'nota', 'notes')}">${n} · falten ${m}</span>`, txt: `${n} · falten ${m}` }
-    : { html: ` <span class="n ok" title="Totes les notes entrades">${n} ✓</span>`, txt: `${n} ✓` };
+  const w = `${n} · falten ${'0'.repeat(String(n * Math.max(1, Engine.enabledApps(c, g.gender).length)).length)}`;
+  return m ? { html: ` <span class="n" data-w="${w}" title="Hi falten ${plural(m, 'nota', 'notes')}">${n} · falten ${m}</span>`, txt: `${n} · falten ${m}` }
+    : { html: ` <span class="n ok" data-w="${w}" title="Totes les notes entrades">${n} ✓</span>`, txt: `${n} ✓` };
 }
 views.competicio = () => {
   const c = curComp();
@@ -3354,7 +3425,7 @@ function tabNotes(c) {
   const { apps, app } = notesApp(c, g);
   const quick = ui.qe && c.scoring !== 'detailed' && app;
   const active = g.entries.filter(e => e.status !== 'np');
-  const cnt = a => `<span class="n" data-cnt="${a.id}">${active.filter(e => Engine.appComplete(e, a, c)).length}/${active.length}</span>`;
+  const cnt = a => `<span class="n" data-cnt="${a.id}" data-w="${String(active.length).replace(/\d/g, '0')}/${active.length}">${active.filter(e => Engine.appComplete(e, a, c)).length}/${active.length}</span>`;
   const ap = (isPhone() || quick ? '' : `<button class="pill ${!app ? 'on' : ''}" data-act="pickApp" data-a="all">Totes les notes</button>`) +
     apps.map(a => `<button class="pill ${app && app.id === a.id ? 'on' : ''}" data-act="pickApp" data-a="${a.id}" ${quick && app && app.id === a.id ? `style="background:${APP_COLORS[a.icon] || APP_COLORS.altre};border-color:transparent"` : ''}>${icon(a)} ${h(a.name)} ${cnt(a)}</button>`).join('');
   const touch = isTouch();
@@ -3367,7 +3438,7 @@ function tabNotes(c) {
       ${c.scoring !== 'detailed' ? `<button class="btn ${quick ? 'primary' : ''}" data-act="toggleQe" title="Una gimnasta cada vegada, amb un teclat gran (ideal al mòbil o la tauleta)">${quick ? '☰ Llista' : '⌨ Entrada ràpida'}</button>` : ''}</div>`;
   return `${groupPicker({ groups, cur: ui.group, act: 'pickGroup', badge: x => missBadge(c, x) })}
     <div class="pills ${isPhone() || quick ? 'seg' : ''}" style="--n:${apps.length}">${ap}</div>
-    ${tools}<div class="progress" id="progress">${progressHtml(c, g)}</div>${tutLine}${help}${table}`;
+    ${tools}<div class="progress ${apps.some(a => (a.attempts || 1) > 1 && a.rule !== 'best') ? 'resv' : ''}" id="progress">${progressHtml(c, g)}</div>${tutLine}${help}${table}`;
 }
 function progressHtml(c, g) {
   const active = g.entries.filter(e => e.status !== 'np');
@@ -3474,15 +3545,20 @@ function refreshScoreRow(c, e) {
     set(`app:${e.id}:${a.id}`, fmt(r.value));
   }
   set(`tot:${e.id}`, fmt(Engine.entryTotal(c, e)));
-  const g = groupsOf(c).find(x => x.key === ui.group);
+  const gs = groupsOf(c), g = gs.find(x => x.key === ui.group);
   const p = $('#progress'); if (p && g) p.innerHTML = progressHtml(c, g);
   if (g) {
     // comptadors de les pastilles (aparells i grup)
     const active = g.entries.filter(x => x.status !== 'np');
     for (const a of Engine.enabledApps(c, g.gender)) $$(`[data-cnt="${a.id}"]`).forEach(el => { el.textContent = `${active.filter(x => Engine.appComplete(x, a, c)).length}/${active.length}`; });
-    const b = missBadge(c, g);
-    $$('button.pill[data-act=pickGroup]').filter(x => x.dataset.g === g.key).forEach(x => { const n = x.querySelector('.n'); if (n) n.outerHTML = b.html; });
-    $$('select[data-target=pickGroup] option').filter(o => o.value === g.key).forEach(o => { o.textContent = `${groupLabel(g)}${b.txt ? ' · ' + b.txt : ''}`; });
+  }
+  // la pastilla (i l'opció del desplegable) del grup que es veu i la del grup de la gimnasta, encara que sigui un altre:
+  // les tutores n'entren de tots els grups i l'organització hi mira quins grups encara no tenen totes les notes
+  for (const x of new Set([g, gs.find(y => y.entries.includes(e))])) {
+    if (!x) continue;
+    const b = missBadge(c, x);
+    $$('button.pill[data-act=pickGroup]').filter(y => y.dataset.g === x.key).forEach(y => { const n = y.querySelector('.n'); if (n) n.outerHTML = b.html; });
+    $$('select[data-target=pickGroup] option').filter(o => o.value === x.key).forEach(o => { o.textContent = `${groupLabel(x)}${b.txt ? ' · ' + b.txt : ''}`; });
   }
   const st = compStats(c), b = $('#notesbadge');
   if (b) { b.textContent = `${st.done}/${st.total}`; b.classList.toggle('ok', st.done === st.total); }
@@ -3555,7 +3631,7 @@ function qeHtml(ctx) {
   const blocked = np || locked || (!ctx.tutor && ctx.c.locked);
   const key = k => `<button type="button" data-act="qeKey" data-k="${k}" aria-label="${k === 'del' ? 'Esborra' : k}">${k === 'del' ? '⌫' : k}</button>`;
   return `<div class="qe" id="qe">
-    ${ctx.tutor ? `<button type="button" class="qe-app" style="--appc:${APP_COLORS[a.icon] || APP_COLORS.altre}" data-act="qeTop" aria-label="Aparell: ${h(a.name)}">${icon(a)} ${h(a.name)}<span class="qe-net" id="qenet">${tutNetText()}</span><small>${done}/${active.length}</small></button>` : ''}
+    ${ctx.tutor ? `<button type="button" class="qe-app" style="--appc:${APP_COLORS[a.icon] || APP_COLORS.altre}" data-act="qeTop" aria-label="Aparell: ${h(a.name)}">${icon(a)} <span class="qe-name">${h(a.name)}</span><span class="qe-net" id="qenet">${tutNetText()}</span><small>${done}/${active.length}</small></button>` : ''}
     <div class="qe-card" style="border-top:5px solid ${APP_COLORS[a.icon] || APP_COLORS.altre}"><div class="qe-bib">${h(e.bib)}</div>
       <div class="qe-who"><b>${h(ctx.name(e))}</b><span>${h(ctx.club(e) || '')}${ctx.g ? ' · ' + h(groupLabel(ctx.g)) : ''}</span></div>
       <div class="qe-saved" style="grid-column:2">${saved}</div>${atts}</div>
@@ -3582,7 +3658,8 @@ function qeRefresh() {
   d.classList.toggle('empty', !qe.buf); d.classList.toggle('invalid', bad);
   hint.className = 'qe-hint' + (bad ? ' bad' : '');
   const sug = tooHigh ? Engine.suggestScore(qe.buf, ctx.max) : null;
-  hint.innerHTML = Number.isNaN(val) ? 'Això no és una nota' : tooHigh ? `No pot ser: el màxim és ${fmt(Engine.toM(ctx.max))}.${sug !== null ? ` <button type="button" class="btn sm" data-act="qeSugg" data-v="${sug}">Volies dir ${fmt(Engine.toM(sug))}?</button>` : ''}`
+  // (d'una ratlla: amb el botó «Volies dir…?», el text curt, perquè també hi càpiga al mòbil)
+  hint.innerHTML = Number.isNaN(val) ? 'Això no és una nota' : tooHigh ? (sug !== null ? `Màxim ${fmt(Engine.toM(ctx.max))}. <button type="button" class="btn sm" data-act="qeSugg" data-v="${sug}">Volies dir ${fmt(Engine.toM(sug))}?</button>` : `No pot ser: el màxim és ${fmt(Engine.toM(ctx.max))}.`)
     : (val !== null && val > 0 && Engine.toM(val) < ctx.min) ? `Compta com a ${fmt(ctx.min)} (nota mínima)` : val === 0 ? '0 = no l’ha fet' : '';
   const blocked = !!btn.dataset.blocked;
   btn.textContent = qe.buf ? 'Desa i següent ▶' : 'Següent ▶';
@@ -3659,11 +3736,13 @@ const qeActions = {
     if (!was) { const nx = qeNextMissing(qeCtx(), ctx.list.indexOf(e)); if (nx) { qe.entryId = nx.e.id; qe.i = nx.i; render(); } }
   },
 };
-// (un botó del teclat gran on s'ha arribat amb el tabulador, no amb el ratolí ni perquè s'ha tornat a pintar)
+// (un botó del teclat gran on s'ha arribat amb el tabulador, no amb el ratolí ni perquè s'ha tornat a pintar: el Tab
+// només compta per al focus que mou ell mateix, el primer que arriba just després de prémer-lo. Si després es torna a
+// pintar, el botó nou es queda com estava —focusBack—, i quan el botó ja ha fet el que diu, ja no compta)
 let tabAt = 0;
 document.addEventListener('keydown', e => { if (e.key === 'Tab') tabAt = Date.now(); }, true);
 document.addEventListener('pointerdown', () => { tabAt = 0; }, true);
-document.addEventListener('focusin', e => { const t = e.target; if (t && t.closest && t.closest('#qe')) t._tab = Date.now() - tabAt < 500; });
+document.addEventListener('focusin', e => { const t = e.target, viaTab = !!tabAt && Date.now() - tabAt < 500; tabAt = 0; if (t && t.closest && t.closest('#qe')) t._tab = viaTab; });
 // teclat de l'ordinador (o de la tauleta) a l'entrada ràpida
 document.addEventListener('keydown', e => {
   if (!$('#qe') || $('#dlg').open || $('#confirm').open || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -3674,7 +3753,11 @@ document.addEventListener('keydown', e => {
   // s'ha arribat amb el tabulador (NP, ◀, la tira de dorsals…): fa el que diu el botó. Sobre una tecla de números, sobre
   // «Desa» o sobre un botó que s'ha clicat amb el ratolí (es queda amb el focus i després s'escriu la nota), desa
   const b = t && t.closest && t.closest('a, button, summary, [role=button]');
-  if ((k === 'Enter' || k === ' ') && b && (!b.closest('#qe') || (b._tab && !b.closest('.qe-keys') && b.id !== 'qesave'))) return;
+  if ((k === 'Enter' || k === ' ') && b && (!b.closest('#qe') || (b._tab && !b.closest('.qe-keys') && b.id !== 'qesave'))) {
+    // (el botó fa el que diu una vegada: si es queda amb el focus —«NP» després de «Treu NP»—, la nota que s'escriu després es desa amb Intro)
+    if (b.closest('#qe')) b._tab = false;
+    return;
+  }
   let act = null;
   if (/^[0-9]$/.test(k)) act = ['qeKey', { k }];
   else if (k === ',' || k === '.' || k === "'") act = ['qeKey', { k: ',' }];
@@ -4797,10 +4880,40 @@ function catEditor() {
 /* ═══════════════════════════════════════════ MODE TUTORA (mòbil a la Wi-Fi del servidor)
    La tutora posa el codi de la competició, tria el grup i el seu aparell i escriu la nota final.
    Si es perd la connexió, les notes queden a la cua del mòbil i s'envien soles quan torna. */
-const TUT_KEY = 'notesgim.tutor';
-const tut = { pin: '', who: '', comps: [], compId: null, group: null, app: null, version: null, queue: [], error: '', online: true, sending: false, list: false };
-function tutLoad() { try { Object.assign(tut, JSON.parse(localStorage.getItem(TUT_KEY) || '{}')); } catch (_) {} if (!Array.isArray(tut.queue)) tut.queue = []; }
-function tutSave() { try { localStorage.setItem(TUT_KEY, JSON.stringify({ pin: tut.pin, who: tut.who, compId: tut.compId, group: tut.group, app: tut.app, queue: tut.queue, list: tut.list })); } catch (_) {} }
+const TUT_KEY = 'notesgim.tutor', TUT_TAB = 'notesgim.tutor.pestanya';
+const tut = { pin: '', who: '', comps: [], compId: null, group: null, app: null, version: null, queue: [], error: '', online: true, sending: false, list: false, known: new Set() };
+// El codi, el nom i les notes per enviar són del mòbil (localStorage). La competició, el grup, l'aparell i la llista són
+// de cada pestanya (sessionStorage): si la tutora té la pàgina oberta dues vegades (ha escanejat el QR dos cops), una
+// pestanya no posa el seu aparell ni el seu grup a l'altra (en tornar-la a obrir, les notes anirien a un altre aparell i
+// a una altra gimnasta). Una pestanya nova fa servir el grup de l'última vegada, però l'aparell s'ha de tornar a triar.
+const tutOpKey = q => `${q.compId}|${q.entryId}|${q.appId}|${q.i}|${q.at}`;
+const tutStored = () => { try { return JSON.parse(localStorage.getItem(TUT_KEY) || '{}') || {}; } catch (_) { return {}; } };
+function tutLoad() {
+  const s = tutStored();
+  Object.assign(tut, { pin: s.pin || '', who: s.who || '', compId: s.compId || null, group: s.group || null, app: null, list: !!s.list, queue: Array.isArray(s.queue) ? s.queue : [] });
+  try { const t = JSON.parse(sessionStorage.getItem(TUT_TAB) || 'null'); if (t) Object.assign(tut, { compId: t.compId || null, group: t.group || null, app: t.app || null, list: !!t.list }); } catch (_) {}
+  tut.known = new Set(tut.queue.map(tutOpKey));
+}
+// la cua de notes es desa sense esborrar les que hi ha posat una altra pestanya (les que aquesta no ha vist mai);
+// les que aquesta ja ha enviat (o ha substituït) sí que en surten
+function tutSave() {
+  try { sessionStorage.setItem(TUT_TAB, JSON.stringify({ compId: tut.compId, group: tut.group, app: tut.app, list: tut.list })); } catch (_) {}
+  for (const q of tut.queue) tut.known.add(tutOpKey(q));
+  const cell = q => `${q.compId}|${q.entryId}|${q.appId}|${q.i}`, stored = tutStored().queue;
+  // (d'una nota que aquí s'ha tornat a escriure després, la de l'altra pestanya ja no cal; les d'aquí, sempre, i
+  // primer: si n'hi ha una de l'altra pestanya més nova, s'envia després i és la que queda)
+  const theirs = (Array.isArray(stored) ? stored : []).filter(q => q && !tut.known.has(tutOpKey(q)) && !tut.queue.some(o => cell(o) === cell(q) && (o.at || 0) >= (q.at || 0)));
+  const queue = [...tut.queue, ...theirs];
+  try { localStorage.setItem(TUT_KEY, JSON.stringify({ pin: tut.pin, who: tut.who, compId: tut.compId, group: tut.group, queue, list: tut.list })); } catch (_) {}
+}
+// una altra pestanya ha desat la cua sense alguna nota d'aquesta que encara no s'ha enviat (l'ha llegida just abans que
+// s'hi afegís): es torna a desar
+addEventListener('storage', e => {
+  if (e.key !== TUT_KEY || ui.view !== 'tutor' || !tut.queue.length) return;
+  let q = []; try { q = (JSON.parse(e.newValue || '{}') || {}).queue || []; } catch (_) {}
+  const there = new Set(q.map(tutOpKey));
+  if (tut.queue.some(x => !there.has(tutOpKey(x)))) tutSave();
+});
 async function tutorStart() {
   document.body.classList.add('tutor-mode');
   tutLoad();
@@ -4926,8 +5039,12 @@ function tutStatusBar() {
   if (bn && stuckNote !== (bn.dataset.stuck || '')) {
     bn.dataset.stuck = stuckNote;
     let sn = $('#tutstuck');
-    // (amb el teclat gran, a sota del teclat: a sobre, el faria baixar)
-    if (!sn) { sn = document.createElement('div'); sn.id = 'tutstuck'; ($('#qe') || bn).after(sn); }
+    // (a sota del teclat gran o de la llista, mai a sobre: els faria baixar just quan s'hi toca)
+    if (!sn) {
+      sn = document.createElement('div'); sn.id = 'tutstuck';
+      const at = $('#qe') || ($('#scoregrid') && $('#scoregrid').closest('.tbl-wrap'));
+      if (at) at.after(sn); else (bn.closest('section') || bn.parentNode).append(sn);
+    }
     sn.innerHTML = stuckNote;
   }
 }
@@ -6402,10 +6519,13 @@ const changes = {
       if (el._np) return 'np';
       el._np = true; el._why = null; el.classList.remove('invalid');
       hideFixTip();
-      const apply = () => withUndo(() => { const w = npTeamWarn(c, e); return { msg: `${entryName(e)}: no presentada (NP).${w}`, type: w ? 'bad' : 'ok' }; }, () => { e.status = 'np'; });
+      const apply = later => withUndo(() => { const w = npTeamWarn(c, e); return { msg: `${entryName(e)}: no presentada (NP).${w}`, type: w ? 'bad' : 'ok' }; }, () => { e.status = 'np'; }, { later });
       if (navKey) { apply(); return 'np'; }
       // en sortir de la casella (Tab o clic): primer deixem que el focus arribi on ha d'anar i després es torna a pintar
       setTimeout(() => {
+        // (amb el botó del ratolí o el dit encara a sobre —s'ha sortit de la casella clicant una pestanya, un grup, una
+        // altra casella…—: es desa ara, i es torna a pintar després del clic, que fa el que diu; el focus, on s'ha clicat)
+        if (inHand()) { apply(true); return; }
         const a = document.activeElement, to = isSc(a) && a.dataset.e !== e.id ? { col: a.dataset.col, e: a.dataset.e } : null;
         const away = a && a !== document.body && !isSc(a);
         apply();
@@ -6815,6 +6935,21 @@ document.addEventListener('keydown', e => {
 });
 // (el que s'havia d'haver pintat mentre era obert, es pinta ara)
 const closeMenus = () => { const o = $$('.menu.open'); o.forEach(m => m.classList.remove('open')); if (o.length) applyDeferred(); };
+// també amb Esc (el focus torna al botó ⋯), en sortir-ne amb el tabulador i quan la pantalla passa de mòbil a ordinador
+// o al revés (el menú es deixaria de veure): un menú obert atura el que s'ha de tornar a pintar, i no s'hi ha de quedar
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !$('.menu.open')) return;
+  const m = document.activeElement && document.activeElement.closest && document.activeElement.closest('.menu.open');
+  closeMenus();
+  if (m) { const b = m.querySelector('[data-act=menuToggle]'); if (b) b.focus(); }
+});
+document.addEventListener('focusout', e => {
+  const m = e.target && e.target.closest && e.target.closest('.menu.open');
+  if (!m || (e.relatedTarget && m.contains(e.relatedTarget))) return;
+  // (amb el ratolí o el dit, el clic ja el tanca: es mira quan s'ha acabat, per si el focus no ha anat enlloc)
+  setTimeout(() => { if (!ptrDown && m.classList.contains('open') && !m.contains(document.activeElement)) { m.classList.remove('open'); applyDeferred(); } }, 0);
+});
+try { matchMedia(PHONE_MQ).addEventListener('change', closeMenus); } catch (_) {}
 document.addEventListener('focusin', e => { if (isPhone() && e.target.matches && e.target.matches('input:not([type=checkbox]), textarea, select')) document.body.classList.add('kb'); });
 document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('input:not([type=checkbox]), textarea, select'))) document.body.classList.remove('kb'); }, 80));
 // (mai mentre s'escriu: a una tauleta, obrir el teclat pot canviar la mida; es fa quan se surt de la casella)
@@ -8306,7 +8441,14 @@ Object.assign(changes, {
   rotTime: el => {
     const c = curComp(); if (!rotGuard(c)) { render(); return; }
     const k = el.dataset.k, t = c.rot.time;
-    if (k === 'start') { const m = Engine.rotParseHM(el.value); if (m === null) { toast('Escriu l’hora com 8:30.', 'bad'); el.value = rotTimeIn(t.start); return; } t.start = Engine.rotHM(m); }
+    if (k === 'start') {
+      const m = Engine.rotParseHM(el.value);
+      // (a mig escriure —s'ha esborrat l'hora o els minuts per tornar-los a escriure— el camp encara no té cap hora: no
+      // és cap error, s'espera; si se'n surt així, hi torna a sortir la desada)
+      if (m === null && el.value === '' && document.activeElement === el) { keepLater = true; return; }
+      if (m === null) { toast('Escriu l’hora com 8:30.', 'bad'); el.value = rotTimeIn(t.start); return; }
+      t.start = Engine.rotHM(m);
+    }
     else if (k === 'place') t.place = el.value.trim().slice(0, 60);
     else if (k === 'round') t.round = [1, 5, 10].includes(+el.value) ? +el.value : 5;
     else {

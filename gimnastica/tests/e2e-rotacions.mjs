@@ -825,6 +825,33 @@ try {
       await p2.keyboard.press('Tab'); await p2.waitForTimeout(150);
       const s = await p2.evaluate(() => { const sv = rotViewOf(curComp()).subs.find(x => x.label === 'SÈNIOR'); return { real: sv.real, start: sv.sub.start, shown: $(`input[data-chg=rotSubField][data-s="${sv.id}"][data-k=start]`).value }; });
       assert.deepEqual(s, { real: true, start: '9:45', shown: '09:45' });
+      // una hora escrita sencera que té la mateixa hora que la que hi havia (08:30 → «0845»): després del «08» el camp torna
+      // a dir 08:30, però encara falten els minuts (no s'ha de tornar a pintar fins que se'n surt). I la mateixa hora
+      // escrita una altra vegada, i amb el teclat (Tab), i a «Comença a» d'una subdivisió
+      const typeIn = async (loc, digits, leave) => {
+        await loc.scrollIntoViewIfNeeded(); await loc.click({ position: { x: 12, y: 10 } });
+        for (const d of digits) { await p2.keyboard.press(d); await p2.waitForTimeout(120); }
+        if (leave === 'tab') await p2.keyboard.press('Tab'); else await p2.mouse.click(5, 300);
+        await p2.waitForTimeout(250);
+      };
+      const got = [];
+      for (const [from, digits, leave] of [['8:30', '0845', 'clic'], ['9:00', '0915', 'clic'], ['9:15', '0915', 'tab'], ['9:30', '0930', 'clic'], ['8:30', '0930', 'tab'], ['12:00', '0800', 'clic']]) {
+        await p2.evaluate(v => { curComp().rot.time.start = v; commit(); render(); }, from);
+        await typeIn(gen, digits, leave);
+        got.push(await p2.evaluate(() => curComp().rot.time.start) + ' ' + await gen.inputValue());
+      }
+      assert.deepEqual(got, ['8:45 08:45', '9:15 09:15', '9:15 09:15', '9:30 09:30', '9:30 09:30', '8:00 08:00']);
+      const sub = await p2.evaluate(() => rotViewOf(curComp()).subs.find(x => x.label === 'SÈNIOR').id);
+      const subIn = () => p2.locator(`input[data-chg=rotSubField][data-s="${sub}"][data-k=start]`);
+      await typeIn(subIn(), '1000', 'tab'); await typeIn(subIn(), '1015', 'clic'); await typeIn(subIn(), '1015', 'tab');
+      assert.deepEqual(await p2.evaluate(id => [rotViewOf(curComp()).subs.find(x => x.id === id).sub.start, $(`input[data-chg=rotSubField][data-s="${id}"][data-k=start]`).value], sub), ['10:15', '10:15']);
+      // esborrar l'hora per tornar-la a escriure no és cap error (no surt «Escriu l’hora com 8:30»)
+      await p2.evaluate(() => { $$('.toast').forEach(t => t.remove()); curComp().rot.time.start = '8:30'; commit(); render(); });
+      await gen.click({ position: { x: 12, y: 10 } }); await p2.keyboard.press('Backspace'); await p2.waitForTimeout(100);
+      for (const d of '09') { await p2.keyboard.press(d); await p2.waitForTimeout(120); }
+      await p2.mouse.click(5, 300); await p2.waitForTimeout(250);
+      assert.equal(await p2.evaluate(() => curComp().rot.time.start), '9:30');
+      assert.equal(await p2.locator('.toast', { hasText: 'Escriu l’hora' }).count(), 0);
     } finally { await b24.close(); }
   });
 

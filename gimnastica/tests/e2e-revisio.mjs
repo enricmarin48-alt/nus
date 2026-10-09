@@ -645,6 +645,161 @@ try {
       assert.deepEqual([await bar(), await rowY()], [h0, y0]);
     } finally { await ph.close(); }
   });
+
+  // ─── quarta revisió: el teclat de l'ordinador a l'entrada ràpida, els menús ⋯, «NP» a la graella, dues pestanyes i el
+  // que arriba de les tutores a la graella (no mou cap casella i compta bé a tots els grups)
+  await step('«Entrada ràpida» amb el teclat: Tab + Intro a «Treu NP» (de pressa) i després 8,5 + Intro desa la nota; Tab a «NP», arriba una nota (es torna a pintar) i Intro la marca NP', async () => {
+    await load3('#/competicio/c418/notes');
+    await p3.click('button[data-act=toggleQe]'); await p3.waitForSelector('#qe');
+    const st = id => p3.evaluate(id => curComp().entries.find(e => e.id === id).status, id);
+    const cur = await p3.evaluate(() => ({ id: qe.entryId, app: qeCtx().a.id, other: qeCtx().list.find(e => e.id !== qe.entryId).id }));
+    await p3.focus('#qe button[data-act=qeMove][data-d="-1"]'); await p3.keyboard.press('Tab');
+    assert.equal((await act3()).act, 'qeNP');
+    await p3.waitForTimeout(700);   // (l'organitzadora mira la pantalla; mentrestant arriba la nota d'una tutora)
+    await tutorNote(cur.other, cur.app, 9); await p3.waitForTimeout(150);
+    assert.equal((await act3()).act, 'qeNP', 'el focus es queda a NP');
+    await p3.keyboard.press('Enter'); await p3.waitForTimeout(150);
+    assert.equal(await st(cur.id), 'np', 'Intro sobre «NP» (amb el tabulador) la marca, encara que s’hagi tornat a pintar');
+    // torna a la mateixa gimnasta: Tab fins a «Treu NP» i Intro de seguida; després s'escriu la nota i Intro
+    await p3.evaluate(id => { qe.jump = id; render(); }, cur.id);
+    await p3.focus('#qe button[data-act=qeMove][data-d="-1"]'); await p3.keyboard.press('Tab');
+    assert.equal(await p3.evaluate(() => document.activeElement.textContent.trim()), 'Treu NP');
+    await p3.waitForTimeout(100); await p3.keyboard.press('Enter'); await p3.waitForTimeout(150);
+    assert.equal(await st(cur.id), '');
+    await p3.keyboard.type('8,5'); await p3.keyboard.press('Enter'); await p3.waitForTimeout(150);
+    assert.equal(await st(cur.id), '', 'Intro no la torna a marcar NP');
+    assert.equal(await p3.evaluate(([id, app]) => curComp().entries.find(e => e.id === id).scores[app][0].v, [cur.id, cur.app]), 8.5);
+  });
+
+  await step('«Entrada ràpida»: el teclat no es mou d’una gimnasta a la següent (noms i entitats llargs, NP, nota de la tutora) ni quan surt «Volies dir 9,50?» (320, 360 i 1366 px)', async () => {
+    for (const [w, hh, phone] of [[320, 568, true], [360, 640, true], [1366, 768, false]]) {
+      const cx = await browser.newContext({ viewport: { width: w, height: hh }, isMobile: phone, hasTouch: phone, locale: 'ca-ES' });
+      try {
+        const pp = await cx.newPage();
+        pp.on('pageerror', e => errors.push(`pageerror (teclat ${w}): ` + e.message));
+        await pp.goto(url);
+        await pp.evaluate(r => { db = migrate(JSON.parse(r)); ui.qe = true; commit(); go('#/competicio/c418/notes'); }, JSON.stringify(fixture()));
+        await pp.waitForSelector('#qe');
+        const places = await pp.evaluate(() => {
+          const L = qeCtx().list, gym = k => db.gymnasts.find(x => x.id === L[k].gymnastId);
+          gym(1).name = 'Maria del Carme Montserrat'; gym(1).surname = 'Puig i Soler de la Torre';
+          db.clubs.find(c => c.id === L[2].clubId).name = 'Club Gimnàstic Artístic de Lleida i comarques del Segrià';
+          L[3].status = 'np'; L[4].scores = { salt: [{ v: 9.5, at: Date.now(), by: 'tutor', who: 'Maria Antònia de les Borges Blanques' }] };
+          commit(); render();
+          const key = () => Math.round(document.querySelector('.qe-keys button[data-k="5"]').getBoundingClientRect().y + scrollY), at = new Set();
+          for (const e of L.slice(0, 8)) { qe.jump = e.id; render(); at.add(key()); }
+          for (const b of ['95', '2', '0', '7,5', '']) { qe.buf = b; qeRefresh(); at.add(key()); }
+          return [...at];
+        });
+        assert.equal(places.length, 1, `${w} px: la tecla 5 a ${places.join(', ')}`);
+        if (phone) { await pp.tap('#qe button[data-k="9"]'); await pp.tap('#qe button[data-k="5"]'); }
+        else { await pp.keyboard.type('95'); }
+        assert.ok((await pp.textContent('#qehint')).includes('Volies dir 9,50?'));
+        assert.ok(await pp.evaluate(() => { const h = $('#qehint').getBoundingClientRect(), b = $('#qehint button').getBoundingClientRect(); return b.left >= h.left && b.right <= h.right && b.bottom <= h.bottom + 1; }), `${w} px: el botó «Volies dir…» es veu sencer`);
+      } finally { await cx.close(); }
+    }
+  });
+
+  await step('menú ⋯: Esc o sortir-ne amb el tabulador el tanca, i un menú que ja no es veu (tauleta girada) no atura el que s’ha de pintar', async () => {
+    await load3('#/competicio/c418/rotacions');
+    await p3.click('button[data-act=rotMake]'); await p3.waitForSelector('.card.rot-sub');
+    await p3.evaluate(() => $$('.toast').forEach(t => t.remove()));
+    const tg = p3.locator('.toolbar button[data-act=menuToggle]').first();
+    await tg.focus(); await p3.keyboard.press('Enter'); await p3.waitForTimeout(100);
+    assert.ok(await p3.evaluate(() => !!$('.menu.open')));
+    for (let i = 0; i < 15 && await p3.evaluate(() => !!(document.activeElement.closest && document.activeElement.closest('.menu'))); i++) await p3.keyboard.press('Tab');
+    await p3.waitForTimeout(100);
+    assert.equal(await p3.evaluate(() => !!$('.menu.open')), false, 'sortir-ne amb el tabulador el tanca');
+    await tg.focus(); await p3.keyboard.press('Enter'); await p3.waitForTimeout(100);
+    await p3.keyboard.press('Tab'); await p3.keyboard.press('Escape'); await p3.waitForTimeout(100);
+    assert.equal(await p3.evaluate(() => !!$('.menu.open')), false, 'Esc el tanca');
+    assert.equal((await act3()).act, 'menuToggle', 'i el focus torna al botó ⋯');
+    await p3.evaluate(() => { db.competitions[0].name = 'NOM NOU'; commit(); renderKeepFocus(); }); await p3.waitForTimeout(300);
+    assert.equal((await p3.textContent('#main h1')).trim(), 'NOM NOU');
+    // tauleta petita (vista de mòbil): s'obre el ⋯ de la competició i es gira (vista d'ordinador): el menú no es veu
+    const tab = await browser.newContext({ viewport: { width: 600, height: 960 }, isMobile: true, hasTouch: true, locale: 'ca-ES' });
+    try {
+      const tp = await tab.newPage();
+      tp.on('pageerror', e => errors.push('pageerror (tauleta): ' + e.message));
+      await tp.goto(url);
+      await tp.evaluate(r => { db = migrate(JSON.parse(r)); commit(); go('#/competicio/c418/classificacions'); }, JSON.stringify(fixture()));
+      await tp.waitForTimeout(200);
+      await tp.tap('.comp-head .show-ph button[data-act=menuToggle]'); await tp.waitForTimeout(150);
+      assert.ok(await tp.evaluate(() => !!$('.menu.open .menu-list') && $('.menu.open .menu-list').offsetParent !== null));
+      await tp.setViewportSize({ width: 960, height: 600 }); await tp.waitForTimeout(400);
+      await tp.evaluate(() => { window.__pintat = 0; new MutationObserver(() => __pintat++).observe($('#main'), { childList: true }); });
+      await tp.evaluate(() => { const r = JSON.parse(JSON.stringify(db)), e = r.competitions[0].entries[0]; e.scores = { salt: [{ v: 8.5, at: Date.now(), by: 'tutor', who: 'Anna' }] }; applyRemote(r, null); });
+      await tp.waitForTimeout(400);
+      assert.ok(await tp.evaluate(() => __pintat > 0 && !keepLater), 'la nota de la tutora es pinta');
+    } finally { await tab.close(); }
+  });
+
+  await step('graella de Notes: després d’escriure «NP» en una casella, un clic amb el ratolí a una pestanya, un altre grup o «Entrada ràpida» fa el que diu (i la NP es desa)', async () => {
+    const tryClick = async (sel, what) => {
+      await load3('#/competicio/c418/notes');
+      const cell = p3.locator('#scoregrid input.sc[data-a=salt]').nth(2), eid = await cell.getAttribute('data-e');
+      await cell.click(); await p3.keyboard.type('NP');
+      const before = await p3.evaluate(() => ({ group: ui.group, tab: ui.tab, qe: !!ui.qe }));
+      const t = p3.locator(sel).first(); await t.scrollIntoViewIfNeeded(); const b = await t.boundingBox();
+      await p3.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await p3.mouse.down(); await p3.waitForTimeout(120); await p3.mouse.up(); await p3.waitForTimeout(300);
+      const after = await p3.evaluate(() => ({ group: ui.group, tab: ui.tab, qe: !!ui.qe }));
+      assert.equal(await p3.evaluate(id => curComp().entries.find(e => e.id === id).status, eid), 'np', what + ': la NP es desa');
+      assert.notEqual(after[what], before[what], what + ': el clic fa el que diu');
+    };
+    await tryClick('nav.tabs a[href$="/classificacions"]', 'tab');
+    await tryClick('.pills button[data-g]:not(.on)', 'group');
+    await tryClick('button[data-act=toggleQe]', 'qe');
+  });
+
+  await step('dues pestanyes: si l’altra desa mentre aquí s’escriu a «Cerca…», el clic següent a un dorsal no en treu el focus (777 es desa)', async () => {
+    await load3('#/competicio/c418/inscripcions');
+    await p3.evaluate(() => flush());
+    const other = await ctx3.newPage(); await other.goto(url + '#/gimnastes'); await other.waitForTimeout(300);
+    await p3.bringToFront();
+    await p3.click('input[data-inp=insSearch]'); await p3.keyboard.type('Laia');
+    await other.evaluate(() => { db.clubs.push({ id: 'cq', name: 'Club Q' }); commit(); flush(); });
+    await p3.waitForTimeout(300);
+    assert.ok(await p3.evaluate(() => remotePending));
+    const bib = p3.locator('input[data-chg=bib]:visible').first(), id = await bib.getAttribute('data-id');
+    await bib.click(); await p3.waitForTimeout(100);
+    assert.deepEqual(await act3(), { tag: 'INPUT', chg: 'bib', act: '', id });
+    await p3.keyboard.press('Control+A'); await p3.keyboard.type('777'); await p3.keyboard.press('Tab'); await p3.waitForTimeout(300);
+    await other.close();
+    assert.equal(await p3.evaluate(id => curComp().entries.find(e => e.id === id).bib, id), 777);
+    assert.ok(await p3.evaluate(() => db.clubs.some(c => c.id === 'cq')), 'i les dades de l’altra pestanya hi són');
+  });
+
+  await step('graella de Notes: el que arriba de les tutores no mou cap casella (nota sota el mínim «→ 3,00», primer salt amb «la mitjana»), i la pastilla d’un altre grup compta bé', async () => {
+    for (const [w, hh] of [[1366, 768], [1024, 768]]) {
+      await p3.setViewportSize({ width: w, height: hh });
+      await load3('#/competicio/c418/notes');
+      await p3.evaluate(() => { const s = curComp().apparatus.find(a => a.id === 'salt'); s.attempts = 2; s.rule = 'avg'; ui.app = 'all'; commit(); render(); });
+      const ids = await p3.evaluate(() => [...new Set($$('#scoregrid input.sc').map(i => i.dataset.e))]);
+      const pos = () => p3.evaluate(() => $$('#scoregrid input.sc').map(i => { const r = i.getBoundingClientRect(); return Math.round(r.x) + ':' + Math.round(r.y + scrollY); }).join(' '));
+      const p0 = await pos();
+      await tutorNote(ids[1], 'barra', 2.5); await p3.waitForTimeout(100);
+      assert.ok(await p3.evaluate(() => $$('.minhint').some(x => x.textContent.includes('3,00'))), 'surt «→ 3,00»');
+      assert.equal(await pos(), p0, `${w} px: «→ 3,00» no mou cap casella`);
+      await tutorNote(ids[2], 'salt', 9.1); await p3.waitForTimeout(100);
+      assert.ok((await p3.textContent('#progress')).includes('amb 1 intent'));
+      assert.equal(await pos(), p0, `${w} px: «… amb 1 intent» no fa baixar la graella`);
+    }
+    await p3.setViewportSize({ width: 1366, height: 900 });
+    // totes les notes d'un altre grup: la seva pastilla (i l'opció del desplegable) passa a ✓
+    await load3('#/competicio/c418/notes');
+    const o = await p3.evaluate(() => { const g = groupsOf(curComp()).filter(x => x.entries.length).find(x => x.key !== ui.group && x.entries.length <= 6); return { key: g.key, ids: g.entries.map(e => e.id), apps: Engine.enabledApps(curComp(), g.gender).map(a => a.id) }; });
+    const pill = () => p3.evaluate(k => $$('button.pill[data-act=pickGroup]').find(x => x.dataset.g === k).textContent.replace(/\s+/g, ' ').trim(), o.key);
+    assert.ok((await pill()).includes('falten'));
+    await p3.evaluate(([ids, apps]) => {
+      const r = JSON.parse(JSON.stringify(db)), c = r.competitions[0];
+      for (const id of ids) { const e = c.entries.find(x => x.id === id); e.scores = {}; for (const a of apps) e.scores[a] = [{ v: 8, at: Date.now(), by: 'tutor', who: 'Anna' }]; }
+      applyRemote(r, null);
+    }, [o.ids, o.apps]);
+    await p3.waitForTimeout(150);
+    const now = await pill();
+    assert.ok(now.endsWith('✓') && !now.includes('falten'), now);
+    assert.ok(!(await p3.evaluate(k => $$('select[data-target=pickGroup] option').filter(x => x.value === k).map(x => x.textContent).join('|'), o.key)).includes('falten'));
+  });
 } finally {
   await browser.close();
 }

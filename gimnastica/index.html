@@ -1167,12 +1167,12 @@ async function serverInit() {
   const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   const rm = (remote.db && remote.db.meta) || {};
   let note = '', before = null;
-  try { localStorage.removeItem(LS_KEY + '.abans-servidor'); } catch (_) {}   // (versions d'abans en desaven una còpia aquí)
+  await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
   if (has(remote.db) && has(db)) {
     if (rm.dbId && db.meta.dbId && rm.dbId !== db.meta.dbId) {
       // el fitxer és d'unes altres dades (un altre ordinador, un USB, una còpia posada a mà): manen les del fitxer.
       // Les d'aquesta finestra es poden descarregar des de l'avís
-      before = JSON.stringify(db);
+      before = JSON.stringify(db); keepBefore(before);
       db = migrate(remote.db);
       note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
     } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);   // la més nova sencera,
@@ -1183,7 +1183,7 @@ async function serverInit() {
   server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
   flush();
   render();
-  if (note) toast(note, 'bad', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
+  if (note) toast(note + ' També des de Configuració → Dades.', 'bad', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
   setSaveErr(remote.saveErr);
   serverWaitLoop();
   return true;
@@ -1219,6 +1219,17 @@ function serverPush() {
       else if (!server.online || server.retrySave) { server.retrySave = false; setTimeout(serverPush, 4000); }
     });
 }
+// les dades que hi havia en aquesta finestra quan les ha substituït les del programa: es guarden (al navegador, però
+// no a l'espai de les dades) i es poden descarregar des de Configuració
+async function keepBefore(raw) { try { await idbSet('abansServidor', { at: new Date().toISOString(), raw }); } catch (_) {} }
+async function moveOldBefore() {
+  try {
+    const old = localStorage.getItem(LS_KEY + '.abans-servidor');
+    if (!old) return;
+    await idbSet('abansServidor', { at: new Date().toISOString(), raw: old });
+    if (await idbGet('abansServidor')) localStorage.removeItem(LS_KEY + '.abans-servidor');
+  } catch (_) {}
+}
 // el programa diu si ha pogut escriure al fitxer: es mostra (i s'avisa una vegada) quan canvia
 function setSaveErr(msg) {
   msg = msg || '';
@@ -1242,6 +1253,7 @@ function serverConflict(r) {
   // (només si el fitxer no té dades de NotesGim: si una altra finestra ho ha esborrat tot, té un dbId nou i mana)
   if (!tm.dbId && !has(theirs)) { server.again = true; return; }
   const mine = db, before = JSON.stringify(mine);
+  keepBefore(before);
   db = migrate(theirs);
   if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
   server.replaceNext = false; server.sentStamp = server.diskStamp = tm.updated || null;
@@ -1426,7 +1438,8 @@ function queueFileWrite() {
 let fileChecked = false, sessionStamp = null, fileSig = null, fileStamp = null, fileWriting = false;
 const fileTrusted = () => { fileChecked = true; fileSig = null; };   // l'usuari ha triat: s'hi pot escriure
 async function writeFileNow() {
-  if (!fileHandle || !fileDirty) return;
+  // (mentre hi ha un conflicte per resoldre, no s'hi escriu res: primer s'ha de triar què fer)
+  if (!fileHandle || !fileDirty || fileState === 'conflict') return;
   fileWriting = true;
   try {
     const p = await fileHandle.queryPermission({ mode: 'readwrite' });
@@ -1530,7 +1543,7 @@ async function resolveFileConflict() {
     <br><br>«Fes servir les del fitxer» substitueix les d’aquest navegador (pots desfer-ho just després).`,
     [{ value: 'unlink', label: 'Desvincula el fitxer' }, { value: 'mine', label: 'Escriu-hi les d’aquest navegador', cls: 'danger' }, { value: 'file', label: 'Fes servir les del fitxer', cls: 'primary' }]);
   // (el Desfés torna les d'aquest navegador però no les escriu al fitxer: es torna a preguntar què fer)
-  if (pick === 'file') { fileTrusted(); fileState = 'ok'; withUndo('Dades carregades del fitxer.', () => { db = migrate(inFile); }, { beforeRestore: () => { fileChecked = false; fileState = 'conflict'; } }); }
+  if (pick === 'file') { fileTrusted(); fileState = 'ok'; withUndo('Dades carregades del fitxer.', () => { db = migrate(inFile); }, { beforeRestore: () => { fileChecked = false; fileState = 'conflict'; fileStamp = null; fileSig = null; } }); }
   else if (pick === 'mine') { fileTrusted(); fileState = 'ok'; fileDirty = true; queueFileWrite(); await fileQueue; toast('Fitxer actualitzat amb les dades d’aquest navegador.', 'ok'); }
   else if (pick === 'unlink') await unlinkFile();
   renderSaveState(false);
@@ -2052,14 +2065,21 @@ function compTeamFor(c, team) {
   return ct;
 }
 // arxivar una fitxa (ja no competeix): surt del seu equip i de les competicions que vénen on encara no té notes
+// Torna què ha canviat: de quines competicions surt i quins equips es queden per sota del mínim.
 function archiveGym(g) {
   g.archived = true; putInTeam(g.id, null);
+  const out = { comps: [], weak: [] };
   for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
     const left = c.entries.filter(e => e.gymnastId === g.id && !hasScores(e));
     if (!left.length) continue;
+    const tIds = new Set(left.map(e => e.teamId).filter(Boolean));
     c.entries = c.entries.filter(e => !left.includes(e)); pruneAutoTeams(c);
+    out.comps.push(c.name);
+    for (const t of c.teams) if (tIds.has(t.id) && teamSize(c, t) < (c.teamMin || 3)) out.weak.push(`${t.name} (${c.name}: ${teamSize(c, t)})`);
   }
+  return out;
 }
+const archiveMsg = (g, r) => ({ type: r.weak.length ? 'bad' : 'ok', msg: `Fitxa de ${gymName(g)} arxivada: ja no surt a les llistes ni és a cap equip.${r.comps.length ? ` Treta de: ${r.comps.join(', ')}.` : ''}${r.weak.length ? ` Compte: ${r.weak.join(', ')} es queda per sota del mínim.` : ''}` });
 // treu els equips de la competició que s'han quedat sense ningú
 function pruneAutoTeams(c) {
   c.teams = c.teams.filter(t => !t.auto || c.entries.some(e => e.teamId === t.id));
@@ -2157,13 +2177,17 @@ function autoCompTeams(c, only) {
           const ct = toRecords ? compTeamFor(c, makeTeam(clubId, g))
             : (() => { const x = { id: uid(), name: newTeamName(clubId, g, c.teams), clubId, category: g.category, gender: genderOf(g), level: g.level, sourceTeamId: null, auto: true }; c.teams.push(x); return x; })();
           made++;
-          while (free.length && size(ct) < max) put(free.shift(), ct);
+          const moved = [];
+          while (free.length && size(ct) < max) { const e = free.shift(); put(e, ct); moved.push(e.gymnastId); }
           while (size(ct) < min) {
             const d = all.filter(t => size(t) > min && movable(t).length).sort((a, b) => size(b) - size(a))[0];
             if (!d) break;
-            const m = movable(d).pop(); put(m, ct); placed--;
+            const m = movable(d).pop(); put(m, ct); placed--; moved.push(m.gymnastId);
           }
           all.push(ct);
+          // (les altres competicions que segueixen la fitxa també: si no, hi quedarien equips de 1)
+          const rec = toRecords && ct.sourceTeamId && teamById(ct.sourceTeamId);
+          if (rec) propagateTeam(rec, [], moved.filter(id => rec.memberIds.includes(id)));
         }
       }
     }
@@ -3528,6 +3552,7 @@ views.configuracio = () => {
   const dataCard = server.on && server.role === 'admin'
     ? `<div class="card"><h3 style="margin-bottom:10px">Dades i còpies de seguretat</h3>
       <div class="note">Les dades es desen al fitxer <b>${h(server.dataFile || 'notesgim-dades.json')}</b> d’aquest ordinador, i cada 10 minuts se’n fa una còpia a la carpeta <b>copies-notesgim</b>, al costat. ${lastBk}</div>
+      <div id="offstat" class="small" style="margin-bottom:10px"></div>
       <div class="toolbar" style="margin-top:10px"><button class="btn" data-act="revealData">Obre la carpeta de les dades</button><button class="btn" data-act="backup">Descarrega còpia de seguretat</button><button class="btn" data-act="restore">Restaura una còpia…</button>
         <div class="right"><button class="btn danger" data-act="wipe">Esborra totes les dades</button></div></div></div>`
     : `<div class="card"><h3 style="margin-bottom:10px">Dades i còpies de seguretat</h3>
@@ -3572,6 +3597,8 @@ async function offlineStatus() {
       out.push(p ? '✓ Dades protegides: el navegador no les esborrarà per fer lloc.' : 'Les dades encara no estan protegides contra la neteja automàtica del navegador. <button class="btn sm" data-act="persist">Protegeix-les</button>');
     }
   } catch (_) {}
+  const bf = await idbGet('abansServidor');
+  if (bf && bf.raw) out.push(`Hi ha guardades les dades que tenia aquesta finestra abans de ${h(new Date(bf.at).toLocaleString('ca'))} (les van substituir les del programa o d’una altra finestra). <button class="btn sm" data-act="dlBefore">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore">Esborra-les</button>`);
   if ($('#offstat') === el) el.innerHTML = out.join('<br>');
 }
 
@@ -4362,7 +4389,10 @@ const actions = {
   installPrompt: () => { closeDialog(); promptInstall(); },
   copyLink: async () => { try { await navigator.clipboard.writeText(APP_URL); toast('Enllaç copiat.', 'ok'); } catch (_) { toast(APP_URL); } },
   dismissIos: () => { prefSet('iosnote', '1'); const n = $('#iosnote'); if (n) n.remove(); },
-  applyUpdate: () => { commitTyping(); flush(); location.reload(); },
+  // (primer s'acaba d'escriure al fitxer vinculat: si no, el navegador avisaria que es poden perdre canvis)
+  applyUpdate: async () => { commitTyping(); flush(); try { await fileQueue; } catch (_) {} location.reload(); },
+  dlBefore: async () => { const bf = await idbGet('abansServidor'); if (bf && bf.raw) downloadBlob(new Blob([bf.raw], { type: 'application/json' }), `notesgim-abans-${(bf.at || '').slice(0, 10)}.json`); },
+  dropBefore: async () => { if (!(await confirmBox('Esborrar la còpia de les dades d’abans d’aquesta finestra? Fes-ho només si ja l’has descarregat o no la necessites.', { ok: 'Esborra-la', danger: true }))) return; await idbDel('abansServidor'); offlineStatus(); },
   tutComp: el => { tut.compId = el.dataset.id; render(); },
   tutGroup: el => { if (el.dataset.g) { tut.group = el.dataset.g; qe.buf = ''; render(); qeIntoView(); } },
   tutApp: el => { tut.app = el.dataset.a; qe.buf = ''; tutSave(); render(); qeIntoView(); },
@@ -4517,7 +4547,7 @@ const actions = {
       const pick = await choiceBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}).<br><br>
         <b>Arxivar</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
         [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
-      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) archiveGym(gg); });
+      if (pick === 'archive') { let r = { comps: [], weak: [] }; withUndo(() => archiveMsg(g, r), () => { const gg = gymById(g.id); if (gg) r = archiveGym(gg); }); }
       if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes de ${h(gymName(g))} de ${plural(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
@@ -4874,10 +4904,16 @@ const forms = {
     if (id) {
       const g = gymById(id);
       if (!g) { closeDialog(); return; }
+      // arxivar-la: es desa (i es pot desfer) i es diu de quines competicions i equips surt
+      if (fd.get('archived') === 'on' && !g.archived) {
+        closeDialog();
+        let r = { comps: [], weak: [] };
+        withUndo(() => archiveMsg(g, r), () => { Object.assign(g, vals); r = archiveGym(g); });
+        return;
+      }
       const before = gymTeamValue(g), oldClub = g.clubId || null, oldGroup = { category: g.category, gender: genderOf(g), level: g.level };
       const wasArchived = !!g.archived;
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
-      if (g.archived && !wasArchived) archiveGym(g);
       // ha canviat d'entitat: a les competicions que vénen també (i surt de l'equip de l'entitat d'abans)
       if ((g.clubId || null) !== oldClub) {
         const t0 = gymTeam(g);
@@ -5222,14 +5258,15 @@ const changes = {
   },
   teamCount: () => { $('#teamcount').textContent = $$('#teampick input:checked').length; },
   impHeader: el => {
-    const imp = ui.import;
+    if (!ui.import) ui.import = importAnalyze($('#imptext').value);
+    const imp = ui.import; if (!imp) return;
     imp.hasHeader = el.checked;
     imp.map = el.checked ? range(imp.width).map(i => guessField(imp.rows[0][i]) || imp.map[i])
       : ['name', 'surname', 'club', 'gender', 'category', 'level', 'birth', 'team'].slice(0, imp.width).concat(range(Math.max(0, imp.width - 8)).map(() => ''));
     openDialog(importDialog(), { wide: true });
   },
-  impMap: el => { ui.import.map[+el.dataset.i] = el.value; openDialog(importDialog(), { wide: true }); },
-  impDef: el => { ui.import[el.dataset.k] = el.value; openDialog(importDialog(), { wide: true }); },
+  impMap: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import.map[+el.dataset.i] = el.value; openDialog(importDialog(), { wide: true }); },
+  impDef: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import[el.dataset.k] = el.value; openDialog(importDialog(), { wide: true }); },
   clubName: el => {
     const c = clubById(el.dataset.id), v = el.value.trim();
     if (!v) { el.value = c.name; return; }

@@ -1,5 +1,5 @@
 // Proves del càlcul de les rotacions i l'horari (bloc ENGINE d'index.html), amb les dades reals de la
-// 3a fase del 18/04/2026 (154 gimnastes). Sense dependències: node --test tests/
+// 3a fase del 18/04/2026 (154 gimnastes). Sense dependències: node --test tests/*.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

@@ -28,7 +28,7 @@ jobs:
         with:
           go-version: '1.22'
       - name: Tests del motor de càlcul
-        run: node --test gimnastica/tests/engine.test.mjs
+        run: node --test gimnastica/tests/engine.test.mjs gimnastica/tests/rotacions.test.mjs
       - name: Versió (data i commit)
         run: |
           v="$(git log -1 --format=%cs -- gimnastica) · $(git log -1 --format=%h -- gimnastica)"

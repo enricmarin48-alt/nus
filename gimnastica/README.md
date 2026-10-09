@@ -78,6 +78,8 @@ internet.
    canvia de gimnastes d'una jornada a l'altra, surt l'avís (qui entra i qui en surt) al rànquing i a la
    classificació per equips de la competició, i l'equip continua sumant igual.
 
+7. **Rotacions i horari** (pestanya de cada competició): vegeu més avall.
+
 A la pantalla d'inici hi ha la competició del dia amb accés directe a Notes, Classificacions, Podi i
 Inscripcions. Al mòbil, les seccions són a la barra de baix.
 
@@ -88,6 +90,42 @@ Inscripcions d'una competició) hi ha una casella a cada fila: marca les que vul
 les esborra d'un cop. Per començar de nou: *Configuració → Dades → 🗑 Esborra-ho tot…* (tries què:
 competicions, gimnastes i equips, entitats i, si vols, la configuració). Abans se'n fa una còpia, i
 amb **Desfés** tot torna.
+
+## Rotacions i horari
+
+A la pestanya **Rotacions i horari** de la competició, **Fes les rotacions** fa sola les subdivisions i
+els grups, i en calcula l'horari. Després tot es pot canviar.
+
+- **Subdivisions**: cada una competeix sola, amb el seu escalfament general, les seves rotacions i els
+  seus premis. Noies i nois sempre van per separat; per defecte, tots els nois junts. Una categoria
+  massa gran (més de 3 grups × 15) es parteix per nivells, i les categories amb poques gimnastes
+  s'ajunten amb la del costat (com Cadet i Juvenil amb Infantil). **Quines categories van juntes…**
+  deixa ajuntar o separar categories, separar els nois, canviar el màxim per grup o triar la
+  subdivisió de cada categoria i nivell. L'ordre del dia es canvia amb ↑ ↓. Tot això es recorda per a
+  les properes competicions, i «Jornada següent» copia les subdivisions.
+- **Com es fan els grups** (per ordre d'importància): 1) un equip no se separa mai, i les individuals
+  d'una entitat i d'un mateix nivell van juntes; 2) si s'ha dit quantes **entrenadores** porta una
+  entitat, les seves gimnastes no van en més grups dels que pot portar; 3) cada categoria i nivell al
+  seu grup (o, si es tria «Grups tan igualats com es pugui», s'hi poden barrejar); 4) grups tan
+  igualats com es pugui; 5) els equips d'una mateixa entitat, junts. El càlcul és exacte i sempre dona
+  el mateix resultat.
+- **Moure** un equip: el desplegable de cada equip diu a quin grup va i com quedaran els grups
+  («→ Grup 3 · Terra (6 → 12)»). Queda fixat (📌): «Reequilibra» no el mourà. **Reequilibra** torna a
+  repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què es mourà. «comença
+  a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
+  «NOU» amb el seu equip o la seva entitat fins que es desa, i un canvi d'equip avisa («Ajunta-les»).
+- **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
+  junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell.
+- **Horari**: comença a les 8:30, amb 30 minuts d'escalfament general abans de cada subdivisió.
+  Durada = rotacions × (3′ d'escalfament per aparell + el grup més llarg × temps per gimnasta) i, si
+  n'hi ha, els aparells tots junts al final; arrodonit als 5 minuts. Temps per gimnasta i aparell:
+  1′28″ fins a Aleví i 1′48″ d'Infantil amunt (noies), i 1′ i 1′30″ d'escalfament (nois). Premis: 5′
+  per cada 3 categories i nivells. Es pot fixar la durada, els premis o l'hora d'inici de cada
+  subdivisió, afegir exhibicions o pauses, i canviar els temps i les observacions. Amb les dades del
+  18/04/2026, surt l'horari del model (de 8:00 a 15:00).
+- **Imprimeix**: un full A4 per subdivisió (amb l'aparell, la categoria, el grup, i gimnasta, entitat
+  i nivell de cadascuna, i l'ordre de rotació) i l'horari general, com els models. Si es canvien les
+  rotacions després d'imprimir-les, l'app ho avisa.
 
 ## Categories
 
@@ -164,7 +202,10 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
   `ENGINE-START` i `ENGINE-END` (sense DOM; treballa en mil·lèsimes enteres).
 - `sw.js` + `manifest.webmanifest` + `icons/` — només per a l'opció B (instal·lable). La publicació
   a GitHub Pages hi posa sola la versió (el commit); si la publiques a mà, puja `VERSION` a `sw.js`.
-- `tests/engine.test.mjs` — `node --test tests/engine.test.mjs` (sense dependències).
+- `tests/engine.test.mjs` i `tests/rotacions.test.mjs` — `node --test tests/*.test.mjs` (sense dependències). Les
+  rotacions es proven amb les dades reals del 18/04/2026 i comparant el repartiment amb provar-ho tot.
+- `tests/e2e-rotacions.mjs` — la pestanya Rotacions i horari sencera (amb `tests/fixture-rotacions.mjs`):
+  fer-les, moure, reequilibrar, entrenadores, barra fixa, horari, fulls en PDF, bloqueig i mòbil.
 - `tests/e2e.mjs` — `node tests/e2e.mjs` prova l'app sencera en un Chromium obrint-la des del
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi

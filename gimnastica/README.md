@@ -39,8 +39,9 @@ internet.
    finestra) els fitxers d'Excel d'inscripció que envien els clubs, tal com te'ls passen (el model del
    Consell, nivell A o B, amb les fulles INDIVIDUAL i EQUIPS). L'app en treu l'entitat, el nivell,
    l'entrenador/a i el delegat/da, i cada gimnasta (cognoms, nom i any) amb el seu equip (EQUIP 1, 2,
-   3 → «CG Lleida», «CG Lleida 2»…). Totes competeixen individualment; les de la fulla INDIVIDUAL, si la
-   seva entitat en té prou en un grup que no té equips al full, també fan equip soles. Abans
+   3 → «CG Lleida», «CG Lleida 2»…). Les de la fulla INDIVIDUAL queden com a individuals, tal com diu el
+   full; si alguna podria formar part d'un equip de la seva entitat, surt l'avís «pot fer equip» (a la
+   importació i a Inscripcions). Abans
    d'importar es veu tot i es pot corregir l'entitat, el nivell i si són noies o nois (el full no ho
    diu). Des d'una competició (*Inscripcions*), també les hi inscriu. Si una gimnasta ja hi és,
    se n'actualitzen el grup, l'any i l'equip. També les pots entrar una a una o *Enganxa des

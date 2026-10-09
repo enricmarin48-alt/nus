@@ -265,6 +265,8 @@ try {
     const dlg = await pg.locator('#dlg').textContent();
     assert.ok(dlg.includes('no té cap esportista'), 'el model buit es diu');
     assert.ok(dlg.includes('en surten'), 'es diu qui surt d’un equip que ja hi era');
+    // les de la fulla individual que podrien anar a l'equip del seu club: s'avisa (però no es canvia)
+    assert.ok(dlg.includes('pot fer equip') && dlg.includes('poden formar part d’un equip de la seva entitat'), 'avís «pot fer equip»');
     // «C.G. LLEIDA» és l'entitat «CG Lleida» que ja hi ha; el nivell surt del full
     assert.equal(await pg.locator('#dlg select[data-chg=inscClub][data-f="0"]').inputValue(), 'c1');
     assert.equal(await pg.locator('#dlg select[data-chg=inscClub][data-f="1"]').inputValue(), 'c2');
@@ -277,8 +279,8 @@ try {
     const gymKey = g => g.name + ' ' + g.surname;
     // els noms en majúscules queden ben escrits; l'any surt fins i tot d'una data
     const maria = by('Maria Antònia D’Alòs i Col·lell'.replace('’', "'"), 'c1');
-    // (la de la fulla INDIVIDUAL no queda «només individual»: si n'hi ha prou, també fa equip)
-    assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && !maria.noTeam, JSON.stringify(maria));
+    // la de la fulla INDIVIDUAL queda com a individual (no s'inventa cap equip)
+    assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && maria.noTeam, JSON.stringify(maria));
     assert.equal(by('Júlia Roca Mir', 'c1').birthYear, '2013');
     // el 2n cognom, a la segona casella del model
     assert.ok(by('Nora Vidal Roca', 'c1'), 'els dos cognoms');
@@ -319,6 +321,8 @@ try {
     const tname = x => (c.teams.find(t => t.id === x.teamId) || {}).name || null;
     assert.equal(tname(e('Elna Font')), 'CG Lleida 2');
     assert.equal(tname(e('Laia Garcia Puig')), null, 'la de la fulla individual, sense equip');
+    // a Inscripcions també surt l'avís
+    await pg.waitForSelector('tr:has-text("Laia Garcia Puig") .badge:has-text("pot fer equip")');
     assert.ok(e('Ona Bosch') && e('Ona Bosch').category === 'Benjamí');
   });
 } finally {

@@ -1644,6 +1644,15 @@ function matchFromList(list, value) {
 }
 function nextBib(c) { return c.entries.reduce((m, e) => Math.max(m, +e.bib || 0), 0) + 1; }
 function compTeamsOf(c, g) { return c.teams.filter(t => sameGroup(t, g)); }
+// una gimnasta sense equip que podria formar part d'un equip de la seva entitat (només es diu: no es canvia res)
+function couldTeam(c, e, g) {
+  if (e.teamId || e.status === 'np' || !e.clubId) return '';
+  const max = c.teamMax || 6, min = c.teamMin || 3;
+  const t = compTeamsOf(c, g).find(t => t.clubId === e.clubId && teamSize(c, t) < max);
+  if (t) return `L’equip «${t.name}» de la seva entitat en té ${teamSize(c, t)} (màxim ${max}): hi podria entrar. Tria’l a la columna Equip.`;
+  const solo = g.entries.filter(x => x.clubId === e.clubId && !x.teamId && x.status !== 'np').length;
+  return solo >= min && !compTeamsOf(c, g).some(t => t.clubId === e.clubId) ? `Hi ha ${solo} gimnastes de la seva entitat en aquest grup sense equip: podrien fer-ne un («Fes equips per entitat»).` : '';
+}
 
 /* ═══════════════════════════════════════════ estat de pantalla i rutes */
 const ui = { view: 'competicions', compId: null, tab: null, group: null, app: 'all', clsGroup: null, clsType: 'general', qe: prefGet('qe') === '1', insQ: '',
@@ -2005,7 +2014,7 @@ function tabInscripcions(c) {
       const hit = !q || norm(`${gymName(gym)} ${club} ${e.bib}`).includes(q) || String(e.bib) === q;
       return `<tr class="${e.status === 'np' ? 'np' : ''} ${hit ? '' : 'hidden'}" data-q="${h(norm(`${gymName(gym)} ${club} ${e.bib}`))}" data-bib="${h(e.bib)}">
         <td class="c-bib"><input type="text" inputmode="numeric" pattern="[0-9]*" class="bib" value="${h(e.bib)}" data-chg="bib" data-id="${e.id}" ${dis} aria-label="Dorsal de ${h(gymName(gym))}" autocomplete="off"></td>
-        <td class="c-name"><a href="#" data-act="editEntry" data-id="${e.id}">${h(gymName(gym))}</a>${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}<span class="sub-ph">${h(club)}</span></td>
+        <td class="c-name"><a href="#" data-act="editEntry" data-id="${e.id}">${h(gymName(gym))}</a>${e.status === 'np' ? ' <span class="badge">NP</span>' : ''}${(w => w ? ` <span class="badge warn" title="${h(w)}">pot fer equip</span>` : '')(couldTeam(c, e, g))}<span class="sub-ph">${h(club)}</span></td>
         <td class="c-club hide-ph">${h(club)}</td>
         <td class="c-team"><select data-chg="entryTeam" data-id="${e.id}" ${dis} aria-label="Equip de ${h(gymName(gym))}">${entryTeamOptions(c, e, g)}</select></td>
         <td class="c-st"><select data-chg="entryStatus" data-id="${e.id}" ${dis} aria-label="Es presenta?"><option value="">Participa</option><option value="np" ${e.status === 'np' ? 'selected' : ''}>${isPhone() ? 'NP (no es presenta)' : 'No es presenta (NP)'}</option></select></td>
@@ -3178,6 +3187,21 @@ function inscResolve(f) {
     else { done.add(k); p.status = p.existing ? 'update' : 'new'; }
     out.push(p);
   }
+  // les de la fulla individual que podrien anar en un equip de la seva entitat (només s'avisa: no es canvia res)
+  const max = S().compDefaults.teamMax || 6, min = S().compDefaults.teamMin || 3;
+  const gk = p => p.category + '|' + p.gender + '|' + p.level;
+  const live = out.filter(p => p.status === 'new' || p.status === 'update');
+  for (const p of live) {
+    if (p.kind !== 'ind') continue;
+    const sizes = new Map();
+    for (const q of live) if (q.teamNo && gk(q) === gk(p)) sizes.set(q.teamNo, (sizes.get(q.teamNo) || 0) + 1);
+    const room = [...sizes.entries()].find(([, n]) => n < max);
+    const rec = !sizes.size && clubId ? db.teams.find(t => t.clubId === clubId && sameGroup(t, p) && t.memberIds.length < max && !(p.existing && t.memberIds.includes(p.existing.id))) : null;
+    const solo = live.filter(q => q.kind === 'ind' && !q.teamNo && gk(q) === gk(p)).length;
+    p.couldTeam = room ? `Al full, l’EQUIP ${room[0]} de la seva entitat en aquest grup té ${room[1]} gimnastes: hi podria entrar (màxim ${max}).`
+      : rec ? `La seva entitat ja té l’equip «${rec.name}» en aquest grup (${rec.memberIds.length} de ${max}): hi podria entrar.`
+      : !sizes.size && solo >= min ? `Hi ha ${solo} gimnastes de la seva entitat en aquest grup a la fulla individual: podrien fer un equip.` : '';
+  }
   return out;
 }
 // entitat del fitxer: la que ja hi és amb el mateix nom (o gairebé: «C.G. Lleida» = «CG Lleida»), o una de nova
@@ -3187,7 +3211,7 @@ function inscClubFor(name) {
   return c ? c.id : '__new';
 }
 async function inscAddFiles(files) {
-  ui.insc = ui.insc || { files: [], onlyInd: false, enroll: true, compId: ui.view === 'competicio' ? ui.compId : null };
+  ui.insc = ui.insc || { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' ? ui.compId : null };
   for (const file of files) {
     const f = { name: file.name, rows: [], contacts: [], club: '', level: '', gender: 'F', clubPick: '__new', error: '' };
     try {
@@ -3225,7 +3249,7 @@ function inscDialog() {
         const i = p.idx;
         const warn = !p.year ? '<span class="badge warn">sense any</span>' : (!p.category ? '<span class="badge warn">sense categoria</span>' : (p.yearCat && p.yearCat !== p.category ? `<span class="badge warn" title="Per l’any li tocaria ${h(p.yearCat)}">${h(p.year)} → ${h(p.yearCat)}?</span>` : ''));
         return `<tr><td>${st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
-          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' ? (I.onlyInd ? ' · <span class="muted">només individual</span>' : ' · <span class="muted" title="Competeix individualment i, si la seva entitat en té prou en aquest grup, també en equip">individual (i equip si n’hi ha prou)</span>') : ''}</td>
+          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' ? ` · <span class="muted">individual</span>${p.couldTeam ? ` <span class="badge warn" title="${h(p.couldTeam)}">pot fer equip</span>` : ''}` : ''}</td>
           <td><select class="sm" data-chg="inscRowGender" data-f="${fi}" data-i="${i}" aria-label="Gènere de ${h(p.name)}"><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Noia</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Noi</option></select></td></tr>`;
       }).join('');
     }).join('');
@@ -3240,6 +3264,7 @@ function inscDialog() {
         <label class="f"><span>Són <span class="small muted">(el full no ho diu)</span></span><select data-chg="inscGender" data-f="${fi}"><option value="F" ${f.gender === 'F' ? 'selected' : ''}>Noies</option><option value="M" ${f.gender === 'M' ? 'selected' : ''}>Nois</option></select></label>
       </div>
       ${inscTeamsNote(f, list)}
+      ${list.some(p => p.couldTeam) ? `<div class="note warn"><b>${plural(list.filter(p => p.couldTeam).length, 'gimnasta de la fulla INDIVIDUAL pot', 'gimnastes de la fulla INDIVIDUAL poden')} formar part d’un equip de la seva entitat</b> (surten marcades amb «pot fer equip»). Es deixen com a individuals, com diu el full; si cal, canvia-ho després a la fitxa o a Inscripcions.</div>` : ''}
       ${f.contacts.length ? `<p class="small muted">${f.contacts.map(p => `${h(p.role)}: <b>${h(p.name || '—')}</b>${p.phones ? ` · ${h(p.phones)}` : ''}${p.email ? ` · ${h(p.email)}` : ''}`).join('<br>')}</p>` : ''}
       ${!f.club ? `<div class="note warn">El full no diu l’entitat: tria-la a dalt${f.clubPick === '__none' ? ' (si encara no hi és, crea-la abans a Entitats)' : ''}.</div>` : ''}
       ${ok.some(p => !p.level) ? '<div class="note warn">El full no diu el nivell: tria’l a dalt.</div>' : ''}
@@ -3250,7 +3275,7 @@ function inscDialog() {
     <p class="small muted">Tria (o arrossega aquí) els fitxers d’Excel (.xlsx) d’inscripció que envien els clubs, tal com te’ls passen: el model del Consell, amb les fulles INDIVIDUAL i EQUIPS. Se n’agafen l’entitat, el nivell (A o B), l’entrenador/a, el delegat/da i cada gimnasta amb el seu any de naixement i el seu equip.</p>
     <label class="dropzone" id="inscdrop"><input type="file" id="inscfile" accept=".xlsx,.xlsm,.xls" multiple data-chg="inscFiles"><span>📥 <b>Tria els fitxers</b> o arrossega’ls aquí</span></label>
     ${cards}
-    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL competeixen <b>només</b> individualment (no fan equip encara que n’hi hagi prou)</label>
+    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL queden com a individuals (com diu el full: no se’ls fa cap equip)</label>
       ${c ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="enroll" ${I.enroll && !c.locked ? 'checked' : ''} ${c.locked ? 'disabled' : ''}> Inscriu-les també a <b>${h(c.name)}</b></label>` : ''}` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       <button type="button" class="btn primary" data-act="inscDo" ${total && !bad ? '' : 'disabled'}>Importa ${total || ''}</button></div>`;
@@ -4565,7 +4590,7 @@ const actions = {
   importGyms: () => { ui.import = null; openDialog(importDialog(), { wide: true }); },
   // fulls d'inscripció dels clubs (.xlsx)
   inscOpen: async (el, files) => {
-    ui.insc = { files: [], onlyInd: false, enroll: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
+    ui.insc = { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
     if (files && files.length) await inscAddFiles(files);
     openDialog(inscDialog(), { wide: true });
   },

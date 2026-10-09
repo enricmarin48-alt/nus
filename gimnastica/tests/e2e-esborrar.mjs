@@ -76,6 +76,13 @@ try {
     assert.equal(await page.locator('#gymtable table[data-same="1"]').count(), 1);
     assert.match(await bar('gyms').locator('button[data-act=delGymsSel]').textContent(), /Esborra les marcades \(1\)/);
     await page.uncheck('#gymtable input.selbox[data-id=g2]');
+    // si es torna a pintar mentrestant (arriba una nota d'una tutora, desa una altra pestanya), el focus es queda a la mateixa fila
+    await page.focus('#gymtable input.selbox[data-id=g6]');
+    await page.evaluate(() => renderKeepFocus()); await wait(150);
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.id), 'g6');
+    await page.focus('#gymtable select[data-chg=gymTeamInline][data-id=g5]');
+    await page.evaluate(() => renderKeepFocus()); await wait(150);
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.id), 'g5');
     // amb la cerca: només les que es veuen
     await page.fill('input[data-inp=gSearch]', 'anna');
     await wait(100);
@@ -95,6 +102,9 @@ try {
     await bar('gyms').locator('button[data-act=delGymsSel]').click();
     await page.waitForSelector('#confirm[open] >> text=Esborrar 2 gimnastes?');
     await page.click('#confirm button:has-text("Esborra-les del tot")');
+    // tenen notes: com amb el ✕ d'una sola, s'ha d'escriure ESBORRA
+    await page.waitForSelector('#confirm[open] >> text=S’esborraran les notes de 2 gimnastes de 2 competicions');
+    await page.fill('#confirm input[name=typed]', 'ESBORRA'); await page.click('#confirm button[value=ok]');
     await page.waitForSelector('.toast:has-text("2 gimnastes esborrades")');
     const d = await data();
     assert.deepEqual(d.gymnasts.map(g => g.id).sort(), ['g3', 'g4', 'g5', 'g6', 'g7']);
@@ -176,6 +186,8 @@ try {
     await bar('clubs').locator('button[data-act=delClubsSel]').click();
     await page.waitForSelector('#confirm[open] >> text=Esborrar Escola Pardinyes? Hi ha 3 gimnastes d’aquesta entitat.');
     await page.click('#confirm button:has-text("Esborra-la amb les seves gimnastes")');
+    await page.waitForSelector('#confirm[open] >> text=S’esborraran les notes de');
+    await page.fill('#confirm input[name=typed]', 'ESBORRA'); await page.click('#confirm button[value=ok]');
     await page.waitForSelector('.toast:has-text("Entitat esborrada, amb les seves gimnastes")');
     const d = await data();
     assert.deepEqual(d.clubs.map(c => c.id), ['c1']);
@@ -246,6 +258,8 @@ try {
     await page.check('table.clubs input.selbox[data-id=c2]');
     await bar('clubs').locator('button[data-act=delClubsSel]').click();
     await page.click('#confirm button:has-text("Esborra-la amb les seves gimnastes")');
+    await page.waitForSelector('#confirm[open] >> text=S’esborraran les notes de');
+    await page.fill('#confirm input[name=typed]', 'ESBORRA'); await page.click('#confirm button[value=ok]');
     await page.waitForSelector('.toast:has-text("Entitat esborrada, amb les seves gimnastes")');
     const d = await data(), kt = d.competitions.find(c => c.id === 'kt'), kp = d.competitions.find(c => c.id === 'kp');
     assert.deepEqual(d.teams.find(t => t.id === 'T2').memberIds, ['g7'], 'la Gina es queda a l’equip (ara sense entitat)');

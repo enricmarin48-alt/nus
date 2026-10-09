@@ -305,7 +305,7 @@ try {
 
   await step('«Esborra-ho tot» amb el programa: abans se’n guarda una còpia a copies-notesgim; Desfés ho torna', async () => {
     const copies = path.join(out, 'copies-notesgim');
-    const n0 = readdirSync(copies).filter(f => f.endsWith('-abans-de-restaurar.json')).length;
+    const n0 = readdirSync(copies).filter(f => f.endsWith('-abans-d-esborrar.json')).length;
     await admin.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
     await admin.click('button[data-act=wipe]');
     await admin.waitForSelector('#dlg form[data-form=wipe] >> text=copies-notesgim');
@@ -314,8 +314,8 @@ try {
     await new Promise(r => setTimeout(r, 1500));
     const d = JSON.parse(readFileSync(dataFile, 'utf8'));
     assert.equal(d.gymnasts.length + d.competitions.length + d.clubs.length, 0, 'el fitxer queda buit');
-    const made = readdirSync(copies).filter(f => f.endsWith('-abans-de-restaurar.json')).sort();
-    assert.ok(made.length > n0, 'abans d’esborrar es guarda una còpia');
+    const made = readdirSync(copies).filter(f => f.endsWith('-abans-d-esborrar.json')).sort();
+    assert.equal(made.length, n0 + 1, 'abans d’esborrar es guarda una còpia (només una)');
     assert.equal(JSON.parse(readFileSync(path.join(copies, made[made.length - 1]), 'utf8')).gymnasts.length, 3);
     await admin.locator('.toast button:has-text("Desfés")').last().click();
     await admin.waitForSelector('.toast:has-text("Desfet.")');
@@ -329,6 +329,8 @@ try {
     writeFileSync(dataFile, JSON.stringify({ app: 'notesgim', version: 1, clubs: [{ id: 'cv', name: 'Club Vell' }],
       gymnasts: [{ id: 'gv', name: 'Vella', surname: 'Proves', clubId: 'cv', gender: 'F', category: 'Aleví', level: 'A' }], teams: [], competitions: [],
       settings: { rev: 4 }, meta: { updated: new Date().toISOString(), dbId: 'proves-velles' } }));
+    // (i la finestra, les seves d'una versió de proves, sense dataGen)
+    await admin.evaluate(() => { const d = JSON.parse(localStorage.getItem('notesgim.db')); delete d.settings.dataGen; localStorage.setItem('notesgim.db', JSON.stringify(d)); });
     assert.ok(await admin.evaluate(() => JSON.parse(localStorage.getItem('notesgim.db')).gymnasts.length) > 0);
     await startServer();
     await admin.goto(`http://127.0.0.1:${PORT}/#/gimnastes`); await admin.reload();
@@ -372,21 +374,35 @@ try {
     assert.equal(await a.evaluate(() => db.gymnasts.length), 0);
     await new Promise(r => setTimeout(r, 1200));
     assert.equal(gyms(), 0, 'el fitxer continua buit');
-    // dades d'ara (d'un altre dia, d'unes altres dades): el fitxer s'ha buidat a posta, mana el fitxer
+    // dades d'ara d'una altra finestra (unes altres dades): al fitxer nou no s'hi ha desat mai res, s'hi posen
     const b = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4, dataGen: 2 }, clubs: [], gymnasts: [G('n1')], teams: [], competitions: [],
       meta: { updated: new Date(Date.now() + 60000).toISOString(), dbId: 'unes-altres' } });
-    await b.waitForSelector('.toast:has-text("s’hi ha esborrat tot")');
-    assert.equal(await b.evaluate(() => db.gymnasts.length), 0);
+    await new Promise(r => setTimeout(r, 1200));
+    assert.equal(await b.evaluate(() => db.gymnasts.length), 1);
+    assert.equal(gyms(), 1, 'les dades d’ara de la finestra van al fitxer nou');
+    // «Esborra-ho tot» des d'aquesta finestra: una tercera amb unes altres dades d'ara ja no les hi posa
+    await b.goto(`http://127.0.0.1:${PORT}/#/configuracio`);
+    await b.click('button[data-act=wipe]');
+    await b.click('#dlg form[data-form=wipe] button.danger');
+    await b.waitForSelector('.toast:has-text("Esborrat:")');
+    await new Promise(r => setTimeout(r, 1200));
+    assert.equal(gyms(), 0);
+    const c = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4, dataGen: 2 }, clubs: [], gymnasts: [G('t1'), G('t2')], teams: [], competitions: [],
+      meta: { updated: new Date(Date.now() + 120000).toISOString(), dbId: 'unes-terceres' } });
+    await c.waitForSelector('.toast:has-text("s’hi ha esborrat tot")');
+    assert.equal(await c.evaluate(() => db.gymnasts.length), 0);
     await new Promise(r => setTimeout(r, 1200));
     assert.equal(gyms(), 0, 'el fitxer continua buit');
     // però si el fitxer s'ha perdut (no hi és), la finestra hi torna a posar les seves (les d'ara)
-    await b.evaluate(() => { db.gymnasts.push({ id: 'n2', name: 'Nova', surname: 'Dara', clubId: null, gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
+    await c.evaluate(() => { db.gymnasts.push({ id: 'n2', name: 'Nova', surname: 'Dara', clubId: null, gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
     await new Promise(r => setTimeout(r, 1200));
+    assert.equal(gyms(), 1);
     await stopServer(); rmSync(dataFile, { force: true }); await startServer();
-    await b.reload();
-    await b.waitForSelector('text=Desat al fitxer');
+    await c.reload();
+    await c.waitForSelector('text=Desat al fitxer');
     await new Promise(r => setTimeout(r, 1200));
     assert.equal(gyms(), 1, 'la finestra torna a posar les seves dades (d’ara) al fitxer que s’ha perdut');
+    await c.context().close();
     await a.context().close(); await b.context().close();
   });
 } finally {

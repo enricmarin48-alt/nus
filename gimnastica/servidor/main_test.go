@@ -538,15 +538,15 @@ func TestPutRefusesTestVersionData(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Body.Close()
-	got, _ := filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-de-restaurar.json"))
+	got, _ := filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-d-esborrar.json"))
 	if r.StatusCode != 200 || len(got) != 1 {
 		t.Fatalf("api/backup: %d %v", r.StatusCode, got)
 	}
 	// dues còpies el mateix segon: no se n'escriu una a sobre de l'altra
-	if err := s.backupBeforeRestoreLocked(); err != nil {
+	if err := s.backupBeforeRestoreLocked("abans-d-esborrar"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ = filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-de-restaurar*.json")); len(got) != 2 {
+	if got, _ = filepath.Glob(filepath.Join(dir, "copies-notesgim", "*-abans-d-esborrar*.json")); len(got) != 2 {
 		t.Fatalf("havien de ser dues còpies: %v", got)
 	}
 }

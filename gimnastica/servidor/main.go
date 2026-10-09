@@ -57,6 +57,7 @@ type store struct {
 	saveErr   string       // per què no s'ha pogut desar (es mostra a la finestra de la taula)
 	recovered string       // el fitxer de dades estava malmès i s'ha obert una còpia (què se n'ha de dir)
 	fresh     string       // les dades eren de les versions de proves (d'abans de dataGen 2): s'han guardat apart amb aquest nom i es comença de zero
+	preBak    time.Time    // quan la taula ha demanat una còpia abans d'esborrar-ho tot (el replace que ve després no en fa una altra)
 	dataRev   int64        // canvia cada vegada que la taula desa (no amb les notes de les tutores); < 2^53 perquè JavaScript el llegeixi exacte
 	quit      chan struct{}
 	quitOnce  sync.Once
@@ -178,7 +179,7 @@ func newestBackup(dir string) (string, map[string]any) {
 	// primer les còpies de cada 10 minuts (les d'abans de restaurar o d'esborrar-ho tot, i les d'en obrir, són
 	// de com eren les dades abans d'un canvi que es va voler fer: només si no n'hi ha cap altra)
 	special := func(n string) bool {
-		return strings.Contains(n, "-abans-de-restaurar") || strings.Contains(n, "-en-obrir")
+		return strings.Contains(n, "-abans-de-restaurar") || strings.Contains(n, "-abans-d-esborrar") || strings.Contains(n, "-en-obrir")
 	}
 	sort.Slice(list, func(i, j int) bool {
 		if a, b := special(list[i].name), special(list[j].name); a != b {
@@ -234,7 +235,7 @@ func (s *store) backupOriginalLocked() {
 }
 
 // abans de restaurar una còpia (o d'esborrar-ho tot), es guarda com eren les dades
-func (s *store) backupBeforeRestoreLocked() error {
+func (s *store) backupBeforeRestoreLocked(why string) error {
 	b, err := json.MarshalIndent(s.db, "", " ")
 	if err != nil || len(s.db) == 0 {
 		return err
@@ -242,7 +243,7 @@ func (s *store) backupBeforeRestoreLocked() error {
 	if err := os.MkdirAll(s.backups, 0o755); err != nil {
 		return err
 	}
-	if err := writeFileSync(freeName(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-abans-de-restaurar")), b); err != nil {
+	if err := writeFileSync(freeName(filepath.Join(s.backups, "notesgim-"+time.Now().Format("2006-01-02_150405")+"-"+why)), b); err != nil {
 		return err
 	}
 	s.pruneBackups(60)
@@ -801,7 +802,11 @@ func (s *store) routes(port int) http.Handler {
 			} else {
 				// es restaura una còpia: abans, una còpia de com era (per si s'ha triat la que no era), i només
 				// s'hi afegeixen les notes arribades després de restaurar
-				_ = s.backupBeforeRestoreLocked()
+				// (si la taula n'acaba de fer guardar una abans d'esborrar-ho tot, ja hi és)
+				if time.Since(s.preBak) > 30*time.Second {
+					_ = s.backupBeforeRestoreLocked("abans-de-restaurar")
+				}
+				s.preBak = time.Time{}
 				s.lastBak = time.Time{} // (i, en desar, una còpia de com queden: si el fitxer es malmet, és la que s'obre)
 				if body.Since > 0 {
 					taken = mergeScoresSince(body.DB, s.db, body.Since)
@@ -889,7 +894,10 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		s.mu.Lock()
-		err := s.backupBeforeRestoreLocked()
+		err := s.backupBeforeRestoreLocked("abans-d-esborrar")
+		if err == nil {
+			s.preBak = time.Now()
+		}
 		s.mu.Unlock()
 		if err != nil {
 			log.Printf("ERROR fent la còpia de seguretat: %v", err)
@@ -1209,7 +1217,7 @@ func main() {
 
 	if url, old := runningInstance(*portFlag, *dataPath); old {
 		log.Printf("no s'ha pogut tancar el NotesGim d'abans a %s", url)
-		alert("NotesGim", "Hi ha obert un NotesGim d'una versió anterior i no s'ha pogut tancar sol.\n\nTanca'l (botó «Tanca NotesGim» de la seva finestra) i torna a obrir aquest.")
+		alert("NotesGim", "Hi ha obert un NotesGim d'una versió anterior i no s'ha pogut tancar sol.\n\nTanca'l (amb el botó «Tanca NotesGim» de la seva finestra o, si no n'hi ha, tancant la seva finestra negra; si no la trobes, reinicia l'ordinador) i torna a obrir aquest.")
 		os.Exit(1)
 	} else if url != "" {
 		log.Printf("NotesGim ja està obert a %s: només se n'obre la finestra", url)

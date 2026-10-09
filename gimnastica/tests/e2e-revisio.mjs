@@ -277,7 +277,8 @@ try {
     const gymKey = g => g.name + ' ' + g.surname;
     // els noms en majúscules queden ben escrits; l'any surt fins i tot d'una data
     const maria = by('Maria Antònia D’Alòs i Col·lell'.replace('’', "'"), 'c1');
-    assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && maria.noTeam, JSON.stringify(maria));
+    // (la de la fulla INDIVIDUAL no queda «només individual»: si n'hi ha prou, també fa equip)
+    assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && !maria.noTeam, JSON.stringify(maria));
     assert.equal(by('Júlia Roca Mir', 'c1').birthYear, '2013');
     // el 2n cognom, a la segona casella del model
     assert.ok(by('Nora Vidal Roca', 'c1'), 'els dos cognoms');

@@ -3187,7 +3187,7 @@ function inscClubFor(name) {
   return c ? c.id : '__new';
 }
 async function inscAddFiles(files) {
-  ui.insc = ui.insc || { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' ? ui.compId : null };
+  ui.insc = ui.insc || { files: [], onlyInd: false, enroll: true, compId: ui.view === 'competicio' ? ui.compId : null };
   for (const file of files) {
     const f = { name: file.name, rows: [], contacts: [], club: '', level: '', gender: 'F', clubPick: '__new', error: '' };
     try {
@@ -3225,7 +3225,7 @@ function inscDialog() {
         const i = p.idx;
         const warn = !p.year ? '<span class="badge warn">sense any</span>' : (!p.category ? '<span class="badge warn">sense categoria</span>' : (p.yearCat && p.yearCat !== p.category ? `<span class="badge warn" title="Per l’any li tocaria ${h(p.yearCat)}">${h(p.year)} → ${h(p.yearCat)}?</span>` : ''));
         return `<tr><td>${st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
-          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' && I.onlyInd ? ' · <span class="muted">individual</span>' : ''}</td>
+          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' ? (I.onlyInd ? ' · <span class="muted">només individual</span>' : ' · <span class="muted" title="Competeix individualment i, si la seva entitat en té prou en aquest grup, també en equip">individual (i equip si n’hi ha prou)</span>') : ''}</td>
           <td><select class="sm" data-chg="inscRowGender" data-f="${fi}" data-i="${i}" aria-label="Gènere de ${h(p.name)}"><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Noia</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Noi</option></select></td></tr>`;
       }).join('');
     }).join('');
@@ -3250,7 +3250,7 @@ function inscDialog() {
     <p class="small muted">Tria (o arrossega aquí) els fitxers d’Excel (.xlsx) d’inscripció que envien els clubs, tal com te’ls passen: el model del Consell, amb les fulles INDIVIDUAL i EQUIPS. Se n’agafen l’entitat, el nivell (A o B), l’entrenador/a, el delegat/da i cada gimnasta amb el seu any de naixement i el seu equip.</p>
     <label class="dropzone" id="inscdrop"><input type="file" id="inscfile" accept=".xlsx,.xlsm,.xls" multiple data-chg="inscFiles"><span>📥 <b>Tria els fitxers</b> o arrossega’ls aquí</span></label>
     ${cards}
-    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL competeixen només individualment (no van en cap equip)</label>
+    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL competeixen <b>només</b> individualment (no fan equip encara que n’hi hagi prou)</label>
       ${c ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="enroll" ${I.enroll && !c.locked ? 'checked' : ''} ${c.locked ? 'disabled' : ''}> Inscriu-les també a <b>${h(c.name)}</b></label>` : ''}` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       <button type="button" class="btn primary" data-act="inscDo" ${total && !bad ? '' : 'disabled'}>Importa ${total || ''}</button></div>`;
@@ -4565,7 +4565,7 @@ const actions = {
   importGyms: () => { ui.import = null; openDialog(importDialog(), { wide: true }); },
   // fulls d'inscripció dels clubs (.xlsx)
   inscOpen: async (el, files) => {
-    ui.insc = { files: [], onlyInd: true, enroll: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
+    ui.insc = { files: [], onlyInd: false, enroll: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
     if (files && files.length) await inscAddFiles(files);
     openDialog(inscDialog(), { wide: true });
   },

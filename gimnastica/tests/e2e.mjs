@@ -431,11 +431,14 @@ await step('l’equip es tria a la mateixa fitxa (i la competició oberta la seg
   // a la llista es pot canviar directament (i es pot desfer)
   const sel = page.locator(`#gymtable select.teamsel[data-id="${g.id}"]`);
   assert.match(await sel.locator('option:checked').textContent(), /^Equip de prova — 1\/6/);
-  const lleida = d.teams.find(x => x.name === 'CG Lleida');
-  await sel.selectOption(lleida.id);
-  await page.waitForSelector('.toast:has-text("→ CG Lleida")');
-  await page.click('.toast:has-text("→ CG Lleida") button:has-text("Desfés")');
+  // (en passar de curs, l'equip CG Lleida d'Aleví s'ha quedat amb 2 i s'ha desfet: les que hi quedaven van soles)
+  assert.ok(!d.teams.some(x => x.name === 'CG Lleida' && x.category === 'Aleví'), 'un equip de 2 es desfà en passar de curs');
+  const nToasts = await page.locator('.toast', { hasText: 'Carla Vidal' }).count();
+  await sel.selectOption('');
+  await page.waitForFunction(n => [...document.querySelectorAll('.toast')].filter(t => t.textContent.includes('Carla Vidal')).length > n, nToasts);
+  await page.locator('.toast', { hasText: 'Carla Vidal' }).last().locator('button:has-text("Desfés")').click();
   await page.waitForSelector('.toast:has-text("Desfet")');
+  assert.match(await page.locator(`#gymtable select.teamsel[data-id="${g.id}"] option:checked`).textContent(), /^Equip de prova/);
   // «Només individual»: no entra a cap equip, tampoc als automàtics
   await page.locator(`#gymtable select.teamsel[data-id="${g.id}"]`).selectOption('__none');
   await page.waitForSelector('.toast:has-text("només individual")');

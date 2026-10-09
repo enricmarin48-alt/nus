@@ -2020,12 +2020,22 @@ function compTeamFor(c, team) {
   }
   return ct;
 }
+// arxivar una fitxa (ja no competeix): surt del seu equip i de les competicions que vénen on encara no té notes
+function archiveGym(g) {
+  g.archived = true; putInTeam(g.id, null);
+  for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
+    const left = c.entries.filter(e => e.gymnastId === g.id && !hasScores(e));
+    if (!left.length) continue;
+    c.entries = c.entries.filter(e => !left.includes(e)); pruneAutoTeams(c);
+  }
+}
 // treu els equips de la competició que s'han quedat sense ningú
 function pruneAutoTeams(c) {
   c.teams = c.teams.filter(t => !t.auto || c.entries.some(e => e.teamId === t.id));
 }
-// competicions que segueixen la fitxa: les no tancades d'avui o de més endavant (i la que tens oberta)
-const followsRecords = c => !c.locked && (!c.date || c.date >= today() || (ui.view === 'competicio' && c.id === ui.compId));
+// competicions que segueixen la fitxa: les no tancades d'avui o de més endavant (una de passada mai, encara que
+// sigui la que tens oberta: els seus resultats ja són els d'aquell dia)
+const followsRecords = c => !c.locked && (!c.date || c.date >= today());
 // el que passa en una competició només pot canviar la fitxa si és d'avui o de més endavant (no una de passada)
 const isUpcoming = c => !c.date || c.date >= today();
 // una gimnasta d'aquesta inscripció competeix en el grup de la seva fitxa (si no, aquell dia va en un altre grup)
@@ -2105,6 +2115,26 @@ function autoCompTeams(c, only) {
         if (!room) break;
         put(free.shift(), room);
       }
+      // en queden sense lloc perquè els equips ja són plens (p. ex. 6 + 1 inscrites després): si entre totes en
+      // surt un equip més (7 → 4 + 3), es fa, i s'hi passen les últimes dels equips més grans fins al mínim
+      // (només les que encara no tenen notes ni s'han canviat d'equip a mà)
+      if (free.length) {
+        const movable = t => sortEntries(c.entries.filter(x => x.teamId === t.id && x.status !== 'np' && !x.noAuto && !hasScores(x)));
+        const total = all.reduce((n, t) => n + size(t), 0) + free.length;
+        const spare = all.reduce((n, t) => n + Math.max(0, Math.min(movable(t).length, size(t) - min)), 0);
+        if (splitSizes(total, min, max).length > all.length && free.length + spare >= min) {
+          const ct = toRecords ? compTeamFor(c, makeTeam(clubId, g))
+            : (() => { const x = { id: uid(), name: newTeamName(clubId, g, c.teams), clubId, category: g.category, gender: genderOf(g), level: g.level, sourceTeamId: null, auto: true }; c.teams.push(x); return x; })();
+          made++;
+          while (free.length && size(ct) < max) put(free.shift(), ct);
+          while (size(ct) < min) {
+            const d = all.filter(t => size(t) > min && movable(t).length).sort((a, b) => size(b) - size(a))[0];
+            if (!d) break;
+            const m = movable(d).pop(); put(m, ct); placed--;
+          }
+          all.push(ct);
+        }
+      }
     }
   }
   return { made, placed };
@@ -2170,6 +2200,8 @@ function syncTeamToRecords(c, ct) {
   const enrolled = new Set(c.entries.filter(e => sameGroup(e, ct)).map(e => e.gymnastId));
   const removed = team.memberIds.filter(id => enrolled.has(id) && !inComp.includes(id));
   team.memberIds = team.memberIds.filter(id => !removed.includes(id));
+  // (les que en surten i no són a cap altre equip queden com a «només individual», com a la competició)
+  for (const id of removed) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
   for (const id of inComp) { putInTeam(id, team); const g = gymById(id); if (g) delete g.noTeam; }
   return propagateTeam(team, removed, team.memberIds.filter(id => !before.includes(id)));
 }
@@ -4173,14 +4205,7 @@ const actions = {
       const pick = await choiceBox(`<b>${h(gymName(g))}</b> surt a ${plural(used.length, 'competició', 'competicions')} (${used.map(c => h(c.name)).join(', ')}).<br><br>
         <b>Arxivar</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
         [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
-      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => {
-        const gg = gymById(g.id); if (gg) gg.archived = true;
-        for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
-          const left = c.entries.filter(e => e.gymnastId === g.id && !hasScores(e));
-          if (!left.length) continue;
-          c.entries = c.entries.filter(e => !left.includes(e)); pruneAutoTeams(c);
-        }
-      });
+      if (pick === 'archive') withUndo(`Fitxa de ${gymName(g)} arxivada.`, () => { const gg = gymById(g.id); if (gg) archiveGym(gg); });
       if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes de ${h(gymName(g))} de ${plural(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
@@ -4234,13 +4259,21 @@ const actions = {
     const t = teamById(el.dataset.id);
     if (!t) return;
     closeDialog();
-    if (!(await confirmBox(`Esborrar l’equip <b>${h(t.name)}</b>? Les gimnastes no s’esborren. A les competicions d’avui o de més endavant quedaran com a individuals; les passades no canvien.`, { ok: 'Esborra', danger: true }))) return;
-    withUndo('Equip esborrat.', () => {
+    const pick = await choiceBox(`Esborrar l’equip <b>${h(t.name)}</b>? Les gimnastes no s’esborren, i les competicions passades no canvien.<br><br>
+      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):`,
+      [{ value: 'auto', label: 'Es tornen a agrupar soles', cls: '' }, { value: 'solo', label: 'Queden com a individuals', cls: 'danger' }]);
+    if (!pick) return;
+    withUndo(pick === 'solo' ? 'Equip esborrat: les seves gimnastes queden com a individuals.' : 'Equip esborrat: les seves gimnastes es tornen a agrupar soles.', () => {
+      const ids = [...t.memberIds];
       db.teams = db.teams.filter(x => x.id !== t.id);
+      if (pick === 'solo') for (const id of ids) { const g = gymById(id); if (g) g.noTeam = true; }
       for (const c of db.competitions.filter(followsRecords)) {
         const ct = c.teams.find(x => x.sourceTeamId === t.id); if (!ct) continue;
-        c.entries.forEach(e => { if (e.teamId === ct.id) e.teamId = null; });
+        const freed = c.entries.filter(e => e.teamId === ct.id);
+        freed.forEach(e => { e.teamId = null; if (pick === 'solo') e.noAuto = true; else delete e.noAuto; });
         c.teams = c.teams.filter(x => x !== ct);
+        if (pick === 'auto' && c.autoTeams) autoCompTeams(c, freed);
+        pruneAutoTeams(c);
       }
     });
   },
@@ -4304,8 +4337,13 @@ const actions = {
       // surten dels equips del grup d'abans (els que es queden buits s'esborren): quan s'inscriguin, es faran equips nous
       const ids = new Set(list.map(g => g.id));
       const emptied = db.teams.filter(t => t.memberIds.length && t.memberIds.every(id => ids.has(id) && !sameGroup(t, gymById(id))));
+      const lost = new Set(db.teams.filter(t => t.memberIds.some(id => ids.has(id) && !sameGroup(t, gymById(id)))).map(t => t.id));
       for (const t of db.teams) t.memberIds = t.memberIds.filter(id => !ids.has(id) || sameGroup(t, gymById(id)));
-      db.teams = db.teams.filter(t => !emptied.includes(t));
+      // un equip que s'ha quedat per sota del mínim es desfà: les que s'hi queden es tornen a agrupar soles
+      // (si no, quedarien en equips de 1 o 2 que no compten)
+      const weak = db.teams.filter(t => lost.has(t.id) && t.memberIds.length && t.memberIds.length < (S().compDefaults.teamMin || 3));
+      db.teams = db.teams.filter(t => !emptied.includes(t) && !weak.includes(t));
+      const gone = new Set(emptied.concat(weak).map(t => t.id));
       // les competicions que vénen també: cadascuna al grup nou i al seu equip (si encara no hi té notes)
       for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
         const moved = [];
@@ -4315,6 +4353,11 @@ const actions = {
           if (hasScores(e)) { kept++; continue; }
           e.category = g.category; e.gender = genderOf(g); e.level = g.level; e.teamId = null; delete e.noAuto;
           moved.push(e);
+        }
+        // les d'un equip desfet que no canvien de categoria: també es tornen a agrupar (si encara no tenen notes)
+        for (const e of c.entries) {
+          const ct = e.teamId && c.teams.find(x => x.id === e.teamId);
+          if (ct && gone.has(ct.sourceTeamId) && !hasScores(e)) { e.teamId = null; delete e.noAuto; moved.push(e); }
         }
         // (abans, fora les còpies que s'han quedat buides: si no, s'hi tornarien a posar gimnastes d'un equip esborrat)
         if (moved.length) { pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, moved); else autoAssignTeams(c, moved); pruneAutoTeams(c); upd += moved.length; }
@@ -4444,7 +4487,9 @@ const forms = {
       const g = gymById(id);
       if (!g) { closeDialog(); return; }
       const before = gymTeamValue(g), oldClub = g.clubId || null, oldGroup = { category: g.category, gender: genderOf(g), level: g.level };
+      const wasArchived = !!g.archived;
       Object.assign(g, vals, { archived: fd.get('archived') === 'on' });
+      if (g.archived && !wasArchived) archiveGym(g);
       // ha canviat d'entitat: a les competicions que vénen també (i surt de l'equip de l'entitat d'abans)
       if ((g.clubId || null) !== oldClub) {
         const t0 = gymTeam(g);
@@ -4456,9 +4501,9 @@ const forms = {
           pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, [e]); else autoAssignTeams(c, [e]); pruneAutoTeams(c);
         }
       }
-      const r = teamVal !== before ? setGymTeam(g, teamVal, newTeam) : null;
+      const r = teamVal !== before && !g.archived ? setGymTeam(g, teamVal, newTeam) : null;
       commit(); closeDialog(); render();
-      if (r) teamSetToast(g, r); else toast('Fitxa desada.', 'ok');
+      if (r) teamSetToast(g, r); else toast(g.archived && !wasArchived ? 'Fitxa arxivada: ja no surt a les llistes ni és a cap equip.' : 'Fitxa desada.', 'ok');
       // si ara és d'un altre grup i està inscrita en una competició que vé, ofereix canviar-ho també allà
       // (les passades no es toquen; i només si aquesta vegada s'ha canviat el grup)
       const regrouped = !sameGroup(oldGroup, g);
@@ -4512,7 +4557,10 @@ const forms = {
       Object.assign(t, vals, { memberIds: [] });
       // una gimnasta només és a un equip: si era a un altre, en surt
       for (const m of members) { putInTeam(m, t); const g = gymById(m); if (g) delete g.noTeam; }
-      touched = propagateTeam(t, before.filter(x => !members.includes(x)), members.filter(x => !before.includes(x)));
+      // les que s'han tret de l'equip queden com a «només individual» (si no, la jornada següent les hi tornaria a posar)
+      const out = before.filter(x => !members.includes(x));
+      for (const id of out) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
+      touched = propagateTeam(t, out, members.filter(x => !before.includes(x)));
     });
   },
   autoTeams: f => {
@@ -4650,6 +4698,9 @@ const changes = {
     el.dataset.last = el.value;
     // «NP» escrit a la casella: no presentada
     if (/^\s*n\.?\s*p\.?\s*$/i.test(el.value)) {
+      // (una sola vegada: en tornar a pintar, el navegador encara pot avisar d'un canvi en aquesta casella)
+      if (el._np) return 'np';
+      el._np = true; el._why = null; el.classList.remove('invalid');
       hideFixTip();
       const apply = () => withUndo(() => { const w = npTeamWarn(c, e); return { msg: `${entryName(e)}: no presentada (NP).${w}`, type: w ? 'bad' : 'ok' }; }, () => { e.status = 'np'; });
       if (navKey) { apply(); return 'np'; }
@@ -5067,6 +5118,12 @@ document.addEventListener('click', e => {
 document.addEventListener('change', e => {
   const el = e.target.closest('[data-chg]');
   if (el && changes[el.dataset.chg]) changes[el.dataset.chg](el, e);
+});
+// una nota que s'ha tornat a escriure igual que quan s'hi ha entrat (p. ex. 9 → Intro → 8,50 de nou): el navegador
+// no avisa de cap canvi en sortir-ne, però el que hi ha desat no és el que es veu. Es desa en sortir.
+document.addEventListener('focusout', e => {
+  const el = e.target;
+  if (isSc(el) && document.contains(el) && el.dataset.last !== el.value && changes[el.dataset.chg]) changes[el.dataset.chg](el, e);
 });
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-inp]');

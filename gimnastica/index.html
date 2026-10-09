@@ -1587,6 +1587,8 @@ const isTouch = () => !!(window.matchMedia && matchMedia('(pointer: coarse)').ma
 const prefGet = k => { try { return localStorage.getItem('notesgim.pref.' + k); } catch (_) { return null; } };
 const prefSet = (k, v) => { try { localStorage.setItem('notesgim.pref.' + k, v); } catch (_) {} };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+// «d’una gimnasta», «d’11 competicions», «de 3 gimnastes» (noms femenins)
+const deN = (n, one, many) => (n === 1 ? `d’una ${one}` : `${n === 11 ? 'd’' : 'de '}${n} ${many}`);
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof s === 'string' ? s : ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : h(s || ''); };
 const ordinal = n => ({ 1: '1r', 2: '2n', 3: '3r', 4: '4t' }[n] || n + 'è');
@@ -1851,6 +1853,7 @@ function flush() {
     }
   } catch (_) {}
   if (other) { renderKeepFocus(); toast('Les dades s’havien canviat des d’una altra pestanya: ara es veuen les de totes dues (les notes d’aquí hi són). Si el teu darrer canvi que no era una nota no hi és, torna’l a fer. Treballa només en una pestanya.', 'bad'); }
+  if (server.on && db.meta.updated) { server.mine.add(db.meta.updated); if (server.mine.size > 300) server.mine.delete(server.mine.values().next().value); }
   try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; saveError = false; }
   catch (e) { console.error(e); saveError = true; toast('No s’ha pogut desar al navegador. Descarrega una còpia de seguretat ara!', 'bad'); }
   if (fileHandle) queueFileWrite();
@@ -1861,7 +1864,10 @@ function flush() {
    Quan l'app s'obre des del programa NotesGim-servidor, les dades viuen al fitxer del servidor:
    l'ordinador de la taula (role admin) hi envia cada canvi i en rep les notes de les tutores al moment;
    des d'un altre aparell (role tutor) s'obre el mode tutora. */
-const server = { on: false, role: null, version: null, dataRev: null, sentStamp: null, urls: [], urlsAt: 0, pushing: false, again: false,
+// en blanc: sense gimnastes, competicions, entitats ni equips, i on no s'hi ha desat mai res (un fitxer nou o que s'ha
+// perdut, o una finestra que mai no ha fet servir les dades)
+const blankDb = d => !d || (!['gymnasts', 'competitions', 'clubs', 'teams'].some(k => (d[k] || []).length) && !(d.meta && d.meta.updated));
+const server = { on: false, role: null, version: null, dataRev: null, sentStamp: null, urls: [], urlsAt: 0, pushing: false, again: false, mine: new Set(),
   online: true, deferred: false, replaceNext: false, closed: false, conflicts: 0, saveErr: '', retrySave: false, diskStamp: null };
 async function api(path, opts = {}, timeout = 0) {
   const ctl = timeout ? new AbortController() : null;
@@ -1894,33 +1900,28 @@ async function serverInit() {
   let note = '', before = null;
   await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
   let fresh = '';
-  const oldWin = has(db) && localGen !== null && localGen < 2;
-  if (oldWin || (info.fresh && !has(remote.db) && !has(db))) {
-    // el programa comença de zero (les dades de les versions de proves s'han guardat apart), o aquesta finestra té
-    // dades de les versions de proves: no es fan servir mai amb el programa (es guarden, per si de cas)
-    if (has(db)) { before = JSON.stringify(db); keepBefore(before); }
+  // qui mana en obrir: 1) les dades d'una finestra de les versions de proves no es fan servir mai; 2) si aquesta
+  // finestra no té res, el fitxer; 3) si al fitxer no s'hi ha desat mai res (és nou o s'ha perdut), les d'aquesta
+  // finestra; 4) si són unes altres dades, el fitxer (les d'aquesta finestra es guarden i es poden descarregar);
+  // 5) si són les mateixes, la més nova sencera, i de l'altra les notes més noves
+  const oldWin = !blankDb(db) && localGen !== null && localGen < 2;
+  const keepMine = () => { before = JSON.stringify(db); keepBefore(before); };
+  if (oldWin || (info.fresh && blankDb(remote.db) && blankDb(db))) {
+    if (oldWin) keepMine();
     db = migrate(remote.db);
-    if (!has(db)) fresh = `Comences de zero. ${info.fresh ? `Les dades de les proves d’abans no s’han esborrat: són al fitxer «${info.fresh}», a la mateixa carpeta que les dades (es poden recuperar amb «Restaura una còpia…», a Configuració).`
+    if (blankDb(db)) fresh = `Comences de zero. ${info.fresh ? `Les dades de les proves d’abans no s’han esborrat: són al fitxer «${info.fresh}», a la mateixa carpeta que les dades (es poden recuperar amb «Restaura una còpia…», a Configuració).`
       : 'Les dades de les proves d’abans que tenia aquesta finestra no es fan servir (no s’han esborrat: es poden descarregar amb el botó d’aquest avís).'}`;
-  } else if (!has(remote.db) && has(db) && rm.updated && ((rm.dbId === db.meta.dbId && Date.parse(rm.updated) >= Date.parse(db.meta.updated || 0)) || (rm.wiped && rm.dbId !== db.meta.dbId))) {
-    // al fitxer s'hi ha esborrat tot («Esborra-ho tot», o les mateixes dades d'aquesta finestra buidades després) i
-    // aquesta finestra encara té les d'abans: mana el fitxer. Si el fitxer és nou o s'ha perdut (mai no s'hi ha desat
-    // res), hi van les d'aquesta finestra
-    before = JSON.stringify(db); keepBefore(before);
+  } else if (blankDb(db)) {
+    if (!blankDb(remote.db)) db = migrate(remote.db);
+  } else if (blankDb(remote.db)) {
+    // (es desen ara al fitxer)
+  } else if (!rm.dbId || rm.dbId !== db.meta.dbId) {
+    // (un altre ordinador, un USB, una còpia posada a mà, una altra finestra amb unes altres dades)
+    keepMine();
     db = migrate(remote.db);
-    note = 'Al fitxer ' + (server.dataFile || '') + ' s’hi ha esborrat tot: es fa servir així. Les dades que encara tenia aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
-  } else if (has(remote.db) && has(db)) {
-    if (rm.dbId && db.meta.dbId && rm.dbId !== db.meta.dbId) {
-      // el fitxer és d'unes altres dades (un altre ordinador, un USB, una còpia posada a mà): manen les del fitxer.
-      // Les d'aquesta finestra es poden descarregar des de l'avís
-      before = JSON.stringify(db); keepBefore(before);
-      db = migrate(remote.db);
-      note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
-    } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);   // la més nova sencera,
-    else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }                                   // i de l'altra, les notes més noves
-  } else if (has(remote.db)) db = migrate(remote.db);
-  // el fitxer només té configuració (organització, nivells, entitats) i aquesta finestra no té res: mana el fitxer
-  else if (!has(db) && rm.dbId && Date.parse(rm.updated || 0) > Date.parse(db.meta.updated || 0)) db = migrate(remote.db);
+    note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
+  } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);
+  else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }
   server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
   flush();
   render();
@@ -1989,13 +1990,14 @@ function serverConflict(r) {
   // ningú més les ha canviat (p. ex. NotesGim s'ha tornat a obrir): es tornen a enviar les d'aquí, amb el que s'hagi fet mentrestant
   // (diskStamp: el darrer que se sap que és al fitxer; si el programa no podia desar i s'ha tornat a obrir, el
   // fitxer té aquestes, més velles que les d'aquí, i no són d'una altra finestra)
-  if (tm.dbId === db.meta.dbId && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp)) { server.again = true; return; }
+  // (server.mine: el que aquesta finestra ha desat; p. ex. el programa s'ha tornat a obrir amb una altra finestra que ha
+  // enviat el que aquesta havia desat mentre no hi era)
+  if (tm.dbId === db.meta.dbId && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp || server.mine.has(tm.updated))) { server.again = true; return; }
   // el programa s'ha tornat a obrir amb un fitxer buit (o que no hi era): no passa per sobre de les d'aquí
   const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   // (només si al fitxer no s'hi ha desat mai res: si una altra finestra ho ha esborrat tot, mana)
-  const blank = d => !d || (!has(d) && !(d.clubs || []).length && !(d.teams || []).length && !(d.meta && d.meta.updated));
-  if (blank(theirs)) { server.again = true; return; }
-  const mine = db, before = JSON.stringify(mine), mineHas = !blank(mine);
+  if (blankDb(theirs)) { server.again = true; return; }
+  const mine = db, before = JSON.stringify(mine), mineHas = !blankDb(mine);
   if (mineHas) keepBefore(before);   // (si aquesta finestra no tenia res, no hi ha res a guardar: no es trepitja el que hi hagués)
   db = migrate(theirs);
   if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
@@ -5500,7 +5502,7 @@ const actions = {
         <b>Arxivar</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
         [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
       if (pick === 'archive') { let r = { comps: [], weak: [] }; withUndo(() => archiveMsg(g, r), () => { const gg = gymById(g.id); if (gg) r = archiveGym(gg); }); }
-      if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes de ${h(gymName(g))} de ${plural(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
+      if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes ${/^h?[aeiouàèéíïòóúü]/i.test(gymName(g)) ? 'd’' : 'de '}${h(gymName(g))} ${deN(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
           db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => id !== g.id); });
@@ -6630,7 +6632,7 @@ async function confirmNotesLoss(ids) {
   const cs = db.competitions.filter(c => c.entries.some(e => ids.has(e.gymnastId) && hasScores(e)));
   if (!cs.length) return true;
   const nG = new Set(cs.flatMap(c => c.entries.filter(e => ids.has(e.gymnastId) && hasScores(e)).map(e => e.gymnastId))).size, lk = cs.some(c => c.locked);
-  return confirmBox(`Segur? S’esborraran les notes de ${plural(nG, 'gimnasta', 'gimnastes')} de ${plural(cs.length, 'competició', 'competicions')}${lk ? ' (també de les bloquejades)' : ''}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' });
+  return confirmBox(`Segur? S’esborraran les notes ${deN(nG, 'gimnasta', 'gimnastes')} ${deN(cs.length, 'competició', 'competicions')}${lk ? ' (també de les bloquejades)' : ''}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' });
 }
 // noms d'una llista per a un avís: com a molt 5 (i «i N més»)
 const fewNames = l => (l.length > 5 ? l.slice(0, 5).map(h).join(', ') + ` i ${l.length - 5} més` : l.length > 1 ? l.slice(0, -1).map(h).join(', ') + ' i ' + h(l[l.length - 1]) : h(l[0] || ''));
@@ -6798,8 +6800,6 @@ forms.wipe = async f => {
       db.gymnasts.forEach(fix); db.teams.forEach(fix); db.competitions.forEach(x => { x.entries.forEach(fix); x.teams.forEach(fix); });
     }
     if (w.includes('cfg')) db.settings = defaultDb().settings;
-    // esborrat a posta: una altra finestra que encara té les dades d'abans no les hi torna a posar
-    db.meta.wiped = new Date().toISOString();
     ui.sel = {}; ui.insQ = ''; ui.gSearch = ''; ui.gClub = ''; ui.gCat = ''; ui.gLevel = ''; ui.gGender = ''; ui.gArchived = false; ui.gWrong = false; ui.tCat = '';
   }, { replace: true });
   flush();

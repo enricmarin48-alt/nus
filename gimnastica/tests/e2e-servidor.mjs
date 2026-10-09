@@ -28,7 +28,7 @@ execSync(`go build -o "${bin}" .`, { cwd: srvDir, stdio: 'inherit', env: { ...pr
 
 const lan = Object.values(os.networkInterfaces()).flat().find(a => a && a.family === 'IPv4' && !a.internal);
 assert.ok(lan, 'cal una adreça de xarxa (no localhost) per fer de mòbil de tutora');
-const PORT = 18765, dataFile = path.join(out, 'notesgim-dades.json');
+const PORT = +process.env.NOTESGIM_TEST_PORT || 18765, dataFile = path.join(out, 'notesgim-dades.json');
 
 const now = Date.now();
 writeFileSync(dataFile, JSON.stringify({
@@ -330,7 +330,12 @@ try {
       gymnasts: [{ id: 'gv', name: 'Vella', surname: 'Proves', clubId: 'cv', gender: 'F', category: 'Aleví', level: 'A' }], teams: [], competitions: [],
       settings: { rev: 4 }, meta: { updated: new Date().toISOString(), dbId: 'proves-velles' } }));
     // (i la finestra, les seves d'una versió de proves, sense dataGen)
-    await admin.evaluate(() => { const d = JSON.parse(localStorage.getItem('notesgim.db')); delete d.settings.dataGen; localStorage.setItem('notesgim.db', JSON.stringify(d)); });
+    // (en carregar la pàgina, abans que l'app les llegeixi: si no, la finestra oberta les tornaria a desar en sortir)
+    await admin.context().addInitScript(() => {
+      if (sessionStorage.getItem('dades-de-proves')) return;
+      sessionStorage.setItem('dades-de-proves', '1');
+      const d = JSON.parse(localStorage.getItem('notesgim.db')); delete d.settings.dataGen; localStorage.setItem('notesgim.db', JSON.stringify(d));
+    });
     assert.ok(await admin.evaluate(() => JSON.parse(localStorage.getItem('notesgim.db')).gymnasts.length) > 0);
     await startServer();
     await admin.goto(`http://127.0.0.1:${PORT}/#/gimnastes`); await admin.reload();
@@ -389,10 +394,21 @@ try {
     assert.equal(gyms(), 0);
     const c = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4, dataGen: 2 }, clubs: [], gymnasts: [G('t1'), G('t2')], teams: [], competitions: [],
       meta: { updated: new Date(Date.now() + 120000).toISOString(), dbId: 'unes-terceres' } });
-    await c.waitForSelector('.toast:has-text("s’hi ha esborrat tot")');
+    await c.waitForSelector('.toast:has-text("S’han obert les dades del fitxer")');
     assert.equal(await c.evaluate(() => db.gymnasts.length), 0);
     await new Promise(r => setTimeout(r, 1200));
     assert.equal(gyms(), 0, 'el fitxer continua buit');
+    // un fitxer amb només entitats (el començament d'un curs) tampoc no el trepitja una finestra amb unes altres dades
+    await c.evaluate(() => { db.clubs.push({ id: 'cn', name: 'Entitat del curs nou' }); commit(); });
+    await new Promise(r => setTimeout(r, 1200));
+    const e = await seedWin({ app: 'notesgim', version: 1, settings: { rev: 4, dataGen: 2 }, clubs: [], gymnasts: [G('u1'), G('u2'), G('u3')], teams: [], competitions: [],
+      meta: { updated: new Date(Date.now() + 180000).toISOString(), dbId: 'usb-any-passat' } });
+    await e.waitForSelector('.toast:has-text("S’han obert les dades del fitxer")');
+    await new Promise(r => setTimeout(r, 1200));
+    const f = JSON.parse(readFileSync(dataFile, 'utf8'));
+    assert.deepEqual([f.gymnasts.length, f.clubs.map(x => x.name)], [0, ['Entitat del curs nou']], 'les entitats del fitxer es queden');
+    assert.equal(await e.evaluate(async () => { const r = await idbGet('abansServidor'); return r && JSON.parse(r.raw).gymnasts.length; }), 3, 'les de la finestra es guarden');
+    await e.context().close();
     // però si el fitxer s'ha perdut (no hi és), la finestra hi torna a posar les seves (les d'ara)
     await c.evaluate(() => { db.gymnasts.push({ id: 'n2', name: 'Nova', surname: 'Dara', clubId: null, gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
     await new Promise(r => setTimeout(r, 1200));

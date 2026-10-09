@@ -13,6 +13,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -117,16 +118,30 @@ func newStore(path string) (*store, error) {
 				}
 				time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
 			}
+			s.db = map[string]any{}
+			s.fresh = filepath.Base(old)
 			if rerr != nil {
-				if werr := writeFileSync(old, b); werr != nil {
+				// (si ja se'n va fer una còpia igual un altre dia, ja es va començar de zero aquell dia: no es torna a dir)
+				if same := sameProves(path, b); same != "" {
+					s.fresh = ""
+				} else if werr := writeFileSync(old, b); werr != nil {
 					return nil, fmt.Errorf("no s'han pogut guardar apart les dades de les proves d'abans (%s): %v", path, werr)
 				}
 			}
-			s.db = map[string]any{}
-			s.fresh = filepath.Base(old)
 		}
 	}
 	return s, nil
+}
+
+// un «…-proves-….json» al costat del fitxer de dades amb exactament aquest contingut (o "")
+func sameProves(path string, b []byte) string {
+	list, _ := filepath.Glob(strings.TrimSuffix(path, ".json") + "-proves-*.json")
+	for _, f := range list {
+		if c, err := os.ReadFile(f); err == nil && bytes.Equal(c, b) {
+			return filepath.Base(f)
+		}
+	}
+	return ""
 }
 
 // base + ".json", o base-2.json, base-3.json… si ja n'hi ha un (mai se n'escriu un a sobre d'un altre)
@@ -298,16 +313,27 @@ func (s *store) pruneBackups(keep int) {
 	if err != nil {
 		return
 	}
-	var names []string
+	// (les còpies d'abans d'esborrar-ho tot o de restaurar no compten entre les 60: se'n guarden les 20 últimes a part,
+	// perquè no se'n vagin al cap de pocs dies de fer servir el programa)
+	var names, special []string
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "notesgim-") && strings.HasSuffix(e.Name(), ".json") {
-			names = append(names, e.Name())
+		if n := e.Name(); strings.HasPrefix(n, "notesgim-") && strings.HasSuffix(n, ".json") {
+			if strings.Contains(n, "-abans-de-restaurar") || strings.Contains(n, "-abans-d-esborrar") {
+				special = append(special, n)
+			} else {
+				names = append(names, n)
+			}
 		}
 	}
 	sort.Strings(names)
+	sort.Strings(special)
 	for len(names) > keep {
 		_ = os.Remove(filepath.Join(s.backups, names[0]))
 		names = names[1:]
+	}
+	for len(special) > 20 {
+		_ = os.Remove(filepath.Join(s.backups, special[0]))
+		special = special[1:]
 	}
 }
 

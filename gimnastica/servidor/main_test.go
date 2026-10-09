@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -583,5 +584,37 @@ func TestOldRunningInstanceIsClosed(t *testing.T) {
 	defer srv2.Close()
 	if u, old := runningInstance(port2, path); u == "" || old || *quit2 {
 		t.Fatalf("un NotesGim d'ara obert: se n'obre la finestra: %q %v quit=%v", u, old, *quit2)
+	}
+}
+
+// les còpies d'abans d'esborrar-ho tot (o de restaurar) no se'n van amb les 60 de cada 10 minuts
+func TestPruneKeepsWipeBackups(t *testing.T) {
+	dir := t.TempDir()
+	s := &store{backups: dir}
+	_ = os.WriteFile(filepath.Join(dir, "notesgim-2026-01-01_100000-abans-d-esborrar.json"), []byte("{}"), 0o644)
+	for i := 0; i < 70; i++ {
+		_ = os.WriteFile(filepath.Join(dir, fmt.Sprintf("notesgim-2026-02-%02d_%02d00.json", 1+i/24, i%24)), []byte("{}"), 0o644)
+	}
+	s.pruneBackups(60)
+	list, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	keep, _ := filepath.Glob(filepath.Join(dir, "*-abans-d-esborrar.json"))
+	if len(list) != 61 || len(keep) != 1 {
+		t.Fatalf("havien de quedar les 60 últimes i la d'abans d'esborrar: %d %v", len(list), keep)
+	}
+}
+
+// el fitxer de les proves no es pot moure (antivirus, OneDrive): se'n fa una còpia, i un altre dia no se'n fa cap
+// altra ni es torna a dir «comences de zero»
+func TestOldTestDataCopyOnlyOnce(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	b := []byte(`{"gymnasts":[{"id":"g1","name":"Anna"}]}`)
+	_ = os.WriteFile(path, b, 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "notesgim-dades-proves-2026-10-01_100000.json"), b, 0o644)
+	if got := sameProves(path, b); got != "notesgim-dades-proves-2026-10-01_100000.json" {
+		t.Fatalf("havia de trobar la còpia igual: %q", got)
+	}
+	if got := sameProves(path, []byte(`{}`)); got != "" {
+		t.Fatalf("una còpia diferent no compta: %q", got)
 	}
 }

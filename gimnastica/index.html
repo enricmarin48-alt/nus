@@ -3049,9 +3049,10 @@ async function readXlsx(buf) {
 // «GARCIA PUIG» → «Garcia Puig» (si està tot en majúscules); «D'ALÒS I COL·LELL» → «D'Alòs i Col·lell»
 function smartCase(s) {
   s = String(s ?? '').replace(/\s+/g, ' ').trim();
-  if (!s || s !== s.toUpperCase() || !/\p{L}/u.test(s)) return s;
+  if (!s || (s !== s.toUpperCase() && s !== s.toLowerCase()) || !/\p{L}/u.test(s)) return s;
   return s.toLowerCase().replace(/(^|[\s\-'’(.])(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
-    .replace(/(\s)(De|Del|Dels|La|Les|Los|I|Y)(?=\s)/g, (m, a, w) => a + w.toLowerCase());
+    .replace(/(\s)(De|Del|Dels|La|Les|Los|I|Y)(?=\s)/g, (m, a, w) => a + w.toLowerCase())
+    .replace(/(^|\s)([^\s.]{1,4})(?=\s|$)/g, (m, a, w) => /[aeiouàèéíïòóúüy]/i.test(w) || /[^\p{L}]/u.test(w) ? m : a + w.toUpperCase());
 }
 // any de naixement d'una cel·la: 2015, «2015», «12/03/2015» o una data d'Excel
 function cellYear(v) {
@@ -3067,7 +3068,7 @@ function parseInscripcio(sheets) {
   const txt = v => typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v == null ? '' : String(v);
   const sq = s => norm(s).replace(/[\s.]/g, '');                 // «E N T R E N A D O R / A» → «entrenador/a»
   const isLabel = s => /^(cognoms?|nom|telefons?|e-?mail(\(\*\)|\(1\))?|entitat|enna|curs|any.*)$/.test(sq(s));
-  const out = { club: '', level: '', contacts: [], rows: [], sheets: 0 };
+  const out = { club: '', level: '', contacts: [], rows: [], sheets: 0, male: false };
   for (const sh of sheets) {
     const all = [...sh.cells.entries()].map(([k, v]) => { const [r, c] = k.split(':').map(Number); return { r, c, raw: v, v: txt(v) }; }).filter(x => x.v);
     const byRow = new Map();
@@ -3083,7 +3084,8 @@ function parseInscripcio(sheets) {
     const cS = head.c, cN = row(head.r).find(y => sq(y.v) === 'nom').c, cY = row(head.r).find(y => /^any/.test(sq(y.v))).c;
     const ent = all.find(x => sq(x.v) === 'entitat');
     if (ent && !out.club) out.club = after(ent.r, ent.c);
-    const nv = all.map(x => /^nivell\s*(\S+)$/i.exec(x.v)).find(Boolean) || /(?:^|-)(?:INDIVIDUAL|EQUIPS?)-([A-Z])(?:-|$)/i.exec(sh.name);
+    const nv = all.map(x => /^nivell\s*:?\s*(\S+)$/i.exec(x.v)).find(Boolean) || /(?:^|-)(?:INDIVIDUAL|EQUIPS?)-([A-Z])(?:-|$)/i.exec(sh.name);
+    if (/mascul/i.test(sh.name) || all.some(x => /mascul/i.test(x.v))) out.male = true;
     const level = nv ? nv[1].toUpperCase() : '';
     if (level && !out.level) out.level = level;
     // entrenador/a i delegat/da: les dues files de sota del títol
@@ -3117,7 +3119,10 @@ function parseInscripcio(sheets) {
       catRaw = known(catRaw) || smartCase(catRaw);
     }
     for (let r = head.r + 1; r <= sh.maxR; r++) {
-      const sur = txt(sh.cells.get(r + ':' + cS)), nom = txt(sh.cells.get(r + ':' + cN)), y = sh.cells.get(r + ':' + cY);
+      // (al model, els cognoms són dues caselles —1r i 2n cognom— i el nom pot ser-ne més d'una: s'ajunten)
+      const join = (c1, c2) => row(r).filter(x => x.c >= c1 && x.c < c2).map(x => x.v).join(' ').trim();
+      const sur = join(cS, cN), nom = join(cN, cY);
+      const yc = row(r).find(x => x.c >= cY), y = yc ? yc.raw : undefined;
       if (!sur && !nom) continue;
       if (isLabel(sur) || /^equip\s*\d+$/i.test(sur)) continue;
       const t = span.find(s => r >= s.r1 && r <= s.r2);
@@ -3128,23 +3133,25 @@ function parseInscripcio(sheets) {
 }
 // el que es farà amb cada fila d'un fitxer (es torna a calcular cada vegada que es canvia una opció)
 function inscResolve(f) {
-  const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : null;
+  const clubId = f.clubPick && !f.clubPick.startsWith('__') ? f.clubPick : null;
   const firstTeam = new Map(), out = [];
   const key = r => norm(r.name + ' ' + r.surname);
   // la mateixa gimnasta a la fulla individual i en un equip: compta l'equip
   for (const r of f.rows) if (r.teamNo && !firstTeam.has(key(r))) firstTeam.set(key(r), r);
   const done = new Set();
   for (const [idx, r] of f.rows.entries()) {
-    const k = key(r), p = Object.assign({}, r, { idx, gender: r.gender || f.gender || 'F', level: f.level || r.level || '' });
-    p.category = r.kind === 'team' ? r.catRaw : (r.year && catForYear(r.year)) || '';
+    const k = key(r), p = Object.assign({}, r, { idx });
+    p.existing = clubId && r.name ? db.gymnasts.find(g => g.clubId === clubId && norm(gymName(g)) === k) || null : null;
+    // gènere: el triat per a la fila o per al fitxer; si no s'ha triat res, el de la fitxa que ja hi és
+    p.gender = r.gender || (f.genderSet || !p.existing ? f.gender || 'F' : genderOf(p.existing));
+    // nivell: el de cada fulla (un fitxer pot tenir fulles A i B), si no s'ha triat un nivell per a tot el fitxer
+    p.level = f.level && f.level !== '__sheet' ? f.level : (r.level || '');
+    p.category = r.catPick || (r.kind === 'team' ? r.catRaw : (r.year && catForYear(r.year))) || '';
     p.yearCat = r.year ? catForYear(r.year) || '' : '';
     if (!r.name) p.status = 'noname';
     else if ((firstTeam.has(k) && firstTeam.get(k) !== r) || done.has(k)) p.status = 'dup';
-    else {
-      done.add(k);
-      p.existing = clubId ? db.gymnasts.find(g => g.clubId === clubId && norm(gymName(g)) === k) || null : null;
-      p.status = p.existing ? 'update' : 'new';
-    }
+    else if (!p.category) { p.status = 'nocat'; done.add(k); }
+    else { done.add(k); p.status = p.existing ? 'update' : 'new'; }
     out.push(p);
   }
   return out;
@@ -3167,8 +3174,12 @@ async function inscAddFiles(files) {
       catch (e) { throw new Error(typeof DecompressionStream !== 'function' ? 'Aquest navegador no pot obrir fitxers d’Excel: fes servir Chrome, Edge o un Safari recent.' : 'No és un fitxer d’Excel (.xlsx) que es pugui llegir.'); }
       const d = parseInscripcio(sheets);
       if (!d.sheets) throw new Error('No s’hi troba cap llista d’esportistes (amb les columnes COGNOMS, NOM i ANY NAIXEMENT).');
-      Object.assign(f, { rows: d.rows, contacts: d.contacts, club: smartCase(d.club), level: matchFromList(S().levels, d.level) || d.level });
-      f.clubPick = f.club ? inscClubFor(f.club) : (db.clubs.length === 1 ? db.clubs[0].id : '__new');
+      for (const r of d.rows) r.level = r.level ? matchFromList(S().levels, r.level) || r.level : '';
+      const levels = [...new Set(d.rows.map(r => r.level).filter(Boolean))];
+      Object.assign(f, { rows: d.rows, contacts: d.contacts, club: smartCase(d.club), mixed: levels.length > 1,
+        level: levels.length > 1 ? '__sheet' : levels[0] || '', gender: d.male || /mascul/i.test(file.name) ? 'M' : 'F' });
+      // (si el full no diu l'entitat, s'ha de triar: mai se'n posa una sense dir-ho)
+      f.clubPick = f.club ? inscClubFor(f.club) : '__none';
       if (!d.rows.length) f.error = 'El full no té cap esportista escrita.';
     } catch (e) { f.error = e.message; }
     ui.insc.files.push(f);
@@ -3177,7 +3188,7 @@ async function inscAddFiles(files) {
 function inscDialog() {
   const I = ui.insc || { files: [] }, c = I.compId && compById(I.compId);
   const clubs = [...db.clubs].sort((a, b) => coll(a.name, b.name));
-  const st = { new: '<span class="badge ok">nova</span>', update: '<span class="badge" title="Ja hi ha la fitxa: se n’actualitzen el grup, l’any i l’equip">ja hi és</span>', dup: '<span class="badge" title="Surt dues vegades al full (o també en un equip): es fa servir la primera">repetida</span>', noname: '<span class="badge bad">sense nom</span>' };
+  const st = { nocat: '<span class="badge warn" title="Sense any de naixement no se sap la categoria: tria-la (o no s’importarà)">tria la categoria</span>', new: '<span class="badge ok">nova</span>', update: '<span class="badge" title="Ja hi ha la fitxa: se n’actualitzen el grup, l’any i l’equip">ja hi és</span>', dup: '<span class="badge" title="Surt dues vegades al full (o també en un equip): es fa servir la primera">repetida</span>', noname: '<span class="badge bad">sense nom</span>' };
   let total = 0;
   const cards = I.files.map((f, fi) => {
     if (f.error) return `<div class="card"><h3>${h(f.name)}</h3><div class="note bad">${h(f.error)}</div></div>`;
@@ -3186,28 +3197,31 @@ function inscDialog() {
     const bySheet = [...new Set(list.map(p => p.sheet))];
     const rows = bySheet.map(sn => {
       const ps = list.filter(p => p.sheet === sn), k = ps[0].kind;
-      return `<tr class="np"><td colspan="5"><b>${k === 'team' ? `Equips · ${h(ps[0].catRaw || '?')}` : 'Individual'}</b> · Nivell ${h(f.level || '?')} <span class="muted small">(${h(sn)})</span></td></tr>` + ps.map(p => {
+      return `<tr class="np"><td colspan="5"><b>${k === 'team' ? `Equips · ${h(ps[0].catRaw || '?')}` : 'Individual'}</b> · Nivell ${h(ps[0].level || '?')} <span class="muted small">(${h(sn)})</span></td></tr>` + ps.map(p => {
         const i = p.idx;
         const warn = !p.year ? '<span class="badge warn">sense any</span>' : (!p.category ? '<span class="badge warn">sense categoria</span>' : (p.yearCat && p.yearCat !== p.category ? `<span class="badge warn" title="Per l’any li tocaria ${h(p.yearCat)}">${h(p.year)} → ${h(p.yearCat)}?</span>` : ''));
         return `<tr><td>${st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
-          <td>${h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' && I.onlyInd ? ' · <span class="muted">individual</span>' : ''}</td>
+          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' && I.onlyInd ? ' · <span class="muted">individual</span>' : ''}</td>
           <td><select class="sm" data-chg="inscRowGender" data-f="${fi}" data-i="${i}" aria-label="Gènere de ${h(p.name)}"><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Noia</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Noi</option></select></td></tr>`;
       }).join('');
     }).join('');
     return `<div class="card"><div class="card-head"><h3>${h(f.name)}</h3><span class="muted">${plural(ok.length, 'gimnasta', 'gimnastes')}</span></div>
       <div class="grid2">
         <label class="f"><span>Entitat${f.club ? ` <span class="small muted">(al full: ${h(f.club)})</span>` : ''}</span><select data-chg="inscClub" data-f="${fi}">
-          <option value="__new" ${f.clubPick === '__new' ? 'selected' : ''}>${f.club ? `Nova: ${h(f.club)}` : '— Escriu-la al full o tria’n una —'}</option>
+          ${f.club ? `<option value="__new" ${f.clubPick === '__new' ? 'selected' : ''}>Nova: ${h(f.club)}</option>` : `<option value="__none" ${f.clubPick === '__none' ? 'selected' : ''}>— tria l’entitat —</option>`}
           ${clubs.map(cl => `<option value="${cl.id}" ${f.clubPick === cl.id ? 'selected' : ''}>${h(cl.name)}</option>`).join('')}</select></label>
-        <label class="f"><span>Nivell</span><select data-chg="inscLevel" data-f="${fi}">${[...new Set([...S().levels, f.level].filter(Boolean))].map(l => `<option ${f.level === l ? 'selected' : ''}>${h(l)}</option>`).join('')}</select></label>
+        <label class="f"><span>Nivell</span><select data-chg="inscLevel" data-f="${fi}">
+          ${f.mixed ? `<option value="__sheet" ${f.level === '__sheet' ? 'selected' : ''}>El de cada fulla (${h([...new Set(f.rows.map(r => r.level).filter(Boolean))].join(' i '))})</option>` : !f.level ? '<option value="" selected>— tria’l —</option>' : ''}
+          ${[...new Set([...S().levels, ...f.rows.map(r => r.level)].filter(Boolean))].map(l => `<option ${f.level === l ? 'selected' : ''}>${h(l)}</option>`).join('')}</select></label>
         <label class="f"><span>Són <span class="small muted">(el full no ho diu)</span></span><select data-chg="inscGender" data-f="${fi}"><option value="F" ${f.gender === 'F' ? 'selected' : ''}>Noies</option><option value="M" ${f.gender === 'M' ? 'selected' : ''}>Nois</option></select></label>
       </div>
       ${inscTeamsNote(f, list)}
       ${f.contacts.length ? `<p class="small muted">${f.contacts.map(p => `${h(p.role)}: <b>${h(p.name || '—')}</b>${p.phones ? ` · ${h(p.phones)}` : ''}${p.email ? ` · ${h(p.email)}` : ''}`).join('<br>')}</p>` : ''}
-      ${!f.club && f.clubPick === '__new' ? '<div class="note warn">El full no diu l’entitat: tria-la a dalt.</div>' : ''}
+      ${!f.club ? `<div class="note warn">El full no diu l’entitat: tria-la a dalt${f.clubPick === '__none' ? ' (si encara no hi és, crea-la abans a Entitats)' : ''}.</div>` : ''}
+      ${ok.some(p => !p.level) ? '<div class="note warn">El full no diu el nivell: tria’l a dalt.</div>' : ''}
       <div class="tbl-wrap" style="max-height:40vh"><table class="tbl"><tbody>${rows}</tbody></table></div></div>`;
   }).join('');
-  const bad = I.files.some(f => !f.error && !f.club && f.clubPick === '__new');
+  const bad = I.files.some(f => !f.error && (f.clubPick === '__none' || inscResolve(f).some(p => (p.status === 'new' || p.status === 'update') && !p.level)));
   return `<h2>Fulls d’inscripció dels clubs</h2>
     <p class="small muted">Tria (o arrossega aquí) els fitxers d’Excel (.xlsx) d’inscripció que envien els clubs, tal com te’ls passen: el model del Consell, amb les fulles INDIVIDUAL i EQUIPS. Se n’agafen l’entitat, el nivell (A o B), l’entrenador/a, el delegat/da i cada gimnasta amb el seu any de naixement i el seu equip.</p>
     <label class="dropzone" id="inscdrop"><input type="file" id="inscfile" accept=".xlsx,.xlsm,.xls" multiple data-chg="inscFiles"><span>📥 <b>Tria els fitxers</b> o arrossega’ls aquí</span></label>
@@ -4530,23 +4544,40 @@ const actions = {
     const c = I.compId && I.enroll ? compById(I.compId) : null;
     let made = 0, upd = 0, teamed = 0, res = null;
     const enrol = new Set(), formTeams = new Map();   // equip → les gimnastes que hi posa el full
+    const formPairs = new Set(), kept = new Set(), regroup = [];   // grups i entitats que diu el full; inscripcions que canvien de grup
     closeDialog();
-    withUndo(() => `Fulls d’inscripció importats: ${plural(made, 'fitxa nova', 'fitxes noves')}${upd ? `, ${plural(upd, 'actualitzada', 'actualitzades')}` : ''}${teamed ? ` · ${plural(teamed, 'gimnasta', 'gimnastes')} en equips` : ''}${c ? ` · ${plural(res ? res.n : 0, 'inscripció feta', 'inscripcions fetes')} a ${c.name}` : ''}.`, () => {
+    withUndo(() => ({ type: kept.size ? 'bad' : 'ok', msg: `Fulls d’inscripció importats: ${plural(made, 'fitxa nova', 'fitxes noves')}${upd ? `, ${plural(upd, 'actualitzada', 'actualitzades')}` : ''}${teamed ? ` · ${plural(teamed, 'gimnasta', 'gimnastes')} en equips` : ''}${c ? ` · ${plural(res ? res.n : 0, 'inscripció feta', 'inscripcions fetes')} a ${c.name}` : ''}.${kept.size ? ` Compte: a ${[...kept].join(', ')} alguna ja té notes en el grup d’abans i no s’hi ha canviat (fes-ho a Inscripcions si cal).` : ''}` }), () => {
       for (const f of I.files) {
         if (f.error) continue;
+        // l'entitat: la triada; si és nova, la que ja hi hagi amb el mateix nom (p. ex. creada per un altre fitxer
+        // del mateix club en aquesta importació), i si no, una de nova
+        let clubId = f.clubPick && !f.clubPick.startsWith('__') ? f.clubPick : null;
+        if (!clubId && f.club) { const m = inscClubFor(f.club); clubId = m !== '__new' ? m : ensureClub(f.club); }
+        if (!clubId) continue;
+        f.clubPick = clubId;
         const list = inscResolve(f).filter(p => p.status === 'new' || p.status === 'update');
         if (!list.length) continue;
-        const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : ensureClub(f.club);
         const club = clubById(clubId);
         if (club && f.contacts.length) club.contacts = mergeContacts(club.contacts, f.contacts);
-        if (f.level && !S().levels.includes(f.level)) S().levels.push(f.level);
         for (const p of list) {
+          if (p.level && !S().levels.includes(p.level)) S().levels.push(p.level);
           if (p.category && !catNames().includes(p.category)) S().categories.push({ name: p.category, from: null, to: null });
           let g = p.existing && gymById(p.existing.id);
           const vals = { gender: p.gender, level: p.level, ...(p.category ? { category: p.category } : {}), ...(p.year ? { birthYear: p.year } : {}) };
-          if (g) { Object.assign(g, vals); if (g.archived) g.archived = false; upd++; }
+          if (g) {
+            Object.assign(g, vals); if (g.archived) g.archived = false; upd++;
+            // ara és d'un altre grup: a les competicions que vénen també (on encara no té notes)
+            for (const cc of db.competitions.filter(followsRecords)) {
+              const e = cc.entries.find(x => x.gymnastId === g.id);
+              if (!e || sameGroup(e, g)) continue;
+              if (hasScores(e)) { kept.add(cc.name); continue; }
+              Object.assign(e, { category: g.category, gender: genderOf(g), level: g.level, teamId: null }); delete e.noAuto;
+              regroup.push([cc, e]);
+            }
+          }
           else { g = Object.assign({ id: uid(), name: p.name, surname: p.surname, clubId, category: '', birthYear: '', notes: '', archived: false }, vals); db.gymnasts.push(g); made++; }
           // l'equip del full (EQUIP 1 = «CG Lleida», EQUIP 2 = «CG Lleida 2»…) passa a la fitxa
+          if (p.kind === 'team') formPairs.add(groupKeyOf(g) + '|' + clubId);
           if (p.teamNo && club) {
             const nm = p.teamNo === 1 ? club.name : `${club.name} ${p.teamNo}`;
             const t = findTeam(clubId, g, nm) || makeTeam(clubId, g, nm);
@@ -4564,9 +4595,15 @@ const actions = {
         t.memberIds = t.memberIds.filter(id => ids.has(id));
         propagateTeam(t, out, []);
       }
+      // les que han canviat de grup: al seu equip (el del full) o soles
+      for (const [cc, e] of regroup) { autoAssignTeams(cc, [e]); pruneAutoTeams(cc); }
       if (c) {
         const added = [...enrol].filter(id => !c.entries.some(e => e.gymnastId === id)).map(id => { const e = newEntry(c, gymById(id)); c.entries.push(e); return e; });
-        if (c.autoTeams) autoCompTeams(c, added); else autoAssignTeams(c, added);
+        autoAssignTeams(c, added);
+        // (els equips d'una entitat i grup que diu el full ja són els del full: no s'hi afegeix ningú més)
+        const rest = added.filter(e => !e.teamId && !formPairs.has(groupKeyOf(e) + '|' + e.clubId));
+        if (c.autoTeams && rest.length) autoCompTeams(c, rest);
+        pruneAutoTeams(c);
         res = { n: added.length };
       }
     });
@@ -5207,6 +5244,7 @@ const changes = {
       const fix = o => { if (o.clubId === from.id) o.clubId = to.id; };
       db.gymnasts.forEach(fix); db.teams.forEach(fix);
       db.competitions.forEach(c => { c.entries.forEach(fix); c.teams.forEach(fix); });
+      if ((from.contacts || []).length) to.contacts = mergeContacts(to.contacts, from.contacts);
       db.clubs = db.clubs.filter(c => c.id !== from.id);
     });
   },
@@ -5269,7 +5307,8 @@ function renameInUi(field, old, to) {
 changes.inscFiles = async el => { const files = [...(el.files || [])]; el.value = ''; if (!files.length) return; await inscAddFiles(files); inscRefresh(); };
 changes.inscClub = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.clubPick = el.value; inscRefresh(); } };
 changes.inscLevel = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.level = el.value; inscRefresh(); } };
-changes.inscGender = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.gender = el.value; f.rows.forEach(r => { delete r.gender; }); inscRefresh(); } };
+changes.inscGender = el => { const f = ui.insc && ui.insc.files[+el.dataset.f]; if (f) { f.gender = el.value; f.genderSet = true; f.rows.forEach(r => { delete r.gender; }); inscRefresh(); } };
+changes.inscRowCat = el => { const f = ui.insc && ui.insc.files[+el.dataset.f], r = f && f.rows[+el.dataset.i]; if (r) { r.catPick = el.value || ''; inscRefresh(); } };
 changes.inscRowGender = el => { const f = ui.insc && ui.insc.files[+el.dataset.f], r = f && f.rows[+el.dataset.i]; if (r) { r.gender = el.value; inscRefresh(); } };
 changes.inscOpt = el => { if (ui.insc) { ui.insc[el.dataset.k] = el.checked; inscRefresh(); } };
 changes.groupSel = el => { const fn = actions[el.dataset.target]; if (fn) fn({ dataset: { g: el.value } }); };

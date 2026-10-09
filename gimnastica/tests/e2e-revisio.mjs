@@ -279,6 +279,8 @@ try {
     const maria = by('Maria Antònia D’Alòs i Col·lell'.replace('’', "'"), 'c1');
     assert.ok(maria && maria.birthYear === '2016' && maria.category === 'Aleví' && maria.level === 'A' && maria.noTeam, JSON.stringify(maria));
     assert.equal(by('Júlia Roca Mir', 'c1').birthYear, '2013');
+    // el 2n cognom, a la segona casella del model
+    assert.ok(by('Nora Vidal Roca', 'c1'), 'els dos cognoms');
     // l'Anna surt a la fulla individual i a l'EQUIP 1: és de l'equip (una sola fitxa)
     assert.equal(d.gymnasts.filter(g => gymKey(g) === 'Anna Serra' && g.clubId === 'c1').length, 1);
     const team = n => d.teams.find(t => t.clubId === 'c1' && t.name === n && t.category === 'Aleví' && t.level === 'A');
@@ -292,6 +294,15 @@ try {
     assert.ok(d.teams.some(t => t.clubId === 'c2' && t.name === 'Escola Pardinyes 2' && t.level === 'B' && t.memberIds.length === 3));
     assert.equal(by('Laia Garcia Puig', 'c2').level, 'B');
     assert.ok((d.clubs.find(c => c.id === 'c1').contacts || []).some(p => p.name === 'Marta Soler Rius' && p.email === 'marta@exemple.cat'));
+  });
+
+  await step('un full de nois (el nom del fitxer diu «masculina») es posa sol com a nois', async () => {
+    await pg.goto(url + '#/gimnastes');
+    await pg.click('button[data-act=inscOpen]');
+    await pg.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-masculina-A.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=inscripcio-masculina-A.xlsx');
+    assert.equal(await pg.locator('#dlg select[data-chg=inscGender]').inputValue(), 'M');
+    await pg.click('#dlg button[data-act=closeDlg]');
   });
 
   await step('des d’una competició, els fulls d’inscripció també hi inscriuen les gimnastes (amb el seu equip)', async () => {

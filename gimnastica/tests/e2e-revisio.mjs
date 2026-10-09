@@ -326,6 +326,36 @@ try {
     assert.ok(e('Ona Bosch') && e('Ona Bosch').category === 'Benjamí');
   });
 
+  await step('fulls com els escriu cada club: «EQUIP Nº 1», cognoms «Anyó», el 2n cognom en una sola fulla, apòstrofs, dues nenes amb el mateix nom i els equips en un altre fitxer', async () => {
+    const fx = n => path.join(here, 'fixtures', n);
+    await pg.goto(url + '#/competicio/k1/inscripcions');
+    await pg.click('button[data-act=inscOpen] >> visible=true');
+    await pg.setInputFiles('#inscfile', [fx('inscripcio-variants-equips.xlsx'), fx('inscripcio-variants-individual.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=inscripcio-variants-individual.xlsx');
+    await pg.click('#dlg button[data-act=inscDo]');
+    await pg.waitForSelector('.toast:has-text("Fulls d’inscripció importats")');
+    const d = await data2(), club = d.clubs.find(x => x.name === 'Club Variants'), c = d.competitions.find(x => x.id === 'k1');
+    const gyms = d.gymnasts.filter(g => g.clubId === club.id), nm = g => g.name + ' ' + g.surname;
+    assert.deepEqual(gyms.map(nm).sort(), ['Anna Serra', 'Clara D\'Alòs', 'Elna Font', 'Fiona Anyó', 'Helena Pons', 'Laia Puig Soler', 'Laia Vidal', 'Laia Vidal', 'Marta Anyes', 'Núria Anyó Puig', 'Ona Bosch', 'Pia Cano'].sort(), 'una fitxa per gimnasta (i dues Laia Vidal, de dos anys diferents)');
+    const team = (cat, n) => { const t = c.teams.find(x => x.clubId === club.id && x.category === cat && x.name === n); return t ? c.entries.filter(e => e.teamId === t.id).map(e => nm(d.gymnasts.find(g => g.id === e.gymnastId))).sort() : null; };
+    assert.deepEqual(team('Aleví', 'Club Variants'), ['Anna Serra', 'Fiona Anyó', 'Laia Puig Soler', 'Laia Vidal']);
+    assert.deepEqual(team('Aleví', 'Club Variants 2'), ['Clara D\'Alòs', 'Elna Font', 'Marta Anyes']);
+    assert.deepEqual(team('Benjamí', 'Club Variants'), ['Laia Vidal', 'Ona Bosch', 'Pia Cano']);
+    const ind = c.entries.filter(e => e.clubId === club.id && !e.teamId).map(e => nm(d.gymnasts.find(g => g.id === e.gymnastId))).sort();
+    assert.deepEqual(ind, ['Helena Pons', 'Núria Anyó Puig']);
+    assert.equal(c.entries.filter(e => e.clubId === club.id).length, 12, 'cadascuna inscrita un sol cop');
+    // la fulla individual sola, una altra vegada: les dels equips es queden al seu equip
+    await pg.click('button[data-act=inscOpen] >> visible=true');
+    await pg.setInputFiles('#inscfile', [fx('inscripcio-variants-individual.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=inscripcio-variants-individual.xlsx');
+    assert.ok((await pg.locator('#dlg').textContent()).includes('l’equip que ja tenia'));
+    await pg.click('#dlg button[data-act=inscDo]');
+    await pg.waitForSelector('.toast:has-text("Fulls d’inscripció importats")');
+    const d2 = await data2(), c2 = d2.competitions.find(x => x.id === 'k1');
+    const t2 = (cat, n) => { const t = c2.teams.find(x => x.clubId === club.id && x.category === cat && x.name === n); return t ? c2.entries.filter(e => e.teamId === t.id).length : 0; };
+    assert.deepEqual([t2('Aleví', 'Club Variants'), t2('Aleví', 'Club Variants 2')], [4, 3]);
+  });
+
   await step('el full de l’entitat mana: equips tal qual a la competició triada (encara que ja hi fossin), cap altra competició canvia i no s’hi fan equips «igualats»', async () => {
     // una competició passada (com la del 18/04) i una que ve, on l'Elna (EQUIP 2 al full) era a «CG Lleida» amb
     // equips que s'havien fet sols (5 + 2)
@@ -347,7 +377,7 @@ try {
     assert.equal(await pg.locator('#insccomp').inputValue(), 'kp');
     await pg.click('#dlg button[data-act=inscDo]');
     const t = await pg.locator('.toast:has-text("Fulls d’inscripció importats")').last().textContent();
-    assert.ok(t.includes('Comp kf') && t.includes('no s’hi ha tocat res'), 'es diu que l’altra competició té uns altres equips: ' + t);
+    assert.ok(t.includes('ja ha passat: les fitxes de les gimnastes no s’han canviat'), 'una competició passada no canvia les fitxes: ' + t);
     assert.ok(t.includes('canviat d’equip (les notes no canvien)'), 'l’Elna ja tenia notes: ' + t);
     const d = await data2();
     const teamsOf = id => { const c = d.competitions.find(x => x.id === id), gn = gid => d.gymnasts.find(g => g.id === gid).name;

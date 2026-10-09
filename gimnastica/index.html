@@ -3158,7 +3158,8 @@ function cellYear(v) {
 function parseInscripcio(sheets) {
   const txt = v => typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : v == null ? '' : String(v);
   const sq = s => norm(s).replace(/[\s.]/g, '');                 // «E N T R E N A D O R / A» → «entrenador/a»
-  const isLabel = s => /^(cognoms?|nom|telefons?|e-?mail(\(\*\)|\(1\))?|entitat|enna|curs|any.*)$/.test(sq(s));
+  // (només els títols exactes: un cognom com «Anyó» o «Curs» no és un títol)
+  const isLabel = s => /^(cognoms?|nom|telefons?|e-?mail(\(\*\)|\(1\))?|entitat|enna|en\/na|curs|any|any(de)?naixement)$/.test(sq(s));
   const out = { club: '', level: '', contacts: [], rows: [], sheets: 0, male: false };
   for (const sh of sheets) {
     const all = [...sh.cells.entries()].map(([k, v]) => { const [r, c] = k.split(':').map(Number); return { r, c, raw: v, v: txt(v) }; }).filter(x => x.v);
@@ -3198,8 +3199,10 @@ function parseInscripcio(sheets) {
       else out.contacts.push(p);
     }
     // equips: «EQUIP 1», «EQUIP 2»… (la cel·la combinada diu quines files són de cada equip)
-    const tl = all.filter(x => /^equip\s*\d+$/i.test(x.v) && x.r > head.r).sort((a, b) => a.r - b.r);
-    const span = tl.map((x, i) => { const m = sh.merges.find(m => m.r1 === x.r && m.c1 === x.c); return { no: +/\d+/.exec(x.v)[0], r1: x.r, r2: m ? m.r2 : (tl[i + 1] ? tl[i + 1].r - 1 : sh.maxR) }; });
+    // («EQUIP 1», però també «EQUIP Nº 1», «Equip-1» o «Equip 1:», com ho escriu cada club)
+    const EQ = /^equip\W*(?:n[º°o]?\.?\s*)?(\d{1,2})\W*$/i;
+    const tl = all.filter(x => EQ.test(x.v) && x.r > head.r).sort((a, b) => a.r - b.r);
+    const span = tl.map((x, i) => { const m = sh.merges.find(m => m.r1 === x.r && m.c1 === x.c); return { no: +EQ.exec(x.v)[1], r1: x.r, r2: m ? m.r2 : (tl[i + 1] ? tl[i + 1].r - 1 : sh.maxR) }; });
     const kind = tl.length || /equip/i.test(sh.name) ? 'team' : 'ind';
     // categoria de la fulla d'equips: «EQUIPS-A-ALEVÍ» o la cel·la que diu la categoria
     let catRaw = '';
@@ -3215,53 +3218,138 @@ function parseInscripcio(sheets) {
       const sur = join(cS, cN), nom = join(cN, cY);
       const yc = row(r).find(x => x.c >= cY), y = yc ? yc.raw : undefined;
       if (!sur && !nom) continue;
-      if (isLabel(sur) || /^equip\s*\d+$/i.test(sur)) continue;
+      if ((isLabel(sur) && (!nom || isLabel(nom))) || EQ.test(sur)) continue;
       const t = span.find(s => r >= s.r1 && r <= s.r2);
       out.rows.push({ surname: smartCase(sur), name: smartCase(nom), year: cellYear(y), sheet: sh.name, kind, catRaw, level, teamNo: kind === 'team' && t ? t.no : null });
     }
   }
   return out;
 }
-// el que es farà amb cada fila d'un fitxer (es torna a calcular cada vegada que es canvia una opció)
-function inscResolve(f) {
-  const clubId = f.clubPick && !f.clubPick.startsWith('__') ? f.clubPick : null;
-  const firstTeam = new Map(), out = [];
-  const key = r => norm(r.name + ' ' + r.surname);
-  // la mateixa gimnasta a la fulla individual i en un equip: compta l'equip
-  for (const r of f.rows) if (r.teamNo && !firstTeam.has(key(r))) firstTeam.set(key(r), r);
-  const done = new Set();
-  for (const [idx, r] of f.rows.entries()) {
-    const k = key(r), p = Object.assign({}, r, { idx });
-    p.existing = clubId && r.name ? db.gymnasts.find(g => g.clubId === clubId && norm(gymName(g)) === k) || null : null;
-    // gènere: el triat per a la fila o per al fitxer; si no s'ha triat res, el de la fitxa que ja hi és
-    p.gender = r.gender || (f.genderSet || !p.existing ? f.gender || 'F' : genderOf(p.existing));
-    // nivell: el de cada fulla (un fitxer pot tenir fulles A i B), si no s'ha triat un nivell per a tot el fitxer
-    p.level = f.level && f.level !== '__sheet' ? f.level : (r.level || '');
-    p.category = r.catPick || (r.kind === 'team' ? r.catRaw : (r.year && catForYear(r.year))) || '';
-    p.yearCat = r.year ? catForYear(r.year) || '' : '';
-    if (!r.name) p.status = 'noname';
-    else if ((firstTeam.has(k) && firstTeam.get(k) !== r) || done.has(k)) p.status = 'dup';
-    else if (!p.category) { p.status = 'nocat'; done.add(k); }
-    else { done.add(k); p.status = p.existing ? 'update' : 'new'; }
-    out.push(p);
+// la mateixa persona: el mateix nom, els mateixos cognoms i el mateix any (si tots dos el diuen). Sense accents,
+// majúscules, espais repetits ni apòstrofs diferents (’ i ').
+const inscN = s => norm(String(s ?? '').replace(/[’‘´`]/g, "'"));
+const inscKey = r => inscN(r.name) + '|' + inscN(r.surname);
+const inscYearOk = (a, b) => !a || !b || String(a) === String(b);
+// cognoms que poden ser de la mateixa persona: un és el començament de l'altre («Puig» i «Puig Soler»)
+const inscPrefix = (a, b) => { a = inscN(a); b = inscN(b); return a !== b && !!a && !!b && (b.startsWith(a + ' ') || a.startsWith(b + ' ')); };
+const inscClubKey = f => (f.clubPick && !f.clubPick.startsWith('__') ? f.clubPick : 'nou:' + inscN(f.club));
+// la fitxa que ja hi ha d'aquesta gimnasta, de la seva entitat (si en surt més d'una que podria ser, cap)
+function inscExisting(clubId, name, surname, year) {
+  if (!clubId || !name) return null;
+  const mine = db.gymnasts.filter(g => g.clubId === clubId && inscN(g.name) === inscN(name) && inscYearOk(g.birthYear, year));
+  const exact = mine.filter(g => inscN(g.surname) === inscN(surname));
+  if (exact.length) return exact.find(g => year && g.birthYear === String(year)) || exact.find(g => !g.archived) || exact[0];
+  const pre = mine.filter(g => inscPrefix(g.surname, surname));
+  return pre.length === 1 ? pre[0] : null;
+}
+// equips del full → equips de la fitxa de l'entitat i el grup: el que té el mateix nom («CG Lleida», «CG Lleida 2»…)
+// o, si l'entitat els té amb uns altres noms, el que té més gimnastes en comú. Si no n'hi ha, en serà un de nou.
+// teams: Map(número d'equip → [ids de les fitxes que ja hi eren])
+function inscTeamMap(clubId, grp, teams, clubNm) {
+  const res = new Map(), used = new Set(), nos = [...teams.keys()].sort((a, b) => a - b);
+  const cand = clubId ? db.teams.filter(t => t.clubId === clubId && sameGroup(t, grp)) : [];
+  for (const no of nos) {
+    const nm = no === 1 ? clubNm : `${clubNm} ${no}`, t = cand.find(x => !used.has(x) && norm(x.name) === norm(nm));
+    if (t) { res.set(no, t); used.add(t); }
   }
-  // les de la fulla individual que podrien anar en un equip de la seva entitat (només s'avisa: no es canvia res)
+  for (const no of nos) {
+    if (res.has(no)) continue;
+    let best = null, bo = 0;
+    for (const t of cand) { if (used.has(t)) continue; const o = teams.get(no).filter(id => t.memberIds.includes(id)).length; if (o > bo) { bo = o; best = t; } }
+    if (best) { res.set(no, best); used.add(best); }
+  }
+  return res;
+}
+// el que es farà amb cada fila de tots els fitxers (es torna a calcular cada vegada que es canvia una opció).
+// Tots els fitxers d'una mateixa entitat es miren junts: una gimnasta que surt a la fulla INDIVIDUAL i en un equip
+// (encara que sigui en un altre fitxer) és de l'equip; i surt una sola vegada.
+function inscResolveAll(I) {
+  const files = I.files.filter(f => !f.error), persons = [], of = new Map();
+  const ident = (f, r) => ({ club: inscClubKey(f), name: r.name, surname: r.surname, year: r.year });
+  // 1) mateix nom, cognoms i any
+  for (const f of files) for (const r of f.rows) {
+    if (!r.name) continue;
+    const id = ident(f, r);
+    let p = persons.find(x => x.club === id.club && inscN(x.name) === inscN(r.name) && inscN(x.surname) === inscN(r.surname) && inscYearOk(x.year, r.year));
+    if (!p) persons.push(p = { club: id.club, name: r.name, surname: r.surname, year: r.year || '', rows: [] });
+    if (!p.year && r.year) p.year = r.year;
+    p.rows.push({ f, r }); of.set(r, p);
+  }
+  // 2) un cognom que és el començament de l'altre («Puig» / «Puig Soler»): la mateixa, si només n'hi ha una que ho pugui ser
+  for (const p of persons.slice()) {
+    if (!persons.includes(p)) continue;
+    const c = persons.filter(q => q !== p && q.club === p.club && inscN(q.name) === inscN(p.name) && inscYearOk(q.year, p.year) && inscPrefix(q.surname, p.surname));
+    if (c.length !== 1) continue;
+    const q = c[0], others = persons.filter(x => x !== q && x !== p && x.club === p.club && inscN(x.name) === inscN(p.name) && inscPrefix(x.surname, q.surname));
+    if (others.length) continue;
+    const keep = inscN(q.surname).length >= inscN(p.surname).length ? q : p, drop = keep === q ? p : q;
+    keep.rows.push(...drop.rows); if (!keep.year) keep.year = drop.year;
+    for (const x of drop.rows) of.set(x.r, keep);
+    persons.splice(persons.indexOf(drop), 1);
+  }
+  for (const p of persons) p.main = (p.rows.find(x => x.r.teamNo) || p.rows[0]).r;
+  const out = new Map();
+  for (const f of I.files) {
+    if (f.error) { out.set(f, []); continue; }
+    const clubId = f.clubPick && !f.clubPick.startsWith('__') ? f.clubPick : null;
+    out.set(f, f.rows.map((r, idx) => {
+      const p = Object.assign({}, r, { idx }), person = of.get(r);
+      if (person) { p.surname = person.surname; p.year = person.year; }
+      p.existing = person ? inscExisting(clubId, r.name, p.surname, p.year) : null;
+      // gènere: el triat per a la fila o per al fitxer; si no s'ha triat res, el de la fitxa que ja hi és
+      p.gender = r.gender || (f.genderSet || !p.existing ? f.gender || 'F' : genderOf(p.existing));
+      // nivell: el de cada fulla (un fitxer pot tenir fulles A i B), si no s'ha triat un nivell per a tot el fitxer
+      p.level = f.level && f.level !== '__sheet' ? f.level : (r.level || '');
+      p.category = r.catPick || (r.kind === 'team' ? r.catRaw : (r.year && catForYear(r.year)) || (p.year && catForYear(p.year))) || '';
+      p.yearCat = p.year ? catForYear(p.year) || '' : '';
+      p.noTeamRow = r.kind === 'team' && !r.teamNo;
+      if (!r.name) p.status = 'noname';
+      else if (person.main !== r) { p.status = 'dup'; p.dupWhy = person.main.teamNo ? `És a l’EQUIP ${person.main.teamNo} (${person.main.sheet}): compta l’equip` : 'Surt més d’una vegada: es fa servir la primera'; }
+      else if (!p.category) p.status = 'nocat';
+      else p.status = p.existing ? 'update' : 'new';
+      p.club = person ? person.club : inscClubKey(f);
+      return p;
+    }));
+  }
+  // equips: el nom que tindran (el de la fitxa si ja hi és) i qui en surt; grups on aquesta importació diu els equips
+  const live = [...out.values()].flat().filter(p => p.status === 'new' || p.status === 'update');
+  const gk = p => p.club + '|' + groupKeyOf(p), declared = new Set(live.filter(p => p.teamNo).map(gk));
+  const byGroup = new Map();
+  for (const p of live) if (p.teamNo) {
+    if (!byGroup.has(gk(p))) byGroup.set(gk(p), { p, teams: new Map() });
+    const t = byGroup.get(gk(p)).teams; if (!t.has(p.teamNo)) t.set(p.teamNo, []);
+    if (p.existing) t.get(p.teamNo).push(p.existing.id);
+  }
+  for (const { p: p0, teams } of byGroup.values()) {
+    const f = I.files.find(x => inscClubKey(x) === p0.club), clubId = p0.club.startsWith('nou:') ? null : p0.club;
+    const nm = clubId ? clubName(clubId) : smartCase(f ? f.club : '');
+    const map = inscTeamMap(clubId, p0, teams, nm);
+    for (const p of live) if (p.teamNo && gk(p) === gk(p0)) { const t = map.get(p.teamNo); p.teamRec = t || null; p.teamName = t ? t.name : p.teamNo === 1 ? nm : `${nm} ${p.teamNo}`; }
+  }
+  // una gimnasta de la fulla individual que ja és en un equip que va dir la seva entitat (i aquesta importació no porta
+  // els equips d'aquell grup): l'equip es queda
   const max = S().compDefaults.teamMax || 6, min = S().compDefaults.teamMin || 3;
-  const gk = p => p.category + '|' + p.gender + '|' + p.level;
-  const live = out.filter(p => p.status === 'new' || p.status === 'update');
   for (const p of live) {
-    if (p.kind !== 'ind') continue;
+    if (p.teamNo) continue;
+    const t = p.existing && gymTeam(p.existing);
+    if (t && t.form === true && sameGroup(t, p) && !declared.has(gk(p))) p.keepTeam = t;
+  }
+  // les que queden com a individuals i podrien anar en un equip de la seva entitat (només s'avisa: no es canvia res)
+  for (const p of live) {
+    if (p.teamNo || p.keepTeam) continue;
     const sizes = new Map();
     for (const q of live) if (q.teamNo && gk(q) === gk(p)) sizes.set(q.teamNo, (sizes.get(q.teamNo) || 0) + 1);
     const room = [...sizes.entries()].find(([, n]) => n < max);
+    const clubId = p.club.startsWith('nou:') ? null : p.club;
     const rec = !sizes.size && clubId ? db.teams.find(t => t.clubId === clubId && sameGroup(t, p) && t.memberIds.length < max && !(p.existing && t.memberIds.includes(p.existing.id))) : null;
-    const solo = live.filter(q => q.kind === 'ind' && !q.teamNo && gk(q) === gk(p)).length;
+    const solo = live.filter(q => !q.teamNo && !q.keepTeam && gk(q) === gk(p)).length;
     p.couldTeam = room ? `Al full, l’EQUIP ${room[0]} de la seva entitat en aquest grup té ${room[1]} gimnastes: hi podria entrar (màxim ${max}).`
       : rec ? `La seva entitat ja té l’equip «${rec.name}» en aquest grup (${rec.memberIds.length} de ${max}): hi podria entrar.`
-      : !sizes.size && solo >= min ? `Hi ha ${solo} gimnastes de la seva entitat en aquest grup a la fulla individual: podrien fer un equip.` : '';
+      : !sizes.size && solo >= min ? `Hi ha ${solo} gimnastes de la seva entitat en aquest grup que no són en cap equip: podrien fer-ne un.` : '';
   }
   return out;
 }
+const inscResolve = f => inscResolveAll(ui.insc && ui.insc.files.includes(f) ? ui.insc : { files: [f] }).get(f) || [];
 // entitat del fitxer: la que ja hi és amb el mateix nom (o gairebé: «C.G. Lleida» = «CG Lleida»), o una de nova
 function inscClubFor(name) {
   const loose = s => norm(s).replace(/[^a-z0-9]/g, '');
@@ -3269,7 +3357,7 @@ function inscClubFor(name) {
   return c ? c.id : '__new';
 }
 async function inscAddFiles(files) {
-  ui.insc = ui.insc || { files: [], onlyInd: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
+  ui.insc = ui.insc || { files: [], compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
   for (const file of files) {
     const f = { name: file.name, rows: [], contacts: [], club: '', level: '', gender: 'F', clubPick: '__new', error: '' };
     try {
@@ -3307,8 +3395,8 @@ function inscDialog() {
       return `<tr class="np"><td colspan="5"><b>${k === 'team' ? `Equips · ${h(ps[0].catRaw || '?')}` : 'Individual'}</b> · Nivell ${h(ps[0].level || '?')} <span class="muted small">(${h(sn)})</span></td></tr>` + ps.map(p => {
         const i = p.idx;
         const warn = !p.year ? '<span class="badge warn">sense any</span>' : (!p.category ? '<span class="badge warn">sense categoria</span>' : (p.yearCat && p.yearCat !== p.category ? `<span class="badge warn" title="Per l’any li tocaria ${h(p.yearCat)}">${h(p.year)} → ${h(p.yearCat)}?</span>` : ''));
-        return `<tr><td>${st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
-          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.teamNo ? ` · <b>${h(p.teamNo === 1 ? 'Equip 1' : 'Equip ' + p.teamNo)}</b>` : p.kind === 'ind' ? ` · <span class="muted">individual</span>${p.couldTeam ? ` <span class="badge warn" title="${h(p.couldTeam)}">pot fer equip</span>` : ''}` : ''}</td>
+        return `<tr><td>${p.status === 'dup' ? `<span class="badge" title="${h(p.dupWhy || '')}">repetida</span>` : st[p.status]}</td><td>${h(p.surname)}, ${h(p.name)}</td><td class="num">${h(p.year || '—')} ${warn}</td>
+          <td>${p.status === 'nocat' || p.catPick ? `<select class="sm" data-chg="inscRowCat" data-f="${fi}" data-i="${i}" aria-label="Categoria de ${h(p.name)}"><option value="">— tria —</option>${catNames().map(cn => `<option ${p.category === cn ? 'selected' : ''}>${h(cn)}</option>`).join('')}</select>` : h(p.category || '—')}${p.status === 'dup' ? '' : p.teamNo ? ` · <b>Equip ${p.teamNo}</b>${p.teamName ? ` <span class="muted small">(${h(p.teamName)})</span>` : ''}` : p.keepTeam ? ` · <b>${h(p.keepTeam.name)}</b> <span class="muted small">(l’equip que ja tenia)</span>` : ` · <span class="muted">individual</span>${p.noTeamRow ? ' <span class="badge warn" title="És a la fulla d’equips però fora dels requadres EQUIP 1, 2, 3: no se sap de quin equip és. Queda com a individual; posa-la a l’equip a Inscripcions si cal.">sense equip al full</span>' : ''}${p.couldTeam ? ` <span class="badge warn" title="${h(p.couldTeam)}">pot fer equip</span>` : ''}`}</td>
           <td><select class="sm" data-chg="inscRowGender" data-f="${fi}" data-i="${i}" aria-label="Gènere de ${h(p.name)}"><option value="F" ${p.gender === 'F' ? 'selected' : ''}>Noia</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>Noi</option></select></td></tr>`;
       }).join('');
     }).join('');
@@ -3334,7 +3422,7 @@ function inscDialog() {
     <p class="small muted">Tria (o arrossega aquí) els fitxers d’Excel (.xlsx) d’inscripció que envien els clubs, tal com te’ls passen: el model del Consell, amb les fulles INDIVIDUAL i EQUIPS. Se n’agafen l’entitat, el nivell (A o B), l’entrenador/a, el delegat/da i cada gimnasta amb el seu any de naixement i el seu equip.</p>
     <label class="dropzone" id="inscdrop"><input type="file" id="inscfile" accept=".xlsx,.xlsm,.xls" multiple data-chg="inscFiles"><span>📥 <b>Tria els fitxers</b> o arrossega’ls aquí</span></label>
     ${cards}
-    ${I.files.some(f => !f.error) ? `<label class="chk"><input type="checkbox" data-chg="inscOpt" data-k="onlyInd" ${I.onlyInd ? 'checked' : ''}> Les de la fulla INDIVIDUAL queden com a individuals (com diu el full: no se’ls fa cap equip)</label>
+    ${I.files.some(f => !f.error) ? `<p class="small muted">Les de la fulla INDIVIDUAL que no són en cap equip del full queden com a individuals (no se’ls fa cap equip).</p>
       <label class="f" style="max-width:560px;margin-top:8px"><span>Inscriu-les a la competició</span><select data-chg="inscComp" id="insccomp">
         <option value="">— Cap: només les fitxes de les gimnastes —</option>
         ${comps.map(x => `<option value="${x.id}" ${c === x ? 'selected' : ''}>${h(x.name)}${x.date ? ` (${fmtDate(x.date)})` : ''}</option>`).join('')}</select></label>
@@ -3344,17 +3432,16 @@ function inscDialog() {
 }
 // resum dels equips que farà el full (i qui en surt, si l'equip ja hi era amb altres gimnastes)
 function inscTeamsNote(f, list) {
-  const clubId = f.clubPick && f.clubPick !== '__new' ? f.clubPick : null, club = clubId ? clubName(clubId) : smartCase(f.club);
   const m = new Map();
   for (const p of list) {
     if (!p.teamNo || !(p.status === 'new' || p.status === 'update')) continue;
-    const name = p.teamNo === 1 ? club : `${club} ${p.teamNo}`, k = p.category + '|' + p.gender + '|' + name;
-    if (!m.has(k)) m.set(k, { name, grp: { category: p.category, gender: p.gender, level: p.level }, ids: new Set(), n: 0 });
+    const k = groupKeyOf(p) + '|' + p.teamNo;
+    if (!m.has(k)) m.set(k, { name: p.teamName || '', rec: p.teamRec || null, grp: p, ids: new Set(), n: 0 });
     const x = m.get(k); x.n++; if (p.existing) x.ids.add(p.existing.id);
   }
   if (!m.size) return '';
-  return `<p class="small">Equips: ${[...m.values()].map(x => {
-    const ex = clubId && findTeam(clubId, x.grp, x.name), out = ex ? ex.memberIds.filter(id => !x.ids.has(id)).length : 0;
+  return `<p class="small">Equips (tal com diu el full): ${[...m.values()].map(x => {
+    const out = x.rec ? x.rec.memberIds.filter(id => !x.ids.has(id)).length : 0;
     return `<b>${h(x.name)}</b> (${h(x.grp.category)} ${h(x.grp.level)}, ${x.n})${out ? ` <span class="badge warn" title="L’equip ja hi era: queda amb les del full">${plural(out, 'en surt una', `en surten ${out}`).replace(/^\d+ /, '')}</span>` : ''}`;
   }).join(' · ')}</p>`;
 }
@@ -4654,25 +4741,30 @@ const actions = {
   importGyms: () => { ui.import = null; openDialog(importDialog(), { wide: true }); },
   // fulls d'inscripció dels clubs (.xlsx)
   inscOpen: async (el, files) => {
-    ui.insc = { files: [], onlyInd: true, compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
+    ui.insc = { files: [], compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
     if (files && files.length) await inscAddFiles(files);
     openDialog(inscDialog(), { wide: true });
   },
   inscDo: () => {
     const I = ui.insc; if (!I) return;
     const c0 = I.compId ? compById(I.compId) : null, c = c0 && !c0.locked ? c0 : null;
+    // una competició que ja ha passat: el full només val per a aquell dia (les fitxes es queden com són ara)
+    const past = !!c && !isUpcoming(c);
     let made = 0, upd = 0, teamed = 0, nEnrol = 0, scoredMoved = 0;
-    const formTeams = new Map();   // equip de la fitxa → les gimnastes que hi posa el full
-    const sheet = new Map();       // gimnasta → el que diu el full: { team, kind }
-    const kept = [], others = new Set();
+    const kept = [], others = new Set(), stale = [], renamed = [];
     closeDialog();
     withUndo(() => {
-      const bad = kept.length || scoredMoved;
-      return { type: bad ? 'bad' : 'ok', msg: `Fulls d’inscripció importats: ${plural(made, 'fitxa nova', 'fitxes noves')}${upd ? `, ${plural(upd, 'actualitzada', 'actualitzades')}` : ''}${teamed ? ` · ${plural(teamed, 'gimnasta', 'gimnastes')} en equips, tal com diu el full` : ''}${c ? ` · a ${c.name}: ${nEnrol ? plural(nEnrol, 'inscripció nova', 'inscripcions noves') : 'cap inscripció nova'}, i els equips com diu el full` : ''}.`
-        + (kept.length ? ` Compte: ${kept.join(', ')} ja ${kept.length === 1 ? 'té' : 'tenen'} notes en un altre grup a ${c.name} i no s’hi ha canviat res (fes-ho a Inscripcions si cal).` : '')
+      const bad = kept.length || scoredMoved || stale.length;
+      const names = l => l.length > 5 ? `${l.slice(0, 5).join(', ')} i ${l.length - 5} més` : l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} i ${l[l.length - 1]}`;
+      return { type: bad ? 'bad' : 'ok', msg: `Fulls d’inscripció importats: ${plural(made, 'fitxa nova', 'fitxes noves')}${upd ? `, ${plural(upd, 'actualitzada', 'actualitzades')}` : ''}${teamed ? ` · ${plural(teamed, 'gimnasta', 'gimnastes')} en equips, tal com diu el full` : ''}${c ? ` · a ${c.name}: ${nEnrol ? plural(nEnrol, 'inscripció nova', 'inscripcions noves') : 'cap inscripció nova'}${teamed ? ', i els equips com diu el full' : ''}` : ''}.`
+        + (past ? ' (És una competició que ja ha passat: les fitxes de les gimnastes no s’han canviat.)' : '')
+        + (renamed.length ? ` Els equips ${names(renamed)} ja hi eren amb aquest nom i s’hi han posat les gimnastes del full.` : '')
+        + (kept.length ? ` Compte: ${names(kept)} ja ${kept.length === 1 ? 'té' : 'tenen'} notes en un altre grup a ${c.name} i no s’hi ha canviat res (fes-ho a Inscripcions si cal).` : '')
         + (scoredMoved ? ` Compte: ${plural(scoredMoved, 'gimnasta que ja tenia notes ha', 'gimnastes que ja tenien notes han')} canviat d’equip (les notes no canvien).` : '')
-        + (others.size ? ` A ${[...others].join(', ')} hi ha alguna d’aquestes gimnastes amb un altre equip: no s’hi ha tocat res (cada competició té els seus equips; si també hi van així, importa-hi el full).` : '') };
+        + (stale.length ? ` A ${c.name} també hi ${stale.length === 1 ? 'ha' : 'són'} ${names(stale)}, de la mateixa entitat i grup, que no ${stale.length === 1 ? 'surt al full: no s’ha tret' : 'surten al full: no s’han tret'}.` : '')
+        + (others.size ? ` A ${names([...others])} hi ha alguna d’aquestes gimnastes amb un altre equip: no s’hi ha tocat res (cada competició té els seus equips; si també hi van així, importa-hi el full).` : '') };
     }, () => {
+      const all = inscResolveAll(I), sheet = new Map();   // fitxa → el que diu el full
       for (const f of I.files) {
         if (f.error) continue;
         // l'entitat: la triada; si és nova, la que ja hi hagi amb el mateix nom (p. ex. creada per un altre fitxer
@@ -4681,7 +4773,7 @@ const actions = {
         if (!clubId && f.club) { const m = inscClubFor(f.club); clubId = m !== '__new' ? m : ensureClub(f.club); }
         if (!clubId) continue;
         f.clubPick = clubId;
-        const list = inscResolve(f).filter(p => p.status === 'new' || p.status === 'update');
+        const list = (all.get(f) || []).filter(p => p.status === 'new' || p.status === 'update');
         if (!list.length) continue;
         const club = clubById(clubId);
         if (club && f.contacts.length) club.contacts = mergeContacts(club.contacts, f.contacts);
@@ -4689,65 +4781,93 @@ const actions = {
           if (p.level && !S().levels.includes(p.level)) S().levels.push(p.level);
           if (p.category && !catNames().includes(p.category)) S().categories.push({ name: p.category, from: null, to: null });
           let g = p.existing && gymById(p.existing.id);
-          const vals = { gender: p.gender, level: p.level, ...(p.category ? { category: p.category } : {}), ...(p.year ? { birthYear: p.year } : {}) };
-          if (g) { Object.assign(g, vals); if (g.archived) g.archived = false; upd++; }
-          else { g = Object.assign({ id: uid(), name: p.name, surname: p.surname, clubId, category: '', birthYear: '', notes: '', archived: false }, vals); db.gymnasts.push(g); made++; }
-          // l'equip del full (EQUIP 1 = «CG Lleida», EQUIP 2 = «CG Lleida 2»…) passa a la fitxa tal qual: és l'equip
-          // que ha dit l'entitat (form), i l'app no hi posa ni n'hi treu ningú pel seu compte
-          let team = null;
-          if (p.teamNo && club) {
-            const nm = p.teamNo === 1 ? club.name : `${club.name} ${p.teamNo}`;
-            team = findTeam(clubId, g, nm) || makeTeam(clubId, g, nm);
-            team.form = true;
-            putInTeam(g.id, team); delete g.noTeam; teamed++;
-            if (!formTeams.has(team)) formTeams.set(team, new Set());
-            formTeams.get(team).add(g.id);
-          } else if (p.kind === 'ind' && I.onlyInd) { putInTeam(g.id, null); g.noTeam = true; }
-          sheet.set(g.id, { team, kind: p.kind });
+          const grp = { category: p.category, gender: p.gender, level: p.level };
+          const vals = Object.assign({}, grp, p.year ? { birthYear: String(p.year) } : {});
+          if (g) {
+            // (en una competició passada la fitxa no canvia: aquell dia potser eren d'un altre grup)
+            if (!past) { Object.assign(g, vals); if (inscN(p.surname).length > inscN(g.surname).length) g.surname = p.surname; if (g.archived) g.archived = false; }
+            upd++;
+          } else { g = Object.assign({ id: uid(), name: p.name, surname: p.surname, clubId, category: '', birthYear: '', notes: '', archived: false }, vals); db.gymnasts.push(g); made++; }
+          sheet.set(g.id, { p, g, clubId, grp, existed: !!p.existing });
         }
       }
-      // a les fitxes, cada equip del full queda exactament amb les gimnastes que diu el full
-      for (const [t, ids] of formTeams) {
-        const out = t.memberIds.filter(id => !ids.has(id));
-        t.memberIds = t.memberIds.filter(id => ids.has(id));
-        for (const id of out) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
+      // equips del full → equips de la fitxa (el mateix nom, o el que té més gimnastes en comú; si no, un de nou)
+      const groups = new Map();
+      for (const sd of sheet.values()) if (sd.p.teamNo) {
+        const k = sd.clubId + '|' + groupKeyOf(sd.grp);
+        if (!groups.has(k)) groups.set(k, { clubId: sd.clubId, grp: sd.grp, teams: new Map(), ids: new Map() });
+        const G = groups.get(k);
+        if (!G.teams.has(sd.p.teamNo)) { G.teams.set(sd.p.teamNo, []); G.ids.set(sd.p.teamNo, []); }
+        if (sd.existed) G.teams.get(sd.p.teamNo).push(sd.g.id);
+        G.ids.get(sd.p.teamNo).push(sd.g.id);
+      }
+      for (const G of groups.values()) {
+        const nm = clubName(G.clubId), map = inscTeamMap(G.clubId, G.grp, G.teams, nm);
+        for (const [no, ids] of G.ids) {
+          const name = no === 1 ? nm : `${nm} ${no}`;
+          let t = map.get(no) || null;
+          if (!t && !past) t = makeTeam(G.clubId, G.grp, name);
+          G[no] = { t, name: t ? t.name : name };
+          for (const id of ids) { const sd = sheet.get(id); sd.team = t; sd.teamName = G[no].name; teamed++; }
+          if (!t || past) continue;
+          // a la fitxa, cada equip del full queda exactament amb les gimnastes que diu el full: és l'equip que ha dit
+          // l'entitat (form), i l'app no hi posa ni n'hi treu ningú pel seu compte
+          t.form = true;
+          const out = t.memberIds.filter(id => !ids.includes(id));
+          for (const id of ids) { putInTeam(id, t); const g = gymById(id); if (g) delete g.noTeam; }
+          t.memberIds = t.memberIds.filter(id => ids.includes(id));
+          for (const id of out) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
+        }
+      }
+      // les que no són en cap equip del full: individuals (o, si ja eren en un equip que va dir l'entitat i aquesta
+      // importació no en porta els equips d'aquell grup, es queden a l'equip)
+      for (const sd of sheet.values()) {
+        if (sd.p.teamNo) continue;
+        if (sd.p.keepTeam && teamById(sd.p.keepTeam.id)) { sd.keep = teamById(sd.p.keepTeam.id); continue; }
+        if (!past) { putInTeam(sd.g.id, null); sd.g.noTeam = true; }
       }
       // la competició triada (sigui del dia que sigui): hi queden inscrites amb el grup i l'equip del full, encara
       // que ja hi fossin amb un altre equip
       if (c) {
-        const declared = new Map(), loose = [];
-        for (const [gid, sd] of sheet) {
-          const g = gymById(gid);
-          let e = c.entries.find(x => x.gymnastId === gid);
-          if (!e) { e = newEntry(c, g); c.entries.push(e); nEnrol++; }
-          else if (!sameGroup(e, g)) {
-            if (hasScores(e)) { kept.push(entryName(e)); continue; }
-            Object.assign(e, { category: g.category, gender: genderOf(g), level: g.level }); e.teamId = null; delete e.noAuto;
+        const declared = new Map(), keptE = new Set(), tName = e => (c.teams.find(t => t.id === e.teamId) || {}).name || '';
+        for (const sd of sheet.values()) {
+          const { g, grp } = sd;
+          let e = c.entries.find(x => x.gymnastId === g.id);
+          if (!e) { e = newEntry(c, g, grp); c.entries.push(e); nEnrol++; }
+          else if (!sameGroup(e, grp)) {
+            if (hasScores(e)) { kept.push(entryName(e)); keptE.add(e); continue; }
+            Object.assign(e, { category: grp.category, gender: genderOf(grp), level: grp.level }); e.teamId = null; delete e.noAuto;
           }
-          const before = e.teamId || null;
-          if (sd.team) {
-            const ct = compTeamFor(c, sd.team); ct.form = true;
+          const before = tName(e);
+          if (sd.p.teamNo) {
+            // la còpia de l'equip en aquesta competició; si ja n'hi havia una amb el mateix nom (d'aquell dia), és aquesta
+            let ct = (sd.team && c.teams.find(t => t.sourceTeamId === sd.team.id && sameGroup(t, grp)))
+              || c.teams.find(t => (t.clubId || null) === sd.clubId && sameGroup(t, grp) && norm(t.name) === norm(sd.teamName));
+            if (ct) { if (sd.team && ct.sourceTeamId !== sd.team.id) { ct.sourceTeamId = sd.team.id; if (!renamed.includes(ct.name)) renamed.push(ct.name); } }
+            else { ct = { id: uid(), name: sd.teamName, clubId: sd.clubId, category: grp.category, gender: genderOf(grp), level: grp.level, sourceTeamId: sd.team ? sd.team.id : null, auto: true }; c.teams.push(ct); }
+            ct.form = true;
             e.teamId = ct.id; delete e.noAuto;
             if (!declared.has(ct)) declared.set(ct, new Set());
             declared.get(ct).add(e);
-          } else if (sd.kind === 'ind' && I.onlyInd) { e.teamId = null; e.noAuto = true; }
-          else if (!e.teamId) loose.push(e);
-          if ((e.teamId || null) !== before && hasScores(e)) scoredMoved++;
+          } else if (sd.keep && sameGroup(e, sd.keep)) { e.teamId = compTeamFor(c, sd.keep).id; delete e.noAuto; }
+          else { e.teamId = null; e.noAuto = true; }
+          if (tName(e) !== before && hasScores(e)) scoredMoved++;
         }
         // (els equips del full, en aquesta competició, només amb les del full)
-        for (const [ct, es] of declared) for (const e of c.entries) if (e.teamId === ct.id && !es.has(e)) { e.teamId = null; e.noAuto = true; if (hasScores(e)) scoredMoved++; }
-        if (c.autoTeams && loose.length) autoCompTeams(c, loose);
+        for (const [ct, es] of declared) for (const e of c.entries) if (e.teamId === ct.id && !es.has(e) && !keptE.has(e)) { e.teamId = null; e.noAuto = true; if (hasScores(e)) scoredMoved++; }
         pruneAutoTeams(c);
+        // les de la mateixa entitat i grup que són inscrites però ja no surten al full: es diu (no es treuen)
+        const pairs = new Set([...sheet.values()].map(sd => sd.clubId + '|' + groupKeyOf(sd.grp)));
+        for (const e of c.entries) if (!sheet.has(e.gymnastId) && pairs.has(e.clubId + '|' + groupKeyOf(e))) stale.push(entryName(e));
       }
       // les altres competicions no es toquen (cada competició té els seus equips): només es diu on no coincideixen
-      for (const cc of db.competitions) {
+      if (!past) for (const cc of db.competitions) {
         if (cc === c || !isUpcoming(cc)) continue;
         for (const [gid, sd] of sheet) {
           const e = cc.entries.find(x => x.gymnastId === gid);
           if (!e) continue;
-          const ct = cc.teams.find(t => t.id === e.teamId);
-          const diff = sd.team ? !(ct && ct.sourceTeamId === sd.team.id) : (sd.kind === 'ind' && I.onlyInd && !!ct);
-          if (diff) { others.add(cc.name); break; }
+          const ct = cc.teams.find(t => t.id === e.teamId), want = sd.team || sd.keep;
+          if (want ? !(ct && ct.sourceTeamId === want.id) : !!ct) { others.add(cc.name); break; }
         }
       }
     });

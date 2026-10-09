@@ -1125,10 +1125,14 @@ function loadDb() {
     saveError = true;
   }
 }
+let saveSince = 0;
 function commit() {
   db.meta.updated = new Date().toISOString();
+  // (es desa 200 ms després de l'últim canvi, però mai més d'un segon després del primer: si es canvien moltes coses
+  // seguides, no es queda tot per desar)
+  if (!saveTimer) saveSince = Date.now();
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(flush, 200);
+  saveTimer = setTimeout(flush, Date.now() - saveSince > 1000 ? 0 : 200);
   renderSaveState(true);
 }
 function flush() {

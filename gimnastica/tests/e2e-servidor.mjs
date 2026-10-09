@@ -509,6 +509,241 @@ try {
     await c.context().close();
     await a.context().close(); await b.context().close();
   });
+
+  // ─── quarta revisió (dades): cada prova té el seu fitxer (el programa d'aquí dalt s'atura i al final es torna a engegar)
+  await stopServer();
+  const procs = [];   // (els programes d'aquestes proves: si una falla, cap no es queda engegat)
+  const kill = (p, sig = 'SIGTERM') => new Promise(r => { if (p.exitCode !== null || p.signalCode !== null) r(); else { p.once('exit', r); p.kill(sig); } });
+  try {
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const run = async file => {
+      const p = spawn(bin, ['-dades', file, '-port', String(PORT), '-sense-navegador'], { stdio: 'pipe' });
+      procs.push(p);
+      for (let i = 0; i < 80; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/api/info`)).ok) return p; } catch {} await sleep(100); }
+      throw new Error('el servidor no arrenca');
+    };
+    const dirOf = n => { const d = path.join(out, 'r4-' + n); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true }); return d; };
+    const read = f => JSON.parse(readFileSync(f, 'utf8'));
+    const G = (id, name) => ({ id, name, surname: 'S', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' });
+    const E = (id, g, bib, scores = {}) => ({ id, gymnastId: g, clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib, status: '', scores });
+    const data = (dbId, updated, { gyms = [G('g1', 'Anna'), G('g2', 'Berta')], comps, clubs = [{ id: 'c1', name: 'CG Lleida' }] } = {}) => ({ app: 'notesgim', version: 1, settings: { dataGen: 2, rev: 4 },
+      clubs, gymnasts: gyms, teams: [], competitions: comps || [{ id: 'k1', name: 'Fase 1', date: '2027-01-22', place: 'Lleida', season: '2026-2027', tutorsOn: true, tutorPin: '4321',
+        entries: gyms.map((g, i) => E('e' + (i + 1), g.id, i + 1)), teams: [] }], meta: { created: new Date(updated - 864e5).toISOString(), updated: new Date(updated).toISOString(), dbId } });
+    // una finestra (un perfil del navegador) que recorda els avisos
+    const windowCtx = async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+      await ctx.addInitScript(() => { window.__toasts = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__toasts.push(n.textContent); }).observe(document, { childList: true, subtree: true }); });
+      return ctx;
+    };
+    const open = async (ctx, hash = '#/competicions') => {
+      const p = await ctx.newPage(); watch(p, 'r4');
+      await p.goto(`http://127.0.0.1:${PORT}/${hash}`);
+      await p.waitForFunction(() => typeof server !== 'undefined' && server.on && server.dataRev != null && !server.pushing, null, { timeout: 15000 });
+      await sleep(600);
+      return p;
+    };
+    const tutorPost = body => fetch(`http://${lan.address}:${PORT}/api/score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ pin: '4321', compId: 'k1', i: 0, who: 'Marta' }, body)) });
+    const kept = p => p.evaluate(async () => { const b = await idbGet('abansServidor'); return b ? JSON.parse(b.raw).gymnasts.map(g => g.name) : null; });
+
+    await step('la tutora corregeix una nota just quan la taula la dona per revisada: la correcció (que el programa ha acceptat) no es perd i torna a sortir en groc', async () => {
+      const f = path.join(dirOf('revisio'), 'notesgim-dades.json');
+      writeFileSync(f, JSON.stringify(data('r4rev', Date.now() - 60000)));
+      const p = await run(f);
+      try {
+        const T = await open(await windowCtx(), '#/competicio/k1/notes');
+        assert.equal((await tutorPost({ entryId: 'e1', appId: 'barra', value: 8.5, op: 'r4-a' })).status, 200);
+        const cell = '#scoregrid input.sc[data-e=e1][data-a=barra]';
+        await T.waitForSelector(cell + '.tutor');
+        // el que desa la taula (la revisió) arriba tard al programa: mentrestant, la correcció de la tutora
+        const held = []; let hold = true;
+        await T.route('**/api/db', r => { if (hold && r.request().method() === 'PUT') held.push(r); else r.continue(); });
+        await T.click('#tutorreview');
+        await T.waitForFunction(() => curComp().entries[0].scores.barra[0].ok === true);
+        await sleep(400);
+        assert.equal((await tutorPost({ entryId: 'e1', appId: 'barra', value: 9.5, op: 'r4-b' })).status, 200, 'el programa accepta la correcció');
+        await sleep(300);
+        hold = false; for (const r of held) await r.continue();
+        await T.waitForFunction(c => { const i = document.querySelector(c); return i && i.value === '9,50' && i.classList.contains('tutor'); }, cell, { timeout: 8000 });
+        await sleep(1200);
+        const a = read(f).competitions[0].entries[0].scores.barra[0];
+        assert.deepEqual([a.v, !!a.ok], [9.5, false], 'al fitxer, la correcció sense revisar');
+        await T.context().close();
+      } finally { await kill(p); }
+    });
+
+    {
+      const f = path.join(dirOf('reenvia'), 'notesgim-dades.json');
+      writeFileSync(f, JSON.stringify(data('r4re', Date.now() - 60000)));
+      const p = await run(f);
+      let T, t;
+      try {
+        await step('la resposta a una nota de la tutora es perd (Wi-Fi) i el mòbil la torna a enviar: si la taula l’ha esborrada, no torna', async () => {
+          T = await open(await windowCtx(), '#/competicio/k1/notes');
+          t = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
+          watch(t, 'tutora r4');
+          await t.goto(`http://${lan.address}:${PORT}/#codi=4321`);
+          await t.waitForSelector('text=Quin aparell puntues?');
+          await t.click('button[data-act=tutApp][data-a=barra]'); await t.waitForSelector('#qe');
+          let lose = 1;
+          await t.context().route('**/api/score', async r => { if (lose-- > 0) { await r.fetch(); return r.abort('connectionreset'); } return r.continue(); });
+          for (const k of ['7', ',', '5']) await t.click(`.qe-keys button[data-k="${k}"]`);
+          await t.click('#qesave');
+          const cell = '#scoregrid input.sc[data-e=e1][data-a=barra]';
+          await T.waitForSelector(cell + '.tutor');
+          await T.click(cell); await T.keyboard.press('Backspace'); await T.keyboard.press('Enter');
+          await t.waitForFunction(() => !JSON.parse(localStorage.getItem('notesgim.tutor')).queue.length, null, { timeout: 15000 });
+          await sleep(1500);
+          const a = (read(f).competitions[0].entries[0].scores.barra || [])[0] || {};
+          assert.ok(a.v === undefined || a.v === null, 'la nota esborrada no ha tornat: ' + JSON.stringify(a));
+          assert.equal(await T.inputValue(cell), '');
+        });
+
+        await step('el mòbil es torna a carregar mentre el programa no respon: diu «Connectant…» amb les notes guardades (mai l’app sencera) i les envia quan torna', async () => {
+          let block = true;
+          await t.context().route('**/api/**', r => (block ? r.abort('connectionreset') : r.continue()));
+          for (const k of ['8', ',', '2']) await t.click(`.qe-keys button[data-k="${k}"]`);
+          await t.click('#qesave');
+          await sleep(300);
+          await t.reload({ waitUntil: 'domcontentloaded' });
+          await t.waitForSelector('text=Connectant amb l’ordinador de la taula');
+          await t.waitForSelector('#main >> text=1 nota guardada al mòbil');
+          await sleep(4000);
+          assert.equal(await t.evaluate(() => !!document.querySelector('[data-act=newComp]') || server.on), false, 'no s’obre l’app sencera');
+          assert.ok((await t.textContent('#main')).includes('Connectant amb l’ordinador de la taula'));
+          block = false;
+          await t.waitForSelector('#qe', { timeout: 20000 });
+          await t.waitForFunction(() => !JSON.parse(localStorage.getItem('notesgim.tutor')).queue.length, null, { timeout: 15000 });
+          await sleep(800);
+          assert.equal(read(f).competitions[0].entries[1].scores.barra[0].v, 8.2);
+        });
+      } finally {
+        if (t) await t.context().close();
+        if (T) await T.context().close();
+        await kill(p);
+      }
+    }
+
+    await step('dues còpies de les mateixes dades (Documents i un USB), canviades cada una un dia: no es perd cap competició ni cap entitat, i es diu', async () => {
+      const root = dirOf('dues-copies'), docs = path.join(root, 'Documents'), usb = path.join(root, 'USB');
+      mkdirSync(docs); mkdirSync(usb);
+      const D = path.join(docs, 'notesgim-dades.json'), U = path.join(usb, 'notesgim-dades.json');
+      writeFileSync(D, JSON.stringify(data('lesmeves', Date.now() - 864e5)));
+      writeFileSync(U, readFileSync(D));
+      const casa = await windowCtx(), pavello = await windowCtx();
+      // dia 2, a casa (Documents): una competició nova amb inscripcions i una entitat nova
+      let p = await run(D), w = await open(casa);
+      await w.evaluate(() => {
+        db.competitions.push({ id: 'k2', name: 'Fase 2 (preparada a casa)', date: '2027-02-12', place: 'Alcarràs', season: '2026-2027', entries: [
+          { id: 'n1', gymnastId: 'g1', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib: 1, status: '', scores: {} }], teams: [] });
+        db.clubs.push({ id: 'c2', name: 'Entitat nova de casa' });
+        db.competitions = migrate(db).competitions; commit();
+      });
+      await sleep(1500); await w.close(); await kill(p);
+      // dia 3, al pavelló (USB): una inscripció d'última hora i notes
+      p = await run(U); w = await open(pavello, '#/competicio/k1/notes');
+      await w.evaluate(() => {
+        db.gymnasts.push({ id: 'g3', name: 'Carla', surname: 'Pavelló', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' });
+        const c = db.competitions[0]; c.entries.push({ id: 'e3', gymnastId: 'g3', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib: 3, status: '', scores: {} });
+        c.entries[0].scores = { salt: [{ v: 8.5, at: Date.now() }] }; commit();
+      });
+      await sleep(1500); await w.close(); await kill(p);
+      // dia 4, a casa: s'obre el NotesGim de l'USB (per portar els resultats a casa) i després el de Documents
+      p = await run(U); w = await open(casa);
+      const t1 = await w.evaluate(() => window.__toasts.slice());
+      assert.ok(t1.some(x => x.includes('Fase 2 (preparada a casa)') && x.includes('Entitat nova de casa')), 'es diu què s’hi ha afegit: ' + JSON.stringify(t1));
+      await sleep(1200); await w.close(); await kill(p);
+      p = await run(D); w = await open(casa);
+      await sleep(1200);
+      assert.equal((await w.evaluate(() => window.__toasts.slice())).filter(x => /altre lloc|altra finestra/.test(x)).length, 0, 'en obrir Documents ja no hi ha res a dir');
+      await w.close(); await kill(p);
+      for (const [nom, file] of [['Documents', D], ['USB', U]]) {
+        const d = read(file);
+        assert.deepEqual(d.competitions.map(c => c.name).sort(), ['Fase 1', 'Fase 2 (preparada a casa)'], nom);
+        assert.deepEqual(d.clubs.map(c => c.name).sort(), ['CG Lleida', 'Entitat nova de casa'], nom);
+        assert.ok(d.gymnasts.some(g => g.name === 'Carla'), nom);
+        assert.equal(d.competitions.find(c => c.id === 'k1').entries[0].scores.salt[0].v, 8.5, nom);
+        assert.equal(d.competitions.find(c => c.id === 'k2').entries.length, 1, nom);
+      }
+      // la mateixa finestra, sense canvis, torna a obrir el mateix fitxer: no diu res
+      p = await run(D); w = await open(casa); await sleep(800);
+      assert.equal((await w.evaluate(() => window.__toasts.slice())).length, 0);
+      await w.close(); await kill(p);
+      await casa.close(); await pavello.close();
+    });
+
+    await step('«Restaura una còpia…» mentre NotesGim no respon i es tanca la finestra: en tornar-lo a obrir, la còpia substitueix el fitxer', async () => {
+      const f = path.join(dirOf('restaura-tancada'), 'notesgim-dades.json'), now = Date.now();
+      const d = data('r4rs', now - 50000); d.competitions[0].entries[0].scores = { salt: [{ v: 9, at: now - 60000 }] };
+      writeFileSync(f, JSON.stringify(d));
+      const bak = data('r4rs', now - 3600e3); bak.competitions[0].entries[0].scores = { salt: [{ v: 7, at: now - 3600e3 }] };
+      let p = await run(f);
+      const ctx = await windowCtx();
+      let w = await open(ctx, '#/configuracio');
+      p.kill('SIGSTOP');
+      await w.evaluate(([t, n]) => restoreFromText(t, n), [JSON.stringify(bak), 'notesgim-copia-ahir.json']);
+      await w.click('#confirm button[value=ok]');
+      await sleep(1500);
+      assert.equal(await w.evaluate(() => db.competitions[0].entries[0].scores.salt[0].v), 7);
+      await w.close();
+      p.kill('SIGCONT'); await kill(p);
+      p = await run(f); w = await open(ctx, '#/configuracio');
+      await sleep(1500);
+      assert.equal(read(f).competitions[0].entries[0].scores.salt[0].v, 7, 'al fitxer, la nota de la còpia');
+      assert.equal(await w.evaluate(() => db.competitions[0].entries[0].scores.salt[0].v), 7);
+      assert.ok(readdirSync(path.join(path.dirname(f), 'copies-notesgim')).some(x => x.includes('-abans-de-restaurar')), 'abans se’n guarda una còpia');
+      await ctx.close(); await kill(p);
+    });
+
+    await step('«Restaura una còpia…» d’unes altres dades mentre NotesGim no respon (la finestra oberta): quan torna, la còpia hi va, sense cap alarma', async () => {
+      const f = path.join(dirOf('restaura-oberta'), 'notesgim-dades.json');
+      writeFileSync(f, JSON.stringify(data('r4ro', Date.now() - 50000)));
+      const bak = data('r4altres', Date.now() - 864e5, { gyms: [G('h1', 'Carla'), G('h2', 'Dolors'), G('h3', 'Elna')] });
+      let p = await run(f);
+      const ctx = await windowCtx(), w = await open(ctx, '#/configuracio');
+      await kill(p);
+      await sleep(1500);
+      await w.evaluate(([t, n]) => restoreFromText(t, n), [JSON.stringify(bak), 'notesgim-copia-altre-curs.json']);
+      await w.click('#confirm button[value=ok]');
+      await sleep(800);
+      p = await run(f);
+      for (let i = 0; i < 60 && !read(f).gymnasts.some(g => g.name === 'Carla'); i++) await sleep(250);
+      assert.deepEqual(read(f).gymnasts.map(g => g.name), ['Carla', 'Dolors', 'Elna']);
+      await sleep(1000);
+      assert.deepEqual(await w.evaluate(() => db.gymnasts.map(g => g.name)), ['Carla', 'Dolors', 'Elna']);
+      assert.equal((await w.evaluate(() => window.__toasts.slice())).filter(x => /altra finestra/.test(x)).length, 0);
+      await ctx.close(); await kill(p);
+    });
+
+    await step('NotesGim es torna a obrir: una segona finestra on no s’ha tocat res no fa saltar cap alarma ni trepitja la còpia de les dades d’abans', async () => {
+      const f = path.join(dirOf('finestra-quieta'), 'notesgim-dades.json');
+      writeFileSync(f, JSON.stringify(data('r4q', Date.now() - 60000)));
+      const ctx = await windowCtx();
+      // aquesta finestra tenia unes altres dades: en obrir, mana el fitxer i les seves es guarden
+      await ctx.addInitScript(s => { if (!sessionStorage.getItem('llavor')) localStorage.setItem('notesgim.db', s); sessionStorage.setItem('llavor', '1'); },
+        JSON.stringify(data('r4altre', Date.now() - 864e5, { gyms: [G('x1', 'Gimnasta de l’altre fitxer')] })));
+      let p = await run(f);
+      const A = await open(ctx, '#/gimnastes');
+      assert.deepEqual(await kept(A), ['Gimnasta de l’altre fitxer']);
+      const B = await open(ctx, '#/gimnastes');
+      let block = false;
+      await B.route('**/api/**', r => (block ? r.abort() : r.continue()));
+      await sleep(800);
+      await kill(p); block = true; await sleep(1000);
+      await A.evaluate(() => { db.gymnasts.push({ id: 'gn', name: 'Nova', surname: 'Mentrestant', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' }); commit(); });
+      p = await run(f);
+      for (let i = 0; i < 60 && !read(f).gymnasts.some(g => g.name === 'Nova'); i++) await sleep(250);
+      assert.ok(read(f).gymnasts.some(g => g.name === 'Nova'));
+      block = false;
+      await B.waitForFunction(() => db.gymnasts.some(g => g.name === 'Nova'), null, { timeout: 15000 });
+      await sleep(1500);
+      assert.equal((await B.evaluate(() => window.__toasts.slice())).filter(x => /s’havien canviat/.test(x)).length, 0, 'cap alarma a la finestra quieta');
+      assert.deepEqual(await kept(B), ['Gimnasta de l’altre fitxer'], 'la còpia de les dades d’abans no es trepitja');
+      await ctx.close(); await kill(p);
+    });
+  } finally {
+    for (const p of procs) await kill(p, 'SIGKILL');
+    await startServer();
+  }
 } finally {
   await browser.close();
   if (proc && proc.exitCode === null) await stopServer();

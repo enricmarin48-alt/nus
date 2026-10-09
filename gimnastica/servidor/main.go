@@ -69,6 +69,26 @@ type store struct {
 	backups   string
 	lastBak   time.Time
 	waiters   []chan struct{}
+	ops       map[string]bool // les notes de tutora (op) que ja s'han posat: si el mòbil no rep la resposta i la torna a enviar, no es torna a posar
+	opList    []string
+}
+
+// recorda que s'ha posat la nota d'una tutora amb aquest id (les 5000 últimes)
+func (s *store) sawOpLocked(op string) {
+	if op == "" {
+		return
+	}
+	if s.ops == nil {
+		s.ops = map[string]bool{}
+	}
+	if !s.ops[op] {
+		s.ops[op] = true
+		s.opList = append(s.opList, op)
+	}
+	for len(s.opList) > 5000 {
+		delete(s.ops, s.opList[0])
+		s.opList = s.opList[1:]
+	}
 }
 
 func newStore(path string) (*store, error) {
@@ -420,8 +440,15 @@ func guarded(a map[string]any) bool {
 	return a != nil && hasMark(a) && (str(a["by"]) != "tutor" || truthy(a["ok"]))
 }
 
+// la nota l'ha posada la taula: cap nota de tutora la trepitja en fusionar. Una de tutora ja revisada, sí, si la de
+// l'altra còpia és més nova: la taula n'ha revisat una de més vella i aquesta (que el programa ja havia acceptat) no
+// l'havia vista; es queda sense revisar i torna a sortir en groc
+func tableOwns(a map[string]any) bool {
+	return guarded(a) && !(str(a["by"]) == "tutor" && truthy(a["ok"]))
+}
+
 // mergeScores: a base hi posa, de cada intent de nota, la versió d'other si és més recent (excepte que una
-// nota de tutora no passa mai per sobre d'una de la taula o ja revisada).
+// nota de tutora no passa mai per sobre d'una de la taula; vegeu tableOwns).
 // Retorna quants intents s'han agafat d'other. (Igual que Engine.mergeScores a index.html.)
 func mergeScores(base, other map[string]any) int { return mergeScoresSince(base, other, 0) }
 
@@ -457,7 +484,7 @@ func mergeScoresSince(base, other map[string]any, since float64) int {
 					if i < len(list) {
 						ym = obj(list[i])
 					}
-					if num(xm["at"]) > num(ym["at"]) && num(xm["at"]) > since && !(str(xm["by"]) == "tutor" && guarded(ym)) {
+					if num(xm["at"]) > num(ym["at"]) && num(xm["at"]) > since && !(str(xm["by"]) == "tutor" && tableOwns(ym)) {
 						for len(list) <= i {
 							list = append(list, map[string]any{})
 						}
@@ -575,7 +602,11 @@ type scoreReq struct {
 	I       int      `json:"i"`
 	Value   *float64 `json:"value"`
 	Who     string   `json:"who"`
+	Op      string   `json:"op"` // id de la nota al mòbil (la mateixa si la torna a enviar)
 }
+
+// aquesta nota de la tutora ja s'havia posat (el mòbil no va rebre la resposta i la torna a enviar): no es torna a posar
+var errDup = errors.New("ja hi és")
 
 // la taula ja ha posat (o revisat) aquesta nota: la tutora no la pot canviar (resposta 409)
 var errLocked = errors.New("Aquesta nota ja l'ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.")
@@ -628,6 +659,9 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 		}
 		att["who"] = who
 	}
+	if r.Op != "" {
+		att["op"] = r.Op
+	}
 	if r.Value != nil {
 		v := *r.Value
 		if mx := maxScoreOf(comp); math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > mx {
@@ -641,6 +675,9 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 		entry["scores"] = scores
 	}
 	list := arr(scores[r.AppID])
+	if r.Op != "" && r.I < len(list) && str(obj(list[r.I])["op"]) == r.Op {
+		return errDup
+	}
 	if r.I < len(list) && guarded(obj(list[r.I])) {
 		return errLocked
 	}
@@ -738,9 +775,17 @@ const manifestJSON = `{"id":"/","name":"NotesGim · Gimnàstica artística","sho
 "background_color":"#f3f5f9","theme_color":"#6d1a33","icons":[{"src":"/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
 {"src":"/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"/icons/maskable-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}]}`
 
+// posa window.NOTESGIM=1 al principi de l'app (just després de <head>)
+func markServed(index []byte) []byte {
+	return bytes.Replace(index, []byte("<head>"), []byte("<head>\n<script>window.NOTESGIM=1</script>"), 1)
+}
+
 func (s *store) routes(port int) http.Handler {
 	mux := http.NewServeMux()
 	index, _ := webFS.ReadFile("web/index.html")
+	// la pàgina sap que l'ha servida el programa: si després triga a respondre (Wi-Fi saturada), no s'obre mai com l'app
+	// del navegador sinó que diu «Connectant…» i ho torna a provar (vegeu serverInit a index.html)
+	index = markServed(index)
 	if web, err := fs.Sub(webFS, "web"); err == nil {
 		icons := http.FileServer(http.FS(web))
 		mux.HandleFunc("/icons/", func(w http.ResponseWriter, r *http.Request) {
@@ -993,8 +1038,26 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, 400, "dades incorrectes")
 			return
 		}
+		if len(req.Op) > 64 {
+			req.Op = ""
+		}
 		s.mu.Lock()
+		// (una nota que ja s'havia posat i el mòbil torna a enviar perquè no va rebre la resposta: no es torna a posar,
+		// encara que després la taula l'hagi canviat o esborrat)
+		if req.Op != "" && s.ops[req.Op] {
+			v := s.version
+			s.mu.Unlock()
+			writeJSON(w, 200, map[string]any{"ok": true, "version": v})
+			return
+		}
 		err := applyScore(s.db, req, time.Now().UnixMilli())
+		if errors.Is(err, errDup) {
+			s.sawOpLocked(req.Op)
+			v := s.version
+			s.mu.Unlock()
+			writeJSON(w, 200, map[string]any{"ok": true, "version": v})
+			return
+		}
 		if errors.Is(err, errAuth) {
 			s.mu.Unlock()
 			s.slowFail()
@@ -1011,6 +1074,7 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		s.lastTutor.Store(time.Now().UnixMilli())
+		s.sawOpLocked(req.Op)
 		s.bumpLocked()
 		// si ara no es pot escriure al fitxer, la nota ja és al programa i a la finestra de la taula (que
 		// en veu l'avís): es tornarà a provar de desar sola, i la tutora no l'ha de tornar a enviar

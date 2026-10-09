@@ -92,5 +92,82 @@ try {
     assert.deepEqual(r[0], [['Anna "Nena"', 'CG Lleida'], ['Berta', 'CG Lleida']]);
     assert.deepEqual(r[1], [['Dana', 'Club Gimnàstic Lleida'], ['Elna', 'Club']]);
   });
+
+  // ─── un fitxer (o un navegador) que només té entitats o la configuració (el començament d'un curs) també té dades:
+  // es pregunta abans de tocar res, com amb el programa NotesGim
+  const cfgOnly = (dbId, updated, clubs, line2) => ({ app: 'notesgim', version: 1, settings: { dataGen: 2, rev: 4, line2 },
+    clubs: clubs.map((n, i) => ({ id: 'c' + (i + 1), name: n, contacts: [{ role: 'Tècnica', name: 'Persona ' + (i + 1), phones: '600000', email: '' }] })),
+    gymnasts: [], teams: [], competitions: [], meta: { created: updated, updated, dbId } });
+  const full = (dbId, updated) => ({ app: 'notesgim', version: 1, settings: { dataGen: 2, rev: 4, line2: 'Temporada 2025-2026' },
+    clubs: [{ id: 'c1', name: 'Club de l’any passat' }], teams: [],
+    gymnasts: [{ id: 'g1', name: 'Anna', surname: 'S', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' }, { id: 'g2', name: 'Berta', surname: 'S', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' }],
+    competitions: [{ id: 'k1', name: 'Fase', date: '2026-01-22', entries: [], teams: [] }], meta: { created: updated, updated, dbId } });
+  const clubs15 = Array.from({ length: 15 }, (_, i) => 'Entitat nova ' + (i + 1));
+  const seeded = async (seed, fileData) => {
+    const ctx = await browser.newContext();
+    await ctx.addInitScript(([s]) => {
+      if (!sessionStorage.getItem('llavor')) localStorage.setItem('notesgim.db', s);
+      sessionStorage.setItem('llavor', '1');
+      const P = FileSystemHandle.prototype;
+      P.queryPermission = async () => 'granted';
+      P.requestPermission = async () => 'granted';
+      const fh = async () => (await navigator.storage.getDirectory()).getFileHandle('d.json', { create: true });
+      window.showOpenFilePicker = async () => [await fh()];
+      window.showSaveFilePicker = async () => fh();
+    }, [JSON.stringify(seed)]);
+    const p = await ctx.newPage();
+    await p.goto(url + '#/configuracio');
+    await p.waitForSelector('[data-act=openLinkFile]');
+    if (fileData) await p.evaluate(async t => { const w = await (await (await navigator.storage.getDirectory()).getFileHandle('d.json', { create: true })).createWritable(); await w.write(t); await w.close(); }, JSON.stringify(fileData));
+    const read = () => p.evaluate(async () => JSON.parse(await (await (await (await navigator.storage.getDirectory()).getFileHandle('d.json')).getFile()).text()));
+    return { p, ctx, read };
+  };
+
+  await step('«Fes servir un fitxer que ja tinc…» amb un fitxer només amb entitats: es pregunta (i si es cancel·la, no es toca)', async () => {
+    const { p, ctx, read } = await seeded(full('navegadorA', '2026-06-20T10:00:00.000Z'), cfgOnly('altreOrdinador', '2026-09-15T10:00:00.000Z', clubs15, 'Temporada 2026-2027'));
+    await p.click('[data-act=openLinkFile]');
+    await p.waitForSelector('#confirm[open]');
+    assert.ok((await p.textContent('#confirm')).includes('15 entitats, 0 gimnastes, 0 competicions'));
+    await p.click('#confirm button[value=no]');
+    await p.waitForTimeout(500);
+    const d = await read();
+    assert.equal(d.clubs.length, 15); assert.equal(d.settings.line2, 'Temporada 2026-2027'); assert.equal(d.meta.dbId, 'altreOrdinador');
+    assert.equal(await p.evaluate(() => fileHandle), null);
+    // i «Fes servir les del fitxer» les carrega
+    await p.click('[data-act=openLinkFile]');
+    await p.waitForSelector('#confirm[open]');
+    await p.click('#confirm button[value=ok]');
+    await p.waitForTimeout(600);
+    assert.equal(await p.evaluate(() => db.clubs.length), 15);
+    assert.equal((await read()).clubs.length, 15);
+    await ctx.close();
+  });
+
+  await step('fitxer vinculat que a l’altre ordinador s’ha buidat i només té entitats noves: en obrir, s’avisa i no s’hi escriu', async () => {
+    const { p, ctx, read } = await seeded(full('navegadorB', '2026-06-20T10:00:00.000Z'), null);
+    await p.click('[data-act=linkFile]');
+    await p.waitForSelector('text=+ d.json');
+    await p.waitForTimeout(400);
+    assert.equal((await read()).gymnasts.length, 2);
+    await p.evaluate(async t => { const w = await (await (await navigator.storage.getDirectory()).getFileHandle('d.json')).createWritable(); await w.write(t); await w.close(); },
+      JSON.stringify(cfgOnly('navegadorB', new Date(Date.now() + 60000).toISOString(), clubs15, 'Temporada 2026-2027')));
+    await p.reload();
+    await p.waitForSelector('button[data-act=fileConflict]');
+    await p.waitForTimeout(500);
+    const d = await read();
+    assert.deepEqual([d.clubs.length, d.gymnasts.length], [15, 0]);
+    await ctx.close();
+  });
+
+  await step('un navegador que només té entitats vincula un fitxer amb dades: es pregunta abans de substituir-les', async () => {
+    const { p, ctx } = await seeded(cfgOnly('navegadorC', '2026-09-15T10:00:00.000Z', clubs15, 'Temporada 2026-2027'), full('altres', '2026-06-20T10:00:00.000Z'));
+    await p.click('[data-act=openLinkFile]');
+    await p.waitForSelector('#confirm[open]');
+    assert.ok((await p.textContent('#confirm')).includes('15 entitats, 0 gimnastes, 0 competicions'));
+    await p.click('#confirm button[value=no]');
+    await p.waitForTimeout(300);
+    assert.equal(await p.evaluate(() => db.clubs.length), 15);
+    await ctx.close();
+  });
 } finally { await browser.close(); srv.close(); }
 console.log('\nFitxer vinculat correcte.');

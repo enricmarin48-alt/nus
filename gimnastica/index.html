@@ -894,9 +894,12 @@ const Engine = (() => {
   const guarded = a => hasMark(a) && (a.by !== 'tutor' || !!a.ok);
 
   // fusiona a base les notes d'una altra còpia de les dades: de cada intent guanya el més recent (camp at),
-  // excepte que una nota de tutora no passa mai per sobre d'una de la taula (o ja revisada).
+  // excepte que una nota de tutora no passa mai per sobre d'una de la taula. Per sobre d'una de tutora ja revisada,
+  // només si és més nova: la taula n'ha revisat una de més vella i aquesta (que el programa ja havia acceptat) no
+  // l'havia vista; es queda sense revisar (torna a sortir en groc).
   // Torna la llista d'intents que s'han agafat de l'altra còpia. El servidor (servidor/main.go) fa el mateix.
   // Amb since (ms), de l'altra còpia només es miren els intents desats després d'aquell moment.
+  const tableOwns = a => guarded(a) && !(a.by === 'tutor' && a.ok);
   function mergeScores(base, other, { since = 0 } = {}) {
     const changed = [];
     const ocomps = new Map(((other && other.competitions) || []).map(c => [c.id, c]));
@@ -912,7 +915,7 @@ const Engine = (() => {
           const ol = Array.isArray(oe.scores[appId]) ? oe.scores[appId] : [];
           const l = Array.isArray(e.scores[appId]) ? e.scores[appId] : (e.scores[appId] = []);
           ol.forEach((x, i) => {
-            if (x && (+x.at || 0) > (+(l[i] && l[i].at) || 0) && (+x.at || 0) > since && !(x.by === 'tutor' && guarded(l[i]))) {
+            if (x && (+x.at || 0) > (+(l[i] && l[i].at) || 0) && (+x.at || 0) > since && !(x.by === 'tutor' && tableOwns(l[i]))) {
               while (l.length <= i) l.push({});
               l[i] = JSON.parse(JSON.stringify(x));
               changed.push({ compId: c.id, entryId: e.id, appId, i });
@@ -1893,32 +1896,114 @@ async function api(path, opts = {}, timeout = 0) {
     return j;
   } finally { if (t) clearTimeout(t); }
 }
+// les hores de les dades (meta.updated) que aquesta finestra sap que han estat al fitxer del programa, per fitxer: si les
+// d'aquesta finestra hi han estat, no hi té res per afegir; si les del fitxer són unes que ja ha vist, ningú més l'ha canviat
+const SEEN_KEY = 'notesgim.vist-al-fitxer';
+function seenAll() { try { const s = JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); return s && typeof s === 'object' && !Array.isArray(s) ? s : {}; } catch (_) { return {}; } }
+const fileKnew = stamp => !!stamp && Array.isArray(seenAll()[server.dataFile]) && seenAll()[server.dataFile].includes(stamp);
+function fileSaw(stamp) {
+  if (!stamp || !server.dataFile) return;
+  const s = seenAll(), l = (Array.isArray(s[server.dataFile]) ? s[server.dataFile] : []).filter(x => x !== stamp);
+  l.push(stamp); delete s[server.dataFile]; s[server.dataFile] = l.slice(-40);
+  for (const k of Object.keys(s).slice(0, -6)) delete s[k];   // (els 6 fitxers fets servir més recentment)
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify(s)); } catch (_) {}
+}
+// dues versions de les mateixes dades: el que només hi ha a older (per id: competicions, inscripcions, gimnastes, entitats,
+// equips) s'afegeix a base. Torna què s'ha afegit, en curt («1 competició («Fase 2»), 2 inscripcions…»), o ''
+function addMissing(base, older) {
+  const names = l => l.length ? ` (${l.slice(0, 3).map(n => `«${n}»`).join(', ')}${l.length > 3 ? '…' : ''})` : '';
+  const copy = x => JSON.parse(JSON.stringify(x));
+  const add = (list, from, name) => {
+    const ids = new Set(list.map(x => x && x.id)), got = [];
+    for (const x of from || []) if (x && x.id && !ids.has(x.id)) { list.push(copy(x)); ids.add(x.id); got.push(name(x)); }
+    return got;
+  };
+  const gymNm = g => [g.name, g.surname].filter(Boolean).join(' ');
+  const comps = add(base.competitions, older.competitions, c => c.name || 'sense nom');
+  let entries = 0;
+  for (const oc of older.competitions || []) {
+    const c = base.competitions.find(x => x.id === oc.id);
+    if (!c) continue;
+    entries += add(c.entries, oc.entries, () => '').length;
+    add(c.teams, oc.teams, () => '');
+  }
+  const gyms = add(base.gymnasts, older.gymnasts, gymNm), clubs = add(base.clubs, older.clubs, c => c.name), teams = add(base.teams, older.teams, t => t.name);
+  const out = [];
+  if (comps.length) out.push(plural(comps.length, 'competició', 'competicions') + names(comps));
+  if (entries) out.push(plural(entries, 'inscripció', 'inscripcions'));
+  if (gyms.length) out.push(plural(gyms.length, 'gimnasta', 'gimnastes') + names(gyms));
+  if (clubs.length) out.push(plural(clubs.length, 'entitat', 'entitats') + names(clubs));
+  if (teams.length) out.push(plural(teams.length, 'equip', 'equips') + names(teams));
+  return out.length > 1 ? out.slice(0, -1).join(', ') + ' i ' + out[out.length - 1] : out.join('');
+}
+// les dues versions són iguals sense comptar les notes (que ja s'han ajuntat) ni l'hora de desar
+function sameButScores(a, b) {
+  const canon = v => Array.isArray(v) ? '[' + v.map(canon).join(',') + ']'
+    : v && typeof v === 'object' ? '{' + Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => JSON.stringify(k) + ':' + canon(v[k])).join(',') + '}' : JSON.stringify(v ?? null);
+  const strip = d => { const c = JSON.parse(JSON.stringify(d)); delete c.meta; for (const k of c.competitions || []) for (const e of k.entries || []) delete e.scores; return canon(c); };
+  return strip(a) === strip(b);
+}
+// «Restaura una còpia…» (o «Esborra-ho tot») que encara no ha arribat al programa: es recorda amb les dades, perquè si es
+// tanca la finestra (o el programa) abans, en tornar-lo a obrir la còpia continuï substituint el fitxer (vegeu serverInit)
+const REPLACE_KEY = 'notesgim.substitueix';
+function replaceMarkGet() { try { const m = JSON.parse(localStorage.getItem(REPLACE_KEY) || 'null'); return m && typeof m === 'object' ? m : null; } catch (_) { return null; } }
+function replaceMarkClear() { try { localStorage.removeItem(REPLACE_KEY); } catch (_) {} }
+function replaceMarkSet() { try { localStorage.setItem(REPLACE_KEY, JSON.stringify({ stamp: db.meta.updated, at: server.replaceAt || 0, file: server.dataFile || '' })); } catch (_) {} }
+// tot el que té aquesta finestra ja és al fitxer (o al programa, que l'ha pogut desar): no hi té res per enviar
+const nothingUnsent = () => !saveTimer && !server.replaceNext && !server.retrySave && !!db.meta.updated
+  && (db.meta.updated === server.diskStamp || (db.meta.updated === server.sentStamp && !server.saveErr));
+// la pàgina l'ha servida el programa NotesGim (hi posa window.NOTESGIM): mai no s'obre com l'app del navegador, encara
+// que el programa trigui a respondre (Wi-Fi saturada al pavelló): es diu «Connectant…» i es torna a provar
+function serverConnecting(k) {
+  const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  let q = [];
+  try { q = (JSON.parse(localStorage.getItem('notesgim.tutor') || '{}').queue || []).filter(o => o && typeof o === 'object'); } catch (_) {}
+  for (const n of $$('header.top nav, nav.bottom')) n.style.display = 'none';
+  const list = q.map(o => `${h(o.label || '')}: <b>${o.value === null || o.value === undefined ? 'esborrar' : h(fmt(Engine.toM(o.value)))}</b>`).join('<br>');
+  $('#main').innerHTML = `<div class="page-head"><h1>${local ? 'Connectant amb el programa NotesGim…' : 'Connectant amb l’ordinador de la taula…'}</h1></div>
+    <div class="note${k > 1 ? ' warn' : ''}">${local ? 'El programa NotesGim encara no respon. Es torna a provar sol: no tanquis aquesta finestra.'
+      : 'Encara no hi ha connexió amb l’ordinador de la taula (comprova que el mòbil és a la mateixa Wi-Fi). Es torna a provar sol: no tanquis aquesta pàgina.'}</div>
+    ${q.length ? `<div class="note warn"><b>${plural(q.length, 'nota guardada', 'notes guardades')} al mòbil</b>: s’enviaran soles quan hi hagi connexió.<br>${list}</div>` : ''}`;
+}
 async function serverInit() {
   // només el programa NotesGim (http://localhost o la Wi-Fi) té servidor; a https (GitHub Pages) i des d'un
   // fitxer no cal preguntar-ho (i així la primera pantalla surt de seguida)
   if (location.protocol !== 'http:') return false;
   // només una resposta vol dir «no hi ha NotesGim» (un servidor qualsevol respon 404 de seguida); si triga
-  // (Wi-Fi saturada al pavelló) es torna a provar, perquè el mòbil d'una tutora no obri l'app de la taula
+  // (Wi-Fi saturada al pavelló) es torna a provar, perquè el mòbil d'una tutora no obri l'app de la taula.
+  // Si la pàgina l'ha servida el programa (window.NOTESGIM), es prova fins que respongui (també si falla de seguida)
+  const ours = !!window.NOTESGIM;
   let info = null;
-  for (let k = 0; k < 4 && !info; k++) {
-    try { info = await api('api/info', {}, k ? 5000 : 2500); } catch (e) { if (e && e.status) return false; }
+  for (let k = 0; !info; k++) {
+    try { info = await api('api/info', {}, k ? 5000 : 2500); } catch (e) { if (e && e.status && !ours) return false; }
+    if (info && info.app !== 'notesgim') { if (!ours) return false; info = null; }
+    if (!info) {
+      if (!ours) { if (k >= 3) return false; continue; }
+      serverConnecting(k);
+      await new Promise(r => setTimeout(r, 2500));
+    }
   }
-  if (!info || info.app !== 'notesgim') return false;
+  for (const n of $$('header.top nav, nav.bottom')) n.style.display = '';
   server.on = true; server.role = info.role; server.urls = info.urls || []; server.urlsAt = Date.now(); server.dataFile = info.dataFile || '';
   addManifest();
   if (info.role === 'tutor') { await tutorStart(); return true; }
   const remote = await api('api/db');
-  const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   const rm = (remote.db && remote.db.meta) || {};
-  let note = '', before = null;
+  let note = '', noteType = 'bad', before = null;
   await moveOldBefore();   // (versions d'abans en desaven una còpia al navegador: passa a un lloc que no omple l'espai)
   let fresh = '';
   // qui mana en obrir: 1) les dades d'una finestra de les versions de proves no es fan servir mai; 2) si aquesta
   // finestra no té res, el fitxer; 3) si al fitxer no s'hi ha desat mai res (és nou o s'ha perdut), les d'aquesta
-  // finestra; 4) si són unes altres dades, el fitxer (les d'aquesta finestra es guarden i es poden descarregar);
-  // 5) si són les mateixes, la més nova sencera, i de l'altra les notes més noves
+  // finestra; 4) si aquesta finestra hi havia restaurat una còpia que encara no s'hi havia pogut enviar (NotesGim no
+  // responia), la còpia substitueix el fitxer; 5) si són unes altres dades, el fitxer (les d'aquesta finestra es guarden i
+  // es poden descarregar); 6) si són les mateixes, la més nova sencera, i de l'altra les notes més noves i el que només hi
+  // ha a l'altra, si l'altra tenia canvis que aquesta no ha vist (vegeu addMissing)
   const oldWin = !blankDb(db) && localGen !== null && localGen < 2;
   const keepMine = () => { before = JSON.stringify(db); keepBefore(before); };
+  // (només al fitxer d'aquell NotesGim; si ara se n'obre un altre, es deixa per quan es torni a obrir aquell)
+  const rep = replaceMarkGet(), repHere = !!rep && (rep.file || '') === (server.dataFile || '');
+  const restored = repHere && !!rep.stamp && rep.stamp === db.meta.updated && rep.stamp !== rm.updated;
+  if (repHere) replaceMarkClear();
   if (oldWin || (info.fresh && blankDb(remote.db) && blankDb(db))) {
     if (oldWin) keepMine();
     db = migrate(remote.db);
@@ -1928,17 +2013,39 @@ async function serverInit() {
     if (!blankDb(remote.db)) db = migrate(remote.db);
   } else if (blankDb(remote.db)) {
     // (es desen ara al fitxer)
+  } else if (restored) {
+    // (el programa en guarda abans una còpia a copies-notesgim, i només hi afegeix les notes de les tutores arribades després)
+    server.replaceNext = true; server.replaceAt = +rep.at || Date.now();
   } else if (!rm.dbId || rm.dbId !== db.meta.dbId) {
     // (un altre ordinador, un USB, una còpia posada a mà, una altra finestra amb unes altres dades)
     keepMine();
     db = migrate(remote.db);
-    note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar).';
-  } else if (Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0)) Engine.mergeScores(db, remote.db);
-  else { const local = db; db = migrate(remote.db); Engine.mergeScores(db, local); }
+    note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar). També des de Configuració → Dades.';
+  } else {
+    const mineNewer = Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0), local = db;
+    if (!mineNewer) db = migrate(remote.db);
+    const older = mineNewer ? migrate(JSON.parse(JSON.stringify(remote.db))) : local;
+    Engine.mergeScores(db, older);
+    // l'altra pot tenir canvis que aquesta no té si no és la mateixa i no és una que aquesta finestra ja havia vist al
+    // fitxer (p. ex. dues còpies de les dades, a Documents i en un USB, canviades cada una un dia)
+    if (local.meta.updated !== rm.updated && !fileKnew(mineNewer ? rm.updated : local.meta.updated)) {
+      const added = addMissing(db, older), other = !sameButScores(db, older);
+      if (added) db.meta.updated = new Date().toISOString();   // (ara són unes dades noves: les dues versions juntes)
+      if (added || other) {
+        if (!mineNewer) { before = JSON.stringify(local); keepBefore(before); }
+        const where = mineNewer ? 'la del fitxer, tal com era, es guarda a la carpeta copies-notesgim (al costat del fitxer de dades)' : 'la d’aquesta finestra es pot descarregar amb el botó d’aquest avís o des de Configuració → Dades';
+        note = `Aquestes dades també s’havien canviat en un altre lloc (una altra còpia, per exemple en un USB): s’ha obert la més nova (${mineNewer ? 'la d’aquesta finestra' : 'la del fitxer'})`
+          + (added ? ` i s’hi ha afegit el que només tenia l’altra: ${added}. Si alguna d’aquestes coses s’havia esborrat expressament, torna-la a esborrar.` : '.')
+          + ` Si hi trobes a faltar algun altre canvi (un nom, la configuració…), ${where}.`;
+        if (!added) noteType = '';
+      }
+    }
+  }
   server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
+  fileSaw(rm.updated);
   flush();
   render();
-  if (note) toast(note + ' També des de Configuració → Dades.', 'bad', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
+  if (note) toast(note, noteType, before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
   if (fresh) toast(fresh, 'ok', before ? { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] } : {});
   setSaveErr(remote.saveErr);
   serverWaitLoop();
@@ -1946,15 +2053,19 @@ async function serverInit() {
 }
 function serverPush() {
   if (!server.on || server.role !== 'admin' || server.closed) return;
+  // (una còpia restaurada per enviar: es recorda amb les dades, per si es tanca abans que arribi; vegeu serverInit)
+  if (server.replaceNext) replaceMarkSet();
   if (server.pushing) { server.again = true; return; }
   server.pushing = true;
-  const replace = server.replaceNext, stamp = db.meta.updated;
+  const replace = server.replaceNext, rAt = server.replaceAt, stamp = db.meta.updated;
   // (amb replace, el programa hi afegeix només les notes de tutora arribades després de restaurar)
   api('api/db', { method: 'PUT', body: JSON.stringify({ db, base: server.dataRev, replace, since: replace ? server.replaceAt || 0 : 0 }) })
     .then(resp => {
       server.online = true; server.conflicts = 0; setSaveErr('');
       server.version = resp.version; server.dataRev = resp.dataRev; server.sentStamp = server.diskStamp = stamp;
-      if (replace) server.replaceNext = false;
+      fileSaw(stamp);
+      // (si mentrestant se n'ha restaurat una altra —p. ex. «Desfés»—, aquella encara s'ha d'enviar)
+      if (replace && server.replaceAt === rAt) { server.replaceNext = false; replaceMarkClear(); }
       if (resp.taken && resp.db) applyRemote(resp.db, resp.dataRev);
     })
     .catch(err => {
@@ -1963,7 +2074,7 @@ function serverPush() {
         // el programa ja té les dades però no les ha pogut escriure al fitxer (disc ple, OneDrive, USB fora):
         // es diu per què i es torna a provar d'aquí a una estona (no és cap altra finestra)
         server.version = err.body.version ?? server.version; server.dataRev = err.body.dataRev; server.sentStamp = stamp;
-        if (replace) server.replaceNext = false;
+        if (replace && server.replaceAt === rAt) server.replaceNext = false;
         setSaveErr(err.message); server.retrySave = true;
         if (err.body.taken && err.body.db) applyRemote(err.body.db, err.body.dataRev);
       }
@@ -1976,8 +2087,16 @@ function serverPush() {
     });
 }
 // les dades que hi havia en aquesta finestra quan les ha substituït les del programa: es guarden (al navegador, però
-// no a l'espai de les dades) i es poden descarregar des de Configuració
-async function keepBefore(raw) { try { await idbSet('abansServidor', { at: new Date().toISOString(), raw }); } catch (_) {} }
+// no a l'espai de les dades) i es poden descarregar des de Configuració. La que hi hagués d'abans no es perd: es queda
+// darrere (prev, les 4 últimes); la mateixa còpia dues vegades no es guarda
+async function keepBefore(raw) {
+  try {
+    const old = await idbGet('abansServidor');
+    if (old && old.raw === raw) return;
+    const prev = old && old.raw ? [{ at: old.at, raw: old.raw }, ...(Array.isArray(old.prev) ? old.prev : [])].slice(0, 4) : [];
+    await idbSet('abansServidor', { at: new Date().toISOString(), raw, prev });
+  } catch (_) {}
+}
 async function moveOldBefore() {
   try {
     const old = localStorage.getItem(LS_KEY + '.abans-servidor');
@@ -2005,30 +2124,39 @@ function serverConflict(r) {
   // fitxer té aquestes, més velles que les d'aquí, i no són d'una altra finestra)
   // (server.mine: el que aquesta finestra ha desat; p. ex. el programa s'ha tornat a obrir amb una altra finestra que ha
   // enviat el que aquesta havia desat mentre no hi era)
-  if (tm.dbId === db.meta.dbId && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp || server.mine.has(tm.updated))) { server.again = true; return; }
+  // (una còpia restaurada que encara no s'havia pogut enviar —NotesGim no responia— també, encara que siguin unes altres dades)
+  if ((tm.dbId === db.meta.dbId || server.replaceNext) && tm.updated && (tm.updated === server.sentStamp || tm.updated === server.diskStamp || server.mine.has(tm.updated))) { server.again = true; return; }
   // el programa s'ha tornat a obrir amb un fitxer buit (o que no hi era): no passa per sobre de les d'aquí
-  const has = d => d && ((d.gymnasts || []).length || (d.competitions || []).length);
   // (només si al fitxer no s'hi ha desat mai res: si una altra finestra ho ha esborrat tot, mana)
   if (blankDb(theirs)) { server.again = true; return; }
-  const mine = db, before = JSON.stringify(mine), mineHas = !blankDb(mine);
+  fileSaw(tm.updated);
+  // aquesta finestra no tenia res per enviar (p. ex. no s'hi ha tocat res mentre NotesGim s'ha tornat a obrir i una altra
+  // finestra hi ha desat): es carreguen les del fitxer, sense cap alarma ni cap còpia (les d'aquí ja hi eren)
+  const idle = nothingUnsent(), same = tm.dbId === db.meta.dbId;
+  const mine = db, before = JSON.stringify(mine), mineHas = !blankDb(mine) && !(idle && same);
   if (mineHas) keepBefore(before);   // (si aquesta finestra no tenia res, no hi ha res a guardar: no es trepitja el que hi hagués)
   db = migrate(theirs);
-  if (tm.dbId === mine.meta.dbId) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
-  server.replaceNext = false; server.sentStamp = server.diskStamp = tm.updated || null;
+  if (same) Engine.mergeScores(db, mine);   // les notes d'aquesta finestra no es perden
+  server.replaceNext = false; replaceMarkClear(); server.sentStamp = server.diskStamp = tm.updated || null;
   try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
   server.again = true;
   renderKeepFocus();
-  if (mineHas) toast('Les dades s’havien canviat des d’una altra finestra (o un altre NotesGim): ara es veuen les del fitxer. Si el teu darrer canvi no hi és, torna’l a fer.', 'bad',
-    { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] });
+  const dl = { actions: [{ label: 'Descarrega les d’abans', fn: () => downloadBlob(new Blob([before], { type: 'application/json' }), `notesgim-abans-${today()}.json`) }] };
+  if (idle && same) toast('Dades actualitzades des d’una altra finestra.');
+  else if (idle && mineHas) toast('NotesGim ara té obertes unes altres dades (un altre fitxer): es veuen les seves. Les que hi havia en aquesta finestra ja eren desades al seu fitxer, i també se n’ha guardat una còpia (Configuració → Dades).', '', dl);
+  else if (mineHas) toast('Les dades s’havien canviat des d’una altra finestra (o un altre NotesGim): ara es veuen les del fitxer. Si el teu darrer canvi no hi és, torna’l a fer.', 'bad', dl);
 }
 async function serverWaitLoop() {
   while (!server.closed) {
     try {
       const resp = await api('api/wait?since=' + server.version);
       if (server.closed) return;
-      if (!server.online) { server.online = true; renderSaveState(false); serverPush(); }
+      // (en tornar la connexió, s'envia el que encara no hi és; si no hi ha res, no: el que hagi canviat al fitxer
+      // mentrestant arriba tot seguit, sense cap conflicte)
+      if (!server.online) { server.online = true; renderSaveState(false); if (!nothingUnsent()) serverPush(); }
       if (resp) {
         server.version = resp.version;
+        fileSaw((resp.db && resp.db.meta || {}).updated);
         setSaveErr(resp.saveErr);
         applyRemote(resp.db, resp.dataRev);
       }
@@ -2255,7 +2383,8 @@ async function writeFileNow() {
     if (!fileChecked) {
       if (await unreadable(fileHandle)) { fileState = 'conflict'; renderSaveState(false); return; }
       const inFile = await readHandle(fileHandle);
-      const theirs = inFile && (inFile.gymnasts.length || inFile.competitions.length);
+      // (té dades si no està en blanc: també si només té entitats, equips o la configuració, com amb el programa)
+      const theirs = inFile && !blankDb(inFile);
       const fm = (inFile && inFile.meta) || {};
       const mine = fileStamp && fm.updated === fileStamp;
       const other = theirs && ((fm.dbId && fm.dbId !== db.meta.dbId) || (!mine && Date.parse(fm.updated || 0) > Date.parse(sessionStamp || 0)));
@@ -2291,6 +2420,9 @@ async function attachHandle(handle) {
   toast('A partir d’ara cada canvi també es desa a «' + handle.name + '».', 'ok');
   render();
 }
+// què hi ha en unes dades, en curt: «15 entitats, 0 gimnastes, 0 competicions» (i els equips, si n'hi ha)
+const dataInfo = d => [plural((d.clubs || []).length, 'entitat', 'entitats'), plural((d.gymnasts || []).length, 'gimnasta', 'gimnastes'),
+  ...((d.teams || []).length ? [plural(d.teams.length, 'equip', 'equips')] : []), plural((d.competitions || []).length, 'competició', 'competicions')].join(', ');
 // vincula un fitxer: si ja té dades de NotesGim, primer es pregunta què se'n fa (mai s'esborra sense avisar)
 async function linkFile(mode) {
   if (!fsSupported()) { toast('Aquest navegador no pot desar directament a un fitxer. Fes servir «Descarrega còpia».', 'bad'); return; }
@@ -2301,9 +2433,9 @@ async function linkFile(mode) {
     if ((await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') { toast('Sense permís per escriure al fitxer.', 'bad'); return; }
     if (await unreadable(handle) && !(await confirmBox(`El fitxer «${h(handle.name)}» no és un fitxer de dades de NotesGim que es pugui llegir (potser està malmès o és un altre fitxer).<br><br>Si hi escric les dades, <b>el que hi ha ara es perdrà</b>. Si no n’estàs segur, cancel·la i tria un altre fitxer o crea’n un de nou.`, { ok: 'Escriu-hi igualment', danger: true }))) return;
     const inFile = await readHandle(handle);
-    const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
-    if (inFile && (inFile.gymnasts.length || inFile.competitions.length)) {
-      const load = !hasData() || await confirmBox(`El fitxer «${h(handle.name)}» ja té dades (${info(inFile)}).<br><br>Vols <b>fer servir les dades del fitxer</b>? Les d’aquest navegador (${info(db)}) se substituiran (pots desfer-ho just després).<br><br>Si cancel·les, no es toca res.`, { ok: 'Fes servir les del fitxer' });
+    // (un fitxer o un navegador només amb entitats o configuració també té dades: es pregunta abans de tocar res)
+    if (inFile && !blankDb(inFile)) {
+      const load = blankDb(db) || await confirmBox(`El fitxer «${h(handle.name)}» ja té dades (${dataInfo(inFile)}).<br><br>Vols <b>fer servir les dades del fitxer</b>? Les d’aquest navegador (${dataInfo(db)}) se substituiran (pots desfer-ho just després).<br><br>Si cancel·les, no es toca res.`, { ok: 'Fes servir les del fitxer' });
       if (!load) return;
       withUndo('Dades carregades de «' + handle.name + '».', () => { db = migrate(inFile); },
         { beforeRestore: () => { fileHandle = null; fileState = 'none'; idbDel('fileHandle'); toast('El fitxer no s’ha tocat i s’ha desvinculat.'); } });
@@ -2337,7 +2469,7 @@ async function resolveFileConflict() {
     }
     fileTrusted(); fileState = 'ok'; queueFileWrite(); return;
   }
-  const info = d => `${plural(d.gymnasts.length, 'gimnasta', 'gimnastes')}, ${plural(d.competitions.length, 'competició', 'competicions')}`;
+  const info = dataInfo;
   const pick = await choiceBox(`El fitxer <b>${h(fileHandle.name)}</b> té dades que no són les d’aquest navegador (potser s’hi ha treballat des d’un altre ordinador).<br><br>
     Fitxer: ${info(inFile)}${inFile.meta && inFile.meta.updated ? ` · canviat el ${h(new Date(inFile.meta.updated).toLocaleString('ca'))}` : ''}<br>Aquest navegador: ${info(db)}${db.meta.updated ? ` · canviat el ${h(new Date(db.meta.updated).toLocaleString('ca'))}` : ''}
     <br><br>«Fes servir les del fitxer» substitueix les d’aquest navegador (pots desfer-ho just després).`,
@@ -4743,8 +4875,10 @@ async function tutSend() {
     for (;;) {
       const op = tut.queue.find(q => tut.comps.some(c => c.id === q.compId));
       if (!op) break;
+      // (cada nota porta un id seu: si la resposta es perd pel camí i es torna a enviar, el programa no la torna a posar)
+      if (!op.id) { op.id = uid(); tutSave(); }
       try {
-        const r = await api('api/score', { method: 'POST', body: JSON.stringify({ pin: tut.pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value }) }, 15000);
+        const r = await api('api/score', { method: 'POST', body: JSON.stringify({ pin: tut.pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value, op: op.id }) }, 15000);
         // (una resposta que no és del programa — la pàgina d'entrada d'una Wi-Fi, un altre aparell — no compta)
         if (!r || r.ok !== true) throw new Error('no és NotesGim');
         tut.online = true;

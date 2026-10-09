@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -616,5 +617,141 @@ func TestOldTestDataCopyOnlyOnce(t *testing.T) {
 	}
 	if got := sameProves(path, []byte(`{}`)); got != "" {
 		t.Fatalf("una còpia diferent no compta: %q", got)
+	}
+}
+
+// la taula dona per revisada una nota de tutora (8,50) just quan la tutora la corregeix (9,50) i el programa ja l'ha
+// acceptada: quan arriba la revisió, la correcció no es perd; es queda sense revisar (torna a sortir en groc)
+func TestReviewedOlderTutorNoteDoesNotHideNewerOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	cell := func(db map[string]any) map[string]any {
+		e := obj(arr(obj(arr(db["competitions"])[0])["entries"])[1])
+		return obj(arr(obj(e["scores"])["salt"])[0])
+	}
+	// el que té la taula: la nota de la tutora (8,5 a les 1000), que acaba de donar per revisada
+	table := parse(t, sample)
+	obj(arr(obj(arr(table["competitions"])[0])["entries"])[1])["scores"] = map[string]any{"salt": []any{map[string]any{"v": 8.5, "at": float64(1000), "by": "tutor", "ok": true}}}
+	// al programa ja hi ha la correcció de la tutora (9,5 a les 2000), que la taula encara no ha vist
+	s.mu.Lock()
+	obj(arr(obj(arr(s.db["competitions"])[0])["entries"])[1])["scores"] = map[string]any{"salt": []any{map[string]any{"v": 9.5, "at": float64(2000), "by": "tutor"}}}
+	rev := s.dataRev
+	s.mu.Unlock()
+	b, _ := json.Marshal(map[string]any{"db": table, "base": rev})
+	req, _ := http.NewRequest(http.MethodPut, srv.URL+"/api/db", bytes.NewReader(b))
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j struct {
+		Taken int            `json:"taken"`
+		DB    map[string]any `json:"db"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&j)
+	r.Body.Close()
+	if r.StatusCode != 200 || j.Taken != 1 || j.DB == nil {
+		t.Fatalf("vull 200 amb la nota nova de tornada: %d taken=%d", r.StatusCode, j.Taken)
+	}
+	if c := cell(s.db); num(c["v"]) != 9.5 || truthy(c["ok"]) {
+		t.Fatalf("s'havia de quedar la correcció 9,5 sense revisar: %v", c)
+	}
+	// i al revés: una nota de tutora més vella no passa per sobre d'una de revisada, ni cap de tutora per sobre d'una de la taula
+	base, other := parse(t, sample), parse(t, sample)
+	obj(arr(obj(arr(base["competitions"])[0])["entries"])[1])["scores"] = map[string]any{"salt": []any{map[string]any{"v": 9.5, "at": float64(2000), "by": "tutor", "ok": true}}, "barra": []any{map[string]any{"v": 7.0, "at": float64(1000)}}}
+	obj(arr(obj(arr(other["competitions"])[0])["entries"])[1])["scores"] = map[string]any{"salt": []any{map[string]any{"v": 8.5, "at": float64(1000), "by": "tutor"}}, "barra": []any{map[string]any{"v": 9.0, "at": float64(3000), "by": "tutor"}}}
+	if n := mergeScores(base, other); n != 0 {
+		t.Fatalf("no s'havia d'agafar res: %d", n)
+	}
+}
+
+// la tutora desa una nota, el programa la posa però la resposta es perd (Wi-Fi) i el mòbil la torna a enviar al cap d'uns
+// segons: no es torna a posar (encara que mentrestant la taula l'hagi esborrada, o revisada)
+func TestTutorResendIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	post := func(op string, v float64) int {
+		b, _ := json.Marshal(map[string]any{"pin": "1234", "compId": "k1", "entryId": "e2", "appId": "salt", "i": 0, "value": v, "op": op})
+		r, err := http.Post(srv.URL+"/api/score", "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	salt := func() map[string]any {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		e := obj(arr(obj(arr(s.db["competitions"])[0])["entries"])[1])
+		l := arr(obj(e["scores"])["salt"])
+		if len(l) == 0 {
+			return nil
+		}
+		return obj(l[0])
+	}
+	if code := post("op-1", 7.5); code != 200 {
+		t.Fatalf("primer enviament: %d", code)
+	}
+	if a := salt(); num(a["v"]) != 7.5 || str(a["op"]) != "op-1" {
+		t.Fatalf("nota desada malament: %v", a)
+	}
+	// la taula l'esborra (era d'una altra gimnasta)
+	s.mu.Lock()
+	obj(arr(obj(arr(s.db["competitions"])[0])["entries"])[1])["scores"] = map[string]any{"salt": []any{map[string]any{"at": float64(time.Now().UnixMilli())}}}
+	s.mu.Unlock()
+	if code := post("op-1", 7.5); code != 200 {
+		t.Fatalf("el mateix enviament un altre cop ha de dir que sí: %d", code)
+	}
+	if a := salt(); hasMark(a) {
+		t.Fatalf("la nota esborrada ha tornat: %v", a)
+	}
+	// una nota nova (un altre id) sí que hi entra
+	if code := post("op-2", 8.0); code != 200 || num(salt()["v"]) != 8 {
+		t.Fatalf("una nota nova: %d %v", code, salt())
+	}
+	// el programa s'ha tornat a obrir (ja no recorda els ids) i la nota s'ha revisat: el mateix enviament no és un «409»
+	s.mu.Lock()
+	s.ops, s.opList = nil, nil
+	obj(arr(obj(obj(arr(obj(arr(s.db["competitions"])[0])["entries"])[1])["scores"])["salt"])[0])["ok"] = true
+	s.mu.Unlock()
+	if code := post("op-2", 8.0); code != 200 {
+		t.Fatalf("reenviament després de revisar-la: %d", code)
+	}
+}
+
+// la pàgina que serveix el programa porta la marca window.NOTESGIM (si després el programa triga a respondre, la
+// pàgina no s'obre mai com l'app del navegador)
+func TestServedPageIsMarked(t *testing.T) {
+	if got := string(markServed([]byte("<!DOCTYPE html>\n<html>\n<head>\n<title>x</title></head>"))); !strings.Contains(got, "<head>\n<script>window.NOTESGIM=1</script>") {
+		t.Fatalf("sense marca: %s", got)
+	}
+	s := &store{db: map[string]any{}, quit: make(chan struct{})}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	r, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if !bytes.Contains(b, []byte("window.NOTESGIM=1")) {
+		t.Fatal("la pàgina servida no porta la marca")
 	}
 }

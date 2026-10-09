@@ -365,15 +365,15 @@ test('fusió de notes entre còpies: de cada intent guanya el més recent', () =
   assert.equal(E.mergeScores(base, other).length, 0);
 });
 
-test('fusió: una nota de tutora no trepitja mai la de la taula ni una de revisada', () => {
+test('fusió: una nota de tutora no trepitja mai la de la taula, ni una de revisada més nova', () => {
   const mk = scores => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores }] }] });
   // la taula ha posat 8 (sense «by») abans que arribés la de la tutora: es queda la de la taula
-  const base = mk({ salt: [{ v: 8, at: 100 }], barra: [{ v: 7, at: 100, by: 'tutor', ok: true }], terra: [{ at: 100 }], mini: [{ v: 7, at: 100 }] });
+  const base = mk({ salt: [{ v: 8, at: 100 }], barra: [{ v: 7, at: 300, by: 'tutor', ok: true }], terra: [{ at: 100 }], mini: [{ v: 7, at: 100 }] });
   const other = mk({ salt: [{ v: 9.5, at: 200, by: 'tutor' }], barra: [{ v: 6.5, at: 200, by: 'tutor' }], terra: [{ v: 8.2, at: 200, by: 'tutor' }], mini: [{ v: 7.5, at: 200 }] });
   const ch = E.mergeScores(base, other);
   const sc = base.competitions[0].entries[0].scores;
   assert.equal(sc.salt[0].v, 8);
-  assert.equal(sc.barra[0].v, 7);          // revisada: no es toca
+  assert.equal(sc.barra[0].v, 7);          // revisada (i més nova que la de l'altra còpia): no es toca
   assert.equal(sc.terra[0].v, 8.2);        // la taula l'havia esborrat: la de la tutora hi entra
   assert.equal(sc.mini[0].v, 7.5);         // dues de la taula: guanya la més nova
   assert.deepEqual(plain(ch.map(x => x.appId).sort()), ['mini', 'terra']);
@@ -381,6 +381,22 @@ test('fusió: una nota de tutora no trepitja mai la de la taula ni una de revisa
   assert.equal(E.guarded({ v: 8, by: 'tutor' }), false);
   assert.equal(E.guarded({ v: 8, by: 'tutor', ok: true }), true);
   assert.equal(E.guarded({ at: 5 }), false);
+});
+
+test('fusió: la tutora corregeix una nota just quan la taula la dona per revisada: la correcció no es perd', () => {
+  const mk = scores => ({ competitions: [{ id: 'k', entries: [{ id: 'e', scores }] }] });
+  // la taula ha revisat la de les 100 (8,5); el programa ja tenia la correcció de les 200 (9,5), que la taula no havia vist
+  const table = mk({ barra: [{ v: 8.5, at: 100, by: 'tutor', ok: true }] });
+  const program = mk({ barra: [{ v: 9.5, at: 200, by: 'tutor' }] });
+  const ch = E.mergeScores(table, program);
+  const a = table.competitions[0].entries[0].scores.barra[0];
+  assert.equal(a.v, 9.5);
+  assert.equal(!!a.ok, false);             // sense revisar: torna a sortir en groc
+  assert.equal(ch.length, 1);
+  // i al programa, quan hi arriba la revisió (la nota revisada és més vella): es queda la correcció
+  const program2 = mk({ barra: [{ v: 9.5, at: 200, by: 'tutor' }] });
+  assert.equal(E.mergeScores(mk({ barra: [{ v: 8.5, at: 100, by: 'tutor', ok: true }] }), program2).length, 1);
+  assert.equal(E.mergeScores(program2, mk({ barra: [{ v: 8.5, at: 100, by: 'tutor', ok: true }] })).length, 0);
 });
 
 test('nota massa alta: proposa on anava la coma', () => {

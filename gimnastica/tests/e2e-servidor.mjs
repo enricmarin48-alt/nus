@@ -263,19 +263,22 @@ try {
           await t.evaluate(() => scrollTo(0, 0)); await nap(100);
           // «Enviant N notes…» i les notes d'una altra competició que no s'han pogut enviar (a sota de la llista)
           const mid = await t.evaluate(async () => {
-            const q0 = tut.queue.slice(), on0 = tut.online, out = [];
+            // (la cua és la del mòbil: s'hi posen notes de mentida un moment, i després es torna a deixar com era)
+            const raw = localStorage.getItem('notesgim.tutor'), mine = [...tut.mine], on0 = tut.online, out = [];
             const fake = (n, comp) => Array.from({ length: n }, (_, k) => ({ compId: comp, entryId: 'e1', appId: 'salt', i: 0, value: 9, at: k + 1, label: 'x' }));
-            tut.online = true; tut.queue = fake(5, tutComp().id); tutStatusBar(); out.push(document.querySelector('#tutbanner').textContent.includes('Enviant'));
+            const put = q => localStorage.setItem('notesgim.tutor', JSON.stringify(Object.assign(JSON.parse(raw), { queue: q })));
+            tut.mine.clear();
+            tut.online = true; put(fake(5, tutComp().id)); tutStatusBar(); out.push(document.querySelector('#tutbanner').textContent.includes('Enviant'));
             out.push([...document.querySelectorAll('#scoregrid input.sc')].map(i => Math.round(i.getBoundingClientRect().y)).join(','));
-            tut.queue = fake(1, 'una-altra'); tutStatusBar(); out.push(!!document.querySelector('#tutstuck .note'));
+            put(fake(1, 'una-altra')); tutStatusBar(); out.push(!!document.querySelector('#tutstuck .note'));
             out.push([...document.querySelectorAll('#scoregrid input.sc')].map(i => Math.round(i.getBoundingClientRect().y)).join(','));
-            tut.queue = q0; tut.online = on0; tutStatusBar();
+            localStorage.setItem('notesgim.tutor', raw); for (const [k, v] of mine) tut.mine.set(k, v); tut.online = on0; tutStatusBar();
             return out;
           });
           assert.deepEqual(mid, [true, p0, true, p0], `${w} px: «Enviant…» i les notes que no s’han pogut enviar no mouen la llista`);
           // torna la connexió: s'envien i l'avís marxa, sense moure res
           await ctx.unroute('**/api/**');
-          await t.waitForFunction(() => !tut.queue.length && !document.querySelector('#tutbanner .banner'), null, { timeout: 20000 });
+          await t.waitForFunction(() => !tutQ().length && !document.querySelector('#tutbanner .banner'), null, { timeout: 20000 });
           await t.evaluate(() => scrollTo(0, 0)); await nap(200);
           assert.equal(await pos(), p0, `${w} px: quan torna la connexió la llista no es mou`);
           await nap(500);
@@ -303,16 +306,16 @@ try {
           assert.deepEqual(await geo(), g0, `${w}x${h}: la barra i el teclat no es mouen`);
           assert.equal(await t.evaluate(([x, y]) => document.elementFromPoint(x, y).closest('button').dataset.k, [k5.x + k5.width / 2, k5.y + 3]), '5', `${w}x${h}: el dit prem el 5`);
           await ctx.unroute('**/api/**');
-          await t.waitForFunction(() => !tut.queue.length && !document.querySelector('#qenet').textContent, null, { timeout: 20000 });
+          await t.waitForFunction(() => !tutQ().length && !document.querySelector('#qenet').textContent, null, { timeout: 20000 });
           assert.deepEqual(await geo(), g0, `${w}x${h}: quan torna la connexió tampoc`);
           await ctx.close();
         }
       });
 
-      await step('mòbil amb la pàgina de tutora oberta dues vegades: cada pestanya es queda amb el seu aparell (també en tornar-la a carregar) i les notes per enviar d’una no les esborra l’altra', async () => {
-        const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+      await step('mòbil amb la pàgina de tutora oberta dues vegades: cada pestanya es queda amb el seu aparell (també en tornar-la a carregar), la cua de notes és una sola i el que deixa una pestanya tancada ho envia l’altra', async () => {
+        const ph = await playwright.chromium.launchPersistentContext(path.join(out, 'perfil-dues-pestanyes'), { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
         try {
-          const B = await ph.newPage(); watch(B, 'pestanya B');
+          const B = ph.pages()[0] || await ph.newPage(); watch(B, 'pestanya B');
           await B.goto(`http://${lan.address}:${P2}/#codi=4321`); await B.waitForSelector('text=Quin aparell puntues?');
           await B.tap('button[data-act=tutApp][data-a=barra]'); await B.waitForSelector('#qe');
           const A = await ph.newPage(); watch(A, 'pestanya A');
@@ -320,28 +323,30 @@ try {
           // (una pestanya nova no fa servir l'aparell de l'altra: es torna a triar)
           await A.waitForSelector('text=Quin aparell puntues?');
           await A.tap('button[data-act=tutApp][data-a=terra]'); await A.waitForSelector('#qe');
-          // arriben notes d'altres tutores: totes dues pestanyes es tornen a pintar (i desen)
+          // arriben notes d'altres tutores: totes dues pestanyes es tornen a pintar
           for (let k = 0; k < 3; k++) { await post2({ entryId: 'e1' + k, appId: 'salt', value: 8 + k / 10 }); await nap(500); }
           await B.bringToFront(); await nap(800);
           await A.bringToFront(); await A.reload(); await A.waitForSelector('#qe');
           assert.ok((await A.textContent('.qe-app')).includes('Terra'), 'la pestanya A torna a Terra');
-          // A sense connexió desa una nota; B es torna a pintar i desa: la nota d'A continua guardada al mòbil
-          await A.route('**/api/**', r => r.abort('internetdisconnected'));
-          const eid = await A.evaluate(() => qe.entryId);
-          await A.tap('.qe-keys button[data-k="7"]'); await A.tap('#qesave');
-          await A.waitForFunction(() => tut.queue.length === 1 && !tut.online, null, { timeout: 15000 });
-          await post2({ entryId: 'e12', appId: 'salt', value: 9.3 }); await nap(1000);
-          await B.evaluate(() => { tutSave(); render(); });
-          assert.deepEqual(await B.evaluate(() => JSON.parse(localStorage.getItem('notesgim.tutor')).queue.map(q => q.entryId + ':' + q.appId + ':' + q.value)), [eid + ':terra:7']);
-          // el mòbil tanca la pestanya A abans que pugui enviar-la: una pestanya nova l'envia
-          await A.close();
-          const C = await ph.newPage(); watch(C, 'pestanya C');
-          await C.goto(`http://${lan.address}:${P2}/#codi=4321`); await C.waitForSelector('text=Quin aparell puntues?');
-          await C.waitForFunction(() => !tut.queue.length, null, { timeout: 15000 }); await nap(600);
-          assert.equal(fileScore(eid, 'terra'), 7);
-          await B.evaluate(() => { tutSave(); });
-          assert.equal(await B.evaluate(() => JSON.parse(localStorage.getItem('notesgim.tutor')).queue.length), 0, 'B no la torna a posar');
+          // el mòbil es queda sense Wi-Fi i A desa dues notes: B, on no s'ha escrit res, també diu que n'hi ha 2 al mòbil
+          await ph.route('**/api/**', r => r.abort('internetdisconnected'));
+          const e1 = await A.evaluate(() => qe.entryId);
+          await A.tap('.qe-keys button[data-k="7"]'); await A.tap('#qesave'); await nap(200);
+          const e2 = await A.evaluate(() => qe.entryId);
+          for (const k of ['7', ',', '2', '5']) await A.tap(`.qe-keys button[data-k="${k}"]`);
+          await A.tap('#qesave');
+          await A.waitForFunction(() => tutQ().length === 2 && !tut.online, null, { timeout: 15000 });
+          assert.ok(await A.evaluate(() => JSON.parse(localStorage.getItem('notesgim.tutor')).queue.every(q => q.id)), 'cada nota té el seu id des que s’escriu');
+          await B.waitForFunction(() => document.querySelector('#qenet').textContent.includes('2 al mòbil'), null, { timeout: 15000 });
+          // la tutora tanca A abans que les pugui enviar (al mòbil no avisa de res) i torna la Wi-Fi: les envia B
+          await A.close({ runBeforeUnload: false });
+          await ph.unroute('**/api/**');
+          await B.waitForFunction(() => !tutQ().length && document.querySelector('#tutstatus').textContent.includes('tot enviat'), null, { timeout: 20000 });
+          await nap(600);
+          assert.deepEqual([fileScore(e1, 'terra'), fileScore(e2, 'terra')], [7, 7.25]);
           assert.ok((await B.textContent('.qe-app')).includes('Barra'), 'la pestanya B continua a Barra');
+          await B.reload(); await B.waitForSelector('#qe');
+          assert.ok((await B.textContent('.qe-app')).includes('Barra'), 'i en tornar-la a carregar, també');
         } finally { await ph.close(); }
       });
 
@@ -766,6 +771,209 @@ try {
         if (T) await T.context().close();
         await kill(p);
       }
+    }
+
+    // ─── cinquena revisió: el mòbil de les tutores (la cua de notes és una sola per a tot el mòbil, i cada nota té el seu id)
+    {
+      const G12 = Array.from({ length: 12 }, (_, k) => G('g' + (k + 1), 'Nom' + (k + 1)));
+      const scoreOf = (f, id, app) => ((((read(f).competitions[0].entries.find(e => e.id === id) || {}).scores || {})[app] || [])[0]) || {};
+      const phone = (name, w = 390, h = 844) => playwright.chromium.launchPersistentContext(dirOf('perfil-' + name), { viewport: { width: w, height: h }, isMobile: true, hasTouch: true });
+      const enter = async (P, app = 'barra', pin = '4321') => {
+        await P.goto(`http://${lan.address}:${PORT}/#codi=${pin}`); await P.waitForSelector('text=Quin aparell puntues?');
+        await P.tap(`button[data-act=tutApp][data-a=${app}]`); await P.waitForSelector('#qe');
+      };
+      const typeSave = async (P, keys) => { for (const k of keys) await P.tap(`.qe-keys button[data-k="${k}"]`); await P.tap('#qesave'); await sleep(150); };
+      const server5 = async name => {
+        const f = path.join(dirOf(name), 'notesgim-dades.json');
+        writeFileSync(f, JSON.stringify(data('r5' + name, Date.now() - 60000, { gyms: G12 })));
+        const p = await run(f);
+        // (la finestra de la taula desa la competició una vegada: llavors el programa en té els aparells)
+        const T = await open(await windowCtx(), '#/competicio/k1/notes');
+        return { f, p, T };
+      };
+
+      await step('dues pestanyes al mòbil: la que estava adormida (mòbil bloquejat) no torna a enviar el que l’altra ja ha enviat, ni una nota que la taula ha esborrat ni la que la tutora ha corregit', async () => {
+        const { f, p, T } = await server5('adormida');
+        const ph = await phone('adormida');
+        try {
+          const A = ph.pages()[0] || await ph.newPage(); watch(A, 'r5 A');
+          await enter(A);
+          await A.route('**/api/**', r => r.abort('internetdisconnected'));
+          await typeSave(A, ['7', ',', '5']); await typeSave(A, ['8']); await typeSave(A, ['8', ',', '5']);
+          await A.waitForFunction(() => tutQ().length === 3 && !tut.online, null, { timeout: 15000 });
+          // (Chrome adorm la pestanya: aquí, amb el depurador; mentrestant no s'hi executa res)
+          const cdp = await ph.newCDPSession(A);
+          await cdp.send('Debugger.enable'); await cdp.send('Debugger.pause');
+          await A.unroute('**/api/**');
+          const B = await ph.newPage(); watch(B, 'r5 B');
+          await B.goto(`http://${lan.address}:${PORT}/#codi=4321`); await B.waitForSelector('text=Quin aparell puntues?');
+          await B.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.deepEqual(['e1', 'e2', 'e3'].map(e => scoreOf(f, e, 'barra').v), [7.5, 8, 8.5]);
+          // la taula esborra la del dorsal 2 (no era d'aquesta gimnasta) i la tutora corregeix a B la del 3
+          const c2 = '#scoregrid input.sc[data-e=e2][data-a=barra]';
+          await T.waitForSelector(c2 + '.tutor', { timeout: 10000 });
+          await T.click(c2); await T.keyboard.press('Backspace'); await T.keyboard.press('Enter');
+          for (let i = 0; i < 40 && scoreOf(f, 'e2', 'barra').v != null; i++) await sleep(250);
+          await B.tap('button[data-act=tutApp][data-a=barra]'); await B.waitForSelector('#qe');
+          await B.tap('.qe-strip button[data-id=e3]'); await sleep(200);
+          await typeSave(B, ['9', ',', '2', '5']);
+          await B.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(1200);
+          assert.deepEqual(['e1', 'e2', 'e3'].map(e => scoreOf(f, e, 'barra').v ?? null), [7.5, null, 9.25]);
+          // la pestanya A es desperta
+          await cdp.send('Debugger.resume'); await cdp.send('Debugger.disable');
+          await A.bringToFront(); await sleep(6000);
+          assert.equal(await A.evaluate(() => tutQ().length), 0);
+          assert.deepEqual(['e1', 'e2', 'e3'].map(e => scoreOf(f, e, 'barra').v ?? null), [7.5, null, 9.25], 'res no torna');
+        } finally { await ph.close(); await T.context().close(); await kill(p); }
+      });
+
+      await step('la taula canvia el codi mentre el mòbil té notes guardades: la pestanya del QR nou les envia, la vella no les torna a desar ni torna a posar el codi d’abans, i en tornar a carregar no s’envia res dues vegades', async () => {
+        const { f, p, T } = await server5('codi-nou');
+        const ph = await phone('codi-nou');
+        const posts = [];
+        ph.on('request', r => { if (r.url().includes('/api/score')) posts.push(JSON.parse(r.postData()).entryId); });
+        try {
+          const A = ph.pages()[0] || await ph.newPage(); watch(A, 'r5 codi A');
+          await enter(A);
+          await ph.route('**/api/**', r => r.abort('internetdisconnected'));
+          await typeSave(A, ['7', ',', '5']); await typeSave(A, ['8']);
+          await A.waitForFunction(() => tutQ().length === 2 && !tut.online, null, { timeout: 15000 });
+          await T.evaluate(() => { curComp().tutorPin = '9999'; commit(); }); await sleep(1200);
+          await ph.unroute('**/api/**');
+          await A.waitForSelector('#main >> text=2 notes guardades al mòbil sense enviar', { timeout: 30000 });
+          const B = await ph.newPage(); watch(B, 'r5 codi B');
+          await B.goto(`http://${lan.address}:${PORT}/#codi=9999`); await B.waitForSelector('text=Quin aparell puntues?');
+          await B.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(1000);
+          assert.deepEqual([scoreOf(f, 'e1', 'barra').v, scoreOf(f, 'e2', 'barra').v], [7.5, 8]);
+          // la pestanya vella ja no diu que n'hi ha per enviar; al mòbil hi ha el codi nou i la cua buida
+          await A.waitForFunction(() => !/sense enviar/.test(document.querySelector('#main').textContent), null, { timeout: 10000 });
+          assert.deepEqual(await B.evaluate(() => { const s = JSON.parse(localStorage.getItem('notesgim.tutor')); return [s.pin, s.queue.length]; }), ['9999', 0]);
+          const c2 = '#scoregrid input.sc[data-e=e2][data-a=barra]';
+          await T.waitForSelector(c2 + '.tutor', { timeout: 10000 });
+          await T.click(c2); await T.keyboard.press('Backspace'); await T.keyboard.press('Enter');
+          for (let i = 0; i < 40 && scoreOf(f, 'e2', 'barra').v != null; i++) await sleep(250);
+          await sleep(1500);
+          await A.close();
+          assert.deepEqual(await B.evaluate(() => { const s = JSON.parse(localStorage.getItem('notesgim.tutor')); return [s.pin, s.queue.length]; }), ['9999', 0]);
+          posts.length = 0;
+          await B.reload(); await B.waitForSelector('text=Quin aparell puntues?', { timeout: 15000 }); await sleep(3000);
+          assert.deepEqual(posts, [], 'no s’envia res més');
+          assert.equal(scoreOf(f, 'e2', 'barra').v ?? null, null, 'la nota esborrada no torna');
+        } finally { await ph.close(); await T.context().close(); await kill(p); }
+      });
+
+      await step('la llista de la tutora: si la taula canvia els dorsals, es torna a pintar (la nota va a la gimnasta que ara porta el dorsal); una nota refusada no treu el focus d’on s’escriu; i a mitja nota en segon pla, no es desa «8,» ni s’hi afegeix el que falta a «8,00»', async () => {
+        const { f, p, T } = await server5('llista');
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+        const posts = [];
+        ctx.on('request', r => { if (r.url().includes('/api/score')) { const b = JSON.parse(r.postData()); posts.push(b.entryId + '=' + b.value); } });
+        try {
+          const t = await ctx.newPage(); watch(t, 'r5 llista');
+          await enter(t); await t.tap('button[data-act=tutToggleList]'); await t.waitForSelector('#scoregrid input.sc');
+          const rows = () => t.evaluate(() => [...document.querySelectorAll('#scoregrid tbody tr')].map(tr => tr.cells[0].textContent + ':' + tr.dataset.row).join(' '));
+          // dues gimnastes portaven el dorsal de l'altra: la taula els canvia
+          await T.evaluate(() => { const c = curComp(); c.entries.find(e => e.id === 'e3').bib = 5; c.entries.find(e => e.id === 'e5').bib = 3; commit(); });
+          await t.waitForFunction(() => document.querySelector('#scoregrid tbody tr:nth-child(3)').dataset.row === 'e5', null, { timeout: 15000 });
+          assert.ok((await rows()).startsWith('1:e1 2:e2 3:e5 4:e4 5:e3 6:e6'), await rows());
+          await t.locator('#scoregrid tbody tr:nth-child(3) input.sc').tap(); await t.keyboard.type('9,1'); await t.keyboard.press('Enter');
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.deepEqual([scoreOf(f, 'e5', 'barra').v, scoreOf(f, 'e3', 'barra').v ?? null], [9.1, null]);
+          // si arriba mentre s'escriu en una casella, el dorsal de la fila ja es posa al dia (i el que s'escriu es queda)
+          await t.locator('#scoregrid input.sc[data-e=e1]').tap(); await t.keyboard.type('8');
+          await T.evaluate(() => { curComp().entries.find(e => e.id === 'e1').bib = 21; commit(); });
+          await t.waitForFunction(() => document.querySelector('#scoregrid tr[data-row=e1]').cells[0].textContent === '21', null, { timeout: 15000 });
+          assert.equal(await t.evaluate(() => document.activeElement.dataset.e + ':' + document.activeElement.value), 'e1:8');
+          await t.keyboard.press('Enter');
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.equal(scoreOf(f, 'e1', 'barra').v, 8);
+          // (quan se surt de les caselles, la llista es torna a pintar per dorsal)
+          await t.evaluate(() => document.activeElement.blur());
+          await t.waitForFunction(() => document.querySelector('#scoregrid tbody tr:last-child').dataset.row === 'e1', null, { timeout: 5000 });
+          // la taula revisa la nota d'una altra tutora just abans que aquesta la corregeixi (el seu mòbil encara no ho sap)
+          await tutorPost({ entryId: 'e8', appId: 'barra', value: 8, who: 'Laia' });
+          await t.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e8]').value === '8,00', null, { timeout: 10000 });
+          await t.locator('#scoregrid input.sc[data-e=e7]').tap(); await t.keyboard.type('8,25');
+          await t.route('**/api/tutor?**', r => (r.request().url().includes('since=') ? setTimeout(() => r.continue().catch(() => {}), 6000) : r.continue()));
+          await tutorPost({ entryId: 'e2', appId: 'salt', value: 7 });   // (acaba la consulta que hi ha en curs: la següent arriba tard)
+          await sleep(500);
+          await T.evaluate(() => { curComp().entries.find(x => x.id === 'e8').scores.barra[0].ok = true; commit(); });
+          await sleep(1000);
+          await t.keyboard.press('Enter'); await sleep(100);   // la del 7, desada; el focus al 8
+          await t.keyboard.type('8,75'); await t.keyboard.press('Enter');   // la taula no l'accepta (409); el focus al 9
+          await t.waitForSelector('.toast:has-text("revisada la taula")', { timeout: 10000 });
+          await sleep(300);
+          await t.keyboard.type('9,5');
+          assert.equal(await t.evaluate(() => document.activeElement.dataset.e + ':' + document.activeElement.value), 'e9:9,5');
+          await t.keyboard.press('Enter');
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.deepEqual([scoreOf(f, 'e7', 'barra').v, scoreOf(f, 'e8', 'barra').v, scoreOf(f, 'e9', 'barra').v], [8.25, 8, 9.5]);
+          await t.unroute('**/api/tutor?**');
+          // a mitja nota, la pàgina queda en segon pla (una trucada, la pantalla es bloqueja) i en torna
+          const hide = v => t.evaluate(v => { Object.defineProperty(document, 'visibilityState', { value: v, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); }, v);
+          const away = () => t.evaluate(() => { const el = document.activeElement; el.dispatchEvent(new FocusEvent('blur')); el.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); window.dispatchEvent(new FocusEvent('blur')); });
+          const back = () => t.evaluate(() => { const el = document.activeElement; window.dispatchEvent(new FocusEvent('focus')); el.dispatchEvent(new FocusEvent('focus')); el.dispatchEvent(new FocusEvent('focusin', { bubbles: true })); });
+          const cellNow = id => t.evaluate(id => { const i = document.querySelector(`#scoregrid input.sc[data-e=${id}]`); return [i.value, document.activeElement === i, i.selectionStart, i.selectionEnd]; }, id);
+          posts.length = 0;
+          await t.locator('#scoregrid input.sc[data-e=e10]').tap(); await t.keyboard.type('8,');
+          await hide('hidden'); await sleep(1200); await hide('visible');
+          assert.deepEqual(await cellNow('e10'), ['8,', true, 2, 2]);
+          await t.keyboard.type('5'); await t.keyboard.press('Enter');
+          // (amb «8» sí que es desa, però sense tocar el que s'hi veu; en tornar, el navegador hi torna a posar el focus)
+          await t.locator('#scoregrid input.sc[data-e=e11]').tap(); await t.keyboard.type('8');
+          await away(); await hide('hidden'); await sleep(1200); await hide('visible'); await back();
+          assert.deepEqual(await cellNow('e11'), ['8', true, 1, 1]);
+          await t.keyboard.type(',5'); await t.keyboard.press('Enter');
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.deepEqual(posts, ['e10=8.5', 'e11=8', 'e11=8.5']);
+          assert.deepEqual([scoreOf(f, 'e10', 'barra').v, scoreOf(f, 'e11', 'barra').v], [8.5, 8.5]);
+        } finally { await ctx.close(); await T.context().close(); await kill(p); }
+      });
+
+      await step('mòbil de la tutora: es torna a carregar i la primera petició es queda penjada («Connectant…», mai en blanc, i es torna a provar); la competició tancada una estona no fa oblidar el codi; i amb una sola nota, els avisos parlen d’una nota', async () => {
+        const { f, p, T } = await server5('codi-i-connexio');
+        const ph = await phone('codi-i-connexio', 360, 740);
+        const norm = async (P, sel) => (await P.textContent(sel)).replace(/\s+/g, ' ').trim();
+        try {
+          const t = ph.pages()[0] || await ph.newPage(); watch(t, 'r5 connexió');
+          await enter(t);
+          // (una petició que no respon mai: la Wi-Fi del pavelló)
+          let stall = 1; const held = [];
+          await ph.route('**/api/tutor?**', r => { if (stall > 0 && !r.request().url().includes('since=')) { stall--; held.push(r); return; } r.continue(); });
+          await t.reload({ waitUntil: 'domcontentloaded' });
+          await t.waitForSelector('#main >> text=Connectant amb l’ordinador de la taula', { timeout: 5000 });
+          await t.waitForSelector('#qe', { timeout: 25000 });
+          for (const r of held) await r.abort().catch(() => {});
+          await ph.unroute('**/api/tutor?**');
+          // la taula tanca la competició una estona; el mòbil es torna a carregar mentrestant
+          await T.click('button[data-act=toggleLock] >> nth=0');
+          await t.waitForSelector('input[name=pin]', { timeout: 30000 });
+          await t.reload(); await t.waitForSelector('input[name=pin]'); await sleep(800);
+          assert.equal(await t.inputValue('input[name=pin]'), '4321', 'no oblida el codi');
+          await T.click('button[data-act=toggleLock] >> nth=0');
+          await t.waitForSelector('#qe', { timeout: 20000 });
+          // una sola nota guardada al mòbil
+          await ph.route('**/api/**', r => r.abort('internetdisconnected'));
+          const eid = await t.evaluate(() => qe.entryId);
+          await typeSave(t, ['8', ',', '5']);
+          await t.waitForSelector('#tutbanner .banner', { timeout: 15000 });
+          assert.ok((await norm(t, '#tutbanner')).includes('1 nota guardada al mòbil: s’enviarà sola quan torni la Wi-Fi.'), await norm(t, '#tutbanner'));
+          await t.tap('button[data-act=tutLogout]'); await t.waitForSelector('#confirm[open]');
+          assert.ok((await norm(t, '#confirm')).includes('Si surts, es perdrà (digues-la a la taula)'), await norm(t, '#confirm'));
+          await t.click('#confirm button:has-text("Cancel·la")');
+          await t.reload({ waitUntil: 'domcontentloaded' });
+          await t.waitForSelector('#main >> text=1 nota guardada al mòbil', { timeout: 15000 });
+          assert.ok((await norm(t, '#main')).includes('1 nota guardada al mòbil: s’enviarà sola quan hi hagi connexió.'), await norm(t, '#main'));
+          // la taula canvia el codi i torna la Wi-Fi
+          await T.evaluate(() => { curComp().tutorPin = '9999'; commit(); }); await sleep(800);
+          await ph.unroute('**/api/**');
+          await t.waitForSelector('form .note.warn', { timeout: 20000 });
+          const login = await norm(t, 'form .note.warn');
+          for (const x of ['1 nota guardada al mòbil sense enviar.', 'S’enviarà sola si tornes a entrar', 'digues-la a la taula', 'Ja l’he dita a la taula']) assert.ok(login.includes(x), login);
+          await t.fill('input[name=pin]', '9999'); await t.tap('button:has-text("Entra")');
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.equal(scoreOf(f, eid, 'barra').v, 8.5);
+        } finally { await ph.close(); await T.context().close(); await kill(p); }
+      });
     }
 
     await step('dues còpies de les mateixes dades (Documents i un USB), canviades cada una un dia: s’obre la més nova tal com és (sense barrejar-hi res), l’altra es guarda i es diu què hi havia', async () => {

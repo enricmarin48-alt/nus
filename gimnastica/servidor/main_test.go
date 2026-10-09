@@ -755,3 +755,21 @@ func TestServedPageIsMarked(t *testing.T) {
 		t.Fatal("la pàgina servida no porta la marca")
 	}
 }
+
+// el programa recorda les notes de tutora ja posades encara que es torni a obrir (un mòbil que no va rebre la resposta)
+func TestTutorOpsSurviveRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	_ = os.WriteFile(path, []byte(sample), 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.sawOpLocked("op-abc")
+	s.mu.Unlock()
+	s2, err := newStore(path)
+	if err != nil || !s2.ops["op-abc"] {
+		t.Fatalf("la nota ja posada s'havia de recordar: %v %v", err, s2.ops)
+	}
+}

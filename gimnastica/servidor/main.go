@@ -71,6 +71,7 @@ type store struct {
 	waiters   []chan struct{}
 	ops       map[string]bool // les notes de tutora (op) que ja s'han posat: si el mòbil no rep la resposta i la torna a enviar, no es torna a posar
 	opList    []string
+	opsFile   string // on es guarden (al costat de les dades): així se'n recorda encara que es torni a obrir el programa
 }
 
 // recorda que s'ha posat la nota d'una tutora amb aquest id (les 5000 últimes)
@@ -84,6 +85,12 @@ func (s *store) sawOpLocked(op string) {
 	if !s.ops[op] {
 		s.ops[op] = true
 		s.opList = append(s.opList, op)
+		if s.opsFile != "" {
+			if f, err := os.OpenFile(s.opsFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+				_, _ = f.WriteString(op + "\n")
+				f.Close()
+			}
+		}
 	}
 	for len(s.opList) > 5000 {
 		delete(s.ops, s.opList[0])
@@ -91,8 +98,30 @@ func (s *store) sawOpLocked(op string) {
 	}
 }
 
+// les que ja s'havien posat abans d'obrir el programa (el fitxer es torna a escriure només amb les 5000 últimes)
+func (s *store) loadOps() {
+	b, err := os.ReadFile(s.opsFile)
+	if err != nil {
+		return
+	}
+	file := s.opsFile
+	s.opsFile = "" // (mentre es carreguen, no s'hi tornen a escriure)
+	lines := strings.Split(string(b), "\n")
+	for _, l := range lines {
+		if l = strings.TrimSpace(l); l != "" && len(l) <= 64 {
+			s.sawOpLocked(l)
+		}
+	}
+	s.opsFile = file
+	if len(lines) > 6000 {
+		_ = os.WriteFile(file, []byte(strings.Join(s.opList, "\n")+"\n"), 0o644)
+	}
+}
+
 func newStore(path string) (*store, error) {
 	s := &store{path: path, backups: filepath.Join(filepath.Dir(path), "copies-notesgim"), version: time.Now().UnixMilli(), dataRev: time.Now().UnixMilli() * 1000, quit: make(chan struct{})}
+	s.opsFile = strings.TrimSuffix(path, ".json") + "-notes-posades.txt"
+	s.loadOps()
 	b, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):

@@ -768,7 +768,7 @@ try {
       }
     }
 
-    await step('dues còpies de les mateixes dades (Documents i un USB), canviades cada una un dia: no es perd cap competició ni cap entitat, i es diu', async () => {
+    await step('dues còpies de les mateixes dades (Documents i un USB), canviades cada una un dia: s’obre la més nova tal com és (sense barrejar-hi res), l’altra es guarda i es diu què hi havia', async () => {
       const root = dirOf('dues-copies'), docs = path.join(root, 'Documents'), usb = path.join(root, 'USB');
       mkdirSync(docs); mkdirSync(usb);
       const D = path.join(docs, 'notesgim-dades.json'), U = path.join(usb, 'notesgim-dades.json');
@@ -795,20 +795,21 @@ try {
       // dia 4, a casa: s'obre el NotesGim de l'USB (per portar els resultats a casa) i després el de Documents
       p = await run(U); w = await open(casa);
       const t1 = await w.evaluate(() => window.__toasts.slice());
-      assert.ok(t1.some(x => x.includes('Fase 2 (preparada a casa)') && x.includes('Entitat nova de casa')), 'es diu què s’hi ha afegit: ' + JSON.stringify(t1));
+      assert.ok(t1.some(x => x.includes('altre lloc') && x.includes('Fase 2 (preparada a casa)') && x.includes('Entitat nova de casa')), 'es diu què només hi havia a l’altra: ' + JSON.stringify(t1));
+      const kept = await w.evaluate(async () => { const r = await idbGet('abansServidor'); return r && JSON.parse(r.raw); });
+      assert.ok(kept && kept.competitions.some(c => c.name === 'Fase 2 (preparada a casa)'), 'la de casa es guarda (es pot descarregar)');
       await sleep(1200); await w.close(); await kill(p);
+      const u = read(U);
+      assert.deepEqual(u.competitions.map(c => c.name), ['Fase 1'], 'res barrejat: la de l’USB, tal com és');
+      assert.ok(u.gymnasts.some(g => g.name === 'Carla')); assert.equal(u.competitions[0].entries[0].scores.salt[0].v, 8.5);
+      // a Documents hi va la mateixa (la finestra ja havia vist la de Documents: no hi ha res a dir)
       p = await run(D); w = await open(casa);
       await sleep(1200);
       assert.equal((await w.evaluate(() => window.__toasts.slice())).filter(x => /altre lloc|altra finestra/.test(x)).length, 0, 'en obrir Documents ja no hi ha res a dir');
       await w.close(); await kill(p);
-      for (const [nom, file] of [['Documents', D], ['USB', U]]) {
-        const d = read(file);
-        assert.deepEqual(d.competitions.map(c => c.name).sort(), ['Fase 1', 'Fase 2 (preparada a casa)'], nom);
-        assert.deepEqual(d.clubs.map(c => c.name).sort(), ['CG Lleida', 'Entitat nova de casa'], nom);
-        assert.ok(d.gymnasts.some(g => g.name === 'Carla'), nom);
-        assert.equal(d.competitions.find(c => c.id === 'k1').entries[0].scores.salt[0].v, 8.5, nom);
-        assert.equal(d.competitions.find(c => c.id === 'k2').entries.length, 1, nom);
-      }
+      const d = read(D);
+      assert.ok(d.gymnasts.some(g => g.name === 'Carla')); assert.equal(d.competitions.find(c => c.id === 'k1').entries[0].scores.salt[0].v, 8.5);
+      assert.ok(!d.competitions.some(c => c.id === 'k2') && !d.gymnasts.some((g, i, l) => l.findIndex(x => x.id === g.id) !== i), 'cap còpia barrejada ni repetida');
       // la mateixa finestra, sense canvis, torna a obrir el mateix fitxer: no diu res
       p = await run(D); w = await open(casa); await sleep(800);
       assert.equal((await w.evaluate(() => window.__toasts.slice())).length, 0);

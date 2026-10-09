@@ -2237,7 +2237,7 @@ function autoCompTeams(c, only) {
 }
 // canvia l'equip de la fitxa. value: id d'un equip, '__new' (equip nou amb el nom newName), '__none' (només
 // individual) o '' (automàtic: amb les de la seva entitat). Les competicions que segueixen la fitxa també canvien.
-function setGymTeam(g, value, newName) {
+function setGymTeam(g, value, newName, src = null) {
   let team = null;
   if (value === '__new') team = (String(newName || '').trim() && findTeam(g.clubId, g, newName)) || makeTeam(g.clubId, g, newName);
   else if (value && value !== '__none') team = teamById(value) || null;
@@ -2247,6 +2247,9 @@ function setGymTeam(g, value, newName) {
   for (const c of db.competitions.filter(followsRecords)) {
     const e = c.entries.find(x => x.gymnastId === g.id);
     if (!e) continue;
+    if (src && c !== src && src.date && c.date && c.date < src.date) continue;
+    // (una altra competició amb els equips que va dir l'entitat al full per a aquell dia: no es toca)
+    if (c !== src && c.teams.some(ct => ct.form === true && (ct.clubId || null) === (e.clubId || null) && sameGroup(ct, e))) continue;
     const before = e.teamId;
     if (team) { if (sameGroup(e, team)) { e.teamId = compTeamFor(c, team).id; delete e.noAuto; } }   // si aquell dia competeix en un altre grup, no es toca
     else if (value === '__none') { e.teamId = null; e.noAuto = true; }
@@ -2267,6 +2270,8 @@ function propagateTeam(team, removed = [], added = null, src = null) {
     let changed = false;
     // les còpies d'aquest equip a la competició (n'hi pot haver una del grup d'abans, si l'equip ha canviat de grup)
     const copies = c.teams.filter(x => x.sourceTeamId === team.id);
+    // (una altra competició on aquest equip és el que va dir l'entitat al full per a aquell dia: no es toca)
+    if (c !== src && copies.some(x => x.form === true)) continue;
     // l'equip ha canviat de grup: totes les seves gimnastes hi van
     const regroup = copies.length > 0 && !copies.some(x => sameGroup(x, team));
     for (const ct of copies) if (sameGroup(ct, team)) { ct.name = team.name; ct.clubId = team.clubId || null; }
@@ -2299,7 +2304,7 @@ function syncTeamToRecords(c, ct) {
   const removed = team.memberIds.filter(id => enrolled.has(id) && !inComp.includes(id));
   team.memberIds = team.memberIds.filter(id => !removed.includes(id));
   // (les que en surten i no són a cap altre equip queden com a «només individual», com a la competició)
-  for (const id of removed) { const g = gymById(id); if (g && !gymTeam(g)) g.noTeam = true; }
+  for (const id of removed) { const g = gymById(id), e = c.entries.find(x => x.gymnastId === id); if (g && !gymTeam(g) && !(e && e.teamId)) g.noTeam = true; }
   for (const id of inComp) { putInTeam(id, team); const g = gymById(id); if (g) delete g.noTeam; }
   return propagateTeam(team, removed, team.memberIds.filter(id => !before.includes(id)), c);
 }
@@ -2308,12 +2313,15 @@ function syncTeamToRecords(c, ct) {
 // el segon passa a dir-se «… 2».
 function mergeDupTeams() {
   const key = t => (t.clubId || '') + '|' + groupKeyOf(t) + '|' + norm(t.name);
-  const freeName = (list, t) => { for (let n = 2; ; n++) { const nm = `${t.name} ${n}`; if (!list.some(o => o !== t && key(o) === key(Object.assign({}, t, { name: nm })))) return nm; } };
+  // nom lliure: «CG Lleida 2» → «CG Lleida 3» (no «CG Lleida 2 2»)
+  const freeName = (list, t) => { const base = t.name.replace(/\s+\d+$/, '') || t.name; for (let n = 2; ; n++) { const nm = `${base} ${n}`; if (!list.some(o => o !== t && key(o) === key(Object.assign({}, t, { name: nm })))) return nm; } };
   const max = S().compDefaults.teamMax || 6;
   const keep = new Map(), remap = new Map(), renamed = new Set();
   for (const t of db.teams) {
     const o = keep.get(key(t));
     if (!o) { keep.set(key(t), t); continue; }
+    // (un equip que va dir l'entitat al full no s'ajunta amb un altre: el que canvia de nom és l'altre)
+    if ((o.form === true) !== (t.form === true)) { const other = o.form === true ? t : o; if (other === o) keep.set(key(t), t); other.name = freeName(db.teams, other); keep.set(key(other), other); renamed.add(other.id); continue; }
     if (new Set(o.memberIds.concat(t.memberIds)).size > max) { t.name = freeName(db.teams, t); keep.set(key(t), t); renamed.add(t.id); continue; }
     for (const id of t.memberIds) if (!o.memberIds.includes(id)) o.memberIds.push(id);
     if (t.form === true) o.form = true;
@@ -2334,7 +2342,7 @@ function mergeDupTeams() {
       if (!o) { kc.set(key(ct), ct); continue; }
       // (tampoc dues còpies d'equips diferents de la fitxa: cadascuna es queda el nom del seu equip, o «… 2»)
       const differ = o.sourceTeamId && ct.sourceTeamId && o.sourceTeamId !== ct.sourceTeamId;
-      if (past || differ || size(o) + size(ct) > (c.teamMax || max)) {
+      if (past || differ || size(o) + size(ct) > (c.teamMax || max) || isDeclared(o) !== isDeclared(ct)) {
         const m = !past && ct.sourceTeamId && teamById(ct.sourceTeamId);
         if (m && sameGroup(m, ct) && norm(m.name) !== norm(ct.name) && !kc.has(key(Object.assign({}, ct, { name: m.name })))) ct.name = m.name;
         else ct.name = freeName(c.teams, ct);
@@ -2784,13 +2792,15 @@ const cancelledNote = (c, list) => list.length ? `<p class="small ${''}">Equips 
 // pel nom i l'entitat): qui hi entra i qui en surt. Només s'avisa: les notes i la puntuació no canvien
 function teamPrevChange(c, ct) {
   const season = c.season || Engine.seasonFor(c.date);
-  if (!c.date || !season) return null;
-  const prevs = db.competitions.filter(x => x !== c && x.date && x.date < c.date && (x.season || Engine.seasonFor(x.date)) === season)
-    .sort((a, b) => b.date.localeCompare(a.date));
+  if (!season) return null;
+  // (les jornades del curs en el mateix ordre que el rànquing: per data i, el mateix dia, en l'ordre en què es van crear)
+  const all = db.competitions.filter(x => (x.season || Engine.seasonFor(x.date)) === season).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const prevs = all.slice(0, all.indexOf(c)).reverse();
   const now = new Set(c.entries.filter(e => e.teamId === ct.id).map(e => e.gymnastId).filter(Boolean));
   for (const p of prevs) {
+    // (pel nom només si un dels dos no és enllaçat a la fitxa o l'equip d'abans ja no hi és, com fa el rànquing)
     const pt = (ct.sourceTeamId && p.teams.find(t => t.sourceTeamId === ct.sourceTeamId && sameGroup(t, ct)))
-      || p.teams.find(t => sameGroup(t, ct) && norm(t.name) === norm(ct.name) && (t.clubId || null) === (ct.clubId || null));
+      || p.teams.find(t => sameGroup(t, ct) && norm(t.name) === norm(ct.name) && (t.clubId || null) === (ct.clubId || null) && (!ct.sourceTeamId || !t.sourceTeamId || !teamById(t.sourceTeamId)));
     if (!pt) continue;
     const before = new Set(p.entries.filter(e => e.teamId === pt.id).map(e => e.gymnastId).filter(Boolean));
     if (!before.size) continue;
@@ -2916,8 +2926,8 @@ function rankingData() {
   return { seasons, all, comps, groups: Engine.seasonRanking(comps, S(), { nameOf: entryName, teamGone: id => !teamById(id) }) };
 }
 const jLabel = (comps, c) => 'J' + (comps.indexOf(c) + 1);
-const gymNames = ids => ids.map(id => gymName(gymById(id))).join(', ');
-const chgTxt = x => [x.added.length ? `entra${x.added.length > 1 ? 'n' : ''} ${gymNames(x.added)}` : '', x.removed.length ? `en surt${x.removed.length > 1 ? 'en' : ''} ${gymNames(x.removed)}` : ''].filter(Boolean).join('; ');
+const gymNames = ids => { const l = ids.map(id => gymName(gymById(id))); return l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} i ${l[l.length - 1]}`; };
+const chgTxt = x => [x.added.length ? `${x.added.length > 1 ? 'entren' : 'entra'} ${gymNames(x.added)}` : '', x.removed.length ? `${x.removed.length > 1 ? 'en surten' : 'en surt'} ${gymNames(x.removed)}` : ''].filter(Boolean).join('; ');
 // canvis d'un equip del rànquing, d'una jornada a l'altra (només s'avisa: la puntuació continua sumant)
 const seasonChgTxt = (d, r) => (r.changes || []).map(x => { const c = compById(x.compId); return `${c ? jLabel(d.all, c) : '?'}: ${chgTxt(x)}`; }).join(' · ');
 // notes que falten en una competició (de totes les gimnastes que hi participen)
@@ -3022,7 +3032,8 @@ function teamSetMsg(g, r) {
   const t = r.team, n = t ? t.memberIds.length : 0, max = S().compDefaults.teamMax;
   const where = r.touched.length ? ` També a: ${r.touched.join(', ')}.` : '';
   return { type: n > max ? 'bad' : 'ok', msg: t ? `${gymName(g)} → ${t.name} (${plural(n, 'gimnasta', 'gimnastes')}).${where}${n > max ? ` Compte: el màxim és ${max}.` : ''}`
-    : g.noTeam ? `${gymName(g)}: només individual.${where}` : `${gymName(g)}: sense equip; quan s’inscrigui anirà amb les de la seva entitat.${where}` };
+    : g.noTeam ? `${gymName(g)}: només individual.${where}` : clubDeclared(null, g.clubId, g) ? `${gymName(g)}: sense equip. La seva entitat ja ha dit els seus equips en aquest grup al full d’inscripció: anirà com a individual (si cal, tria-li l’equip).${where}`
+    : `${gymName(g)}: sense equip; quan s’inscrigui anirà amb les de la seva entitat.${where}` };
 }
 const teamSetToast = (g, r) => { const m = teamSetMsg(g, r); toast(m.msg, m.type); };
 function gymTable() {
@@ -4605,7 +4616,12 @@ const actions = {
     // primer es mira si hi ha res a fer (en una còpia): si no, un sol avís i res per desfer
     const cur = db; db = probe; let res0;
     try { res0 = autoCompTeams(compById(c.id)); } finally { db = cur; }
-    if (!res0.made && !res0.placed) { toast(`No hi ha res a fer: totes les gimnastes que poden anar en equip ja hi són (cal que n’hi hagi com a mínim ${c.teamMin} d’una entitat al mateix grup).`); return; }
+    if (!res0.made && !res0.placed) {
+      const skipped = groupsOf(c).filter(g => [...new Set(g.entries.filter(e => !e.teamId && e.clubId && e.status !== 'np').map(e => e.clubId))].some(id => clubDeclared(c, id, g)));
+      toast(skipped.length ? `No hi ha res a fer. Les entitats que han dit els seus equips al full d’inscripció només tenen aquells equips: les altres gimnastes hi van com a individuals (si cal, posa-les a un equip a mà).`
+        : `No hi ha res a fer: totes les gimnastes que poden anar en equip ja hi són (cal que n’hi hagi com a mínim ${c.teamMin} d’una entitat al mateix grup).`);
+      return;
+    }
     let res;
     withUndo(() => `Equips fets: ${plural(res.made, 'equip nou', 'equips nous')} · ${plural(res.placed, 'gimnasta col·locada', 'gimnastes col·locades')} en equips.`, () => { res = autoCompTeams(c); });
   },
@@ -4915,9 +4931,11 @@ const actions = {
     const t = teamById(el.dataset.id);
     if (!t) return;
     closeDialog();
+    const declared = t.form === true || clubDeclared(null, t.clubId, t);
     const pick = await choiceBox(`Esborrar l’equip <b>${h(t.name)}</b>? Les gimnastes no s’esborren, i les competicions passades no canvien.<br><br>
-      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):`,
-      [{ value: 'auto', label: 'Es tornen a agrupar soles', cls: '' }, { value: 'solo', label: 'Queden com a individuals', cls: 'danger' }]);
+      Les seves gimnastes, a partir d’ara (també a les competicions d’avui o de més endavant):${declared ? '<br><span class="small muted">(És un equip que va dir l’entitat al full d’inscripció: les seves gimnastes queden com a individuals; si cal, posa-les a un altre equip a mà.)</span>' : ''}`,
+      declared ? [{ value: 'solo', label: 'Esborra’l (queden com a individuals)', cls: 'danger' }]
+        : [{ value: 'auto', label: 'Es tornen a agrupar soles', cls: '' }, { value: 'solo', label: 'Queden com a individuals', cls: 'danger' }]);
     if (!pick) return;
     withUndo(pick === 'solo' ? 'Equip esborrat: les seves gimnastes queden com a individuals.' : 'Equip esborrat: les seves gimnastes es tornen a agrupar soles.', () => {
       const ids = [...t.memberIds];
@@ -4941,6 +4959,7 @@ const actions = {
       ${props.length ? `<p class="small muted">Gimnastes sense equip, agrupades per entitat, categoria i nivell (mínim ${S().compDefaults.teamMin}, màxim ${S().compDefaults.teamMax}). Si en sobren, es reparteixen en més d’un equip. Desmarca els que no vulguis; després els pots retocar.</p>
       <div class="pick-list">${props.map((p, i) => `<label><input type="checkbox" name="p" value="${i}" checked> <b>${h(p.name)}</b> <span class="muted">${p.memberIds.map(id => h(gymName(gymById(id)))).join(', ')}</span></label>`).join('')}</div>`
       : `<p class="muted">No hi ha prou gimnastes sense equip de la mateixa entitat, categoria i nivell per fer-ne cap (calen com a mínim ${S().compDefaults.teamMin}).</p>`}
+      ${db.gymnasts.some(g => !g.archived && !g.noTeam && g.clubId && g.category && g.level && !gymTeam(g) && clubDeclared(null, g.clubId, g)) ? '<p class="small muted">Les entitats que han dit els seus equips al full d’inscripció només tenen aquells equips: no se’n fan d’altres en aquell grup (si cal, fes-los a mà).</p>' : ''}
       <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Tanca</button>${props.length ? '<button class="btn primary">Crea els marcats</button>' : ''}</div></form>`, { wide: true });
   },
 
@@ -5431,7 +5450,7 @@ const changes = {
       const acts = gym && !ct === !master && want !== gymTeamValue(gym) ? [{ label: 'També a la fitxa', fn: () => {
         const g2 = gymById(gym.id);   // (després d'un Desfés les dades són unes altres)
         if (!g2 || (want !== '__none' && !teamById(want))) { toast('Ja no es pot: les dades han canviat.', 'bad'); return; }
-        let r; withUndo(() => teamSetMsg(g2, r), () => { r = setGymTeam(g2, want); });
+        let r; withUndo(() => teamSetMsg(g2, r), () => { r = setGymTeam(g2, want, '', compById(c.id)); });
       } }] : [];
       const warn = n > c.teamMax ? ` Ara en té ${n} i el màxim és ${c.teamMax}: no classificarà fins que en tregueu.`
         : left && nl < c.teamMin && nl > 0 ? ` «${left.name}» es queda amb ${nl}: no arriba al mínim i quedarà anul·lat.` : '';

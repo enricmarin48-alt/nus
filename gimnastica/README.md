@@ -16,6 +16,9 @@ les mateixes dades (pots tancar la que no facis servir). Quan tanques la finestr
 tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»). Si un dia no pot escriure al fitxer
 (disc ple, un USB que s'ha tret), ho diu a dalt de la finestra i ho torna a provar sol; si el fitxer
 s'hagués malmès (p. ex. per un tall de llum), obre sol la còpia de seguretat més nova.
+Les dades de les versions de proves d'abans no es fan servir: la primera vegada, el programa les
+guarda apart (*notesgim-dades-proves-…json*, a la mateixa carpeta; es poden recuperar amb «Restaura
+una còpia…») i comença de zero.
 
 **Al mòbil o la tauleta: l'app instal·lada.** Obre l'adreça de l'opció B amb Chrome (Android) o
 Safari (iPhone/iPad) i instal·la-la (*Configuració → Instal·la NotesGim* explica els passos de cada
@@ -79,7 +82,12 @@ A la pantalla d'inici hi ha la competició del dia amb accés directe a Notes, C
 Inscripcions. Al mòbil, les seccions són a la barra de baix.
 
 Tot es pot editar o esborrar: fitxes, entitats, equips, competicions, inscripcions, notes,
-categories, nivells i aparells.
+categories, nivells i aparells. A cada llista (Gimnastes, Equips, Entitats, Competicions i les
+Inscripcions d'una competició) hi ha una casella a cada fila: marca les que vulguis, o
+**Marca-les totes** (només les que es veuen amb la cerca i els filtres), i **Esborra les marcades**
+les esborra d'un cop. Per començar de nou: *Configuració → Dades → 🗑 Esborra-ho tot…* (tries què:
+competicions, gimnastes i equips, entitats i, si vols, la configuració). Abans se'n fa una còpia, i
+amb **Desfés** tot torna.
 
 ## Categories
 

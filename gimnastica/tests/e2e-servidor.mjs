@@ -168,6 +168,94 @@ try {
     await tutor.waitForSelector('#scoregrid input.sc.locked');
   });
 
+  // ─── un altre programa (un altre port i un altre fitxer), amb 12 gimnastes: el que arriba de les tutores no mou res
+  // de lloc ni es menja cap clic ni cap xifra
+  {
+    const P2 = 18781, dir2 = path.join(out, 'tutores-focus'), file2 = path.join(dir2, 'notesgim-dades.json');
+    mkdirSync(dir2, { recursive: true });
+    const gyms = [], ents = [];
+    for (let i = 1; i <= 12; i++) {
+      gyms.push({ id: 'g' + i, name: 'Nom' + i, surname: 'Cognom' + i, clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A' });
+      ents.push({ id: 'e' + i, gymnastId: 'g' + i, clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib: i, status: '', scores: {} });
+    }
+    writeFileSync(file2, JSON.stringify({ app: 'notesgim', version: 1, settings: { dataGen: 2 }, clubs: [{ id: 'c1', name: 'CG Lleida' }], gymnasts: gyms, teams: [],
+      competitions: [{ id: 'k1', name: 'Fase de prova', date: '2027-01-22', place: 'Lleida', season: '2026-2027', tutorsOn: true, tutorPin: '4321', entries: ents, teams: [] }],
+      meta: { updated: new Date().toISOString() } }));
+    const p2 = spawn(bin, ['-dades', file2, '-port', String(P2), '-sense-navegador'], { stdio: 'pipe' });
+    const stop2 = () => new Promise(r => { if (p2.exitCode !== null || p2.signalCode !== null) r(); else { p2.once('exit', r); p2.kill(); } });
+    const post2 = body => fetch(`http://${lan.address}:${P2}/api/score`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ pin: '4321', compId: 'k1', i: 0, who: 'Laia' }, body)) });
+    try {
+      for (let i = 0; i < 50; i++) { try { if ((await fetch(`http://127.0.0.1:${P2}/api/info`)).ok) break; } catch {} await new Promise(r => setTimeout(r, 100)); }
+      const a2 = await (await browser.newContext({ viewport: { width: 1024, height: 900 } })).newPage();
+      watch(a2, 'taula 2');
+      await a2.goto(`http://127.0.0.1:${P2}/#/competicio/k1/notes`);
+      await a2.waitForSelector('#scoregrid'); await a2.waitForSelector('text=Desat al fitxer'); await new Promise(r => setTimeout(r, 800));
+
+      await step('taula (1024 px): la primera nota de les tutores no fa baixar la graella (el botó «Dona per revisada» ja hi té lloc)', async () => {
+        const target = a2.locator('#scoregrid input.sc[data-e=e6][data-a=terra]');
+        const b0 = await target.boundingBox();
+        await post2({ entryId: 'e2', appId: 'salt', value: 9 });
+        await a2.waitForSelector('#tutorreview:not(.invis)');
+        assert.equal(Math.round((await target.boundingBox()).y), Math.round(b0.y));
+        await a2.mouse.click(b0.x + b0.width / 2, b0.y + 4);
+        assert.equal(await a2.evaluate(() => document.activeElement.dataset.e), 'e6');
+        await a2.keyboard.type('8,7'); await a2.keyboard.press('Enter'); await new Promise(r => setTimeout(r, 300));
+        assert.equal(await a2.evaluate(() => curComp().entries.find(e => e.id === 'e6').scores.terra[0].v), 8.7);
+        // en revisar-les, el botó s'amaga però la graella tampoc no puja
+        const b1 = await target.boundingBox();
+        await a2.click('#tutorreview'); await a2.waitForSelector('#tutorreview.invis', { state: 'attached' });
+        assert.equal(Math.round((await target.boundingBox()).y), Math.round(b1.y));
+      });
+
+      await step('taula: si la tutora corregeix la nota de la casella on hi ha el focus (sense escriure-hi res), la casella mostra la nova', async () => {
+        const cell = a2.locator('#scoregrid input.sc[data-e=e3][data-a=salt]');
+        await post2({ entryId: 'e3', appId: 'salt', value: 8 });
+        await a2.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e3][data-a=salt]').value === '8,00');
+        await cell.click(); await new Promise(r => setTimeout(r, 200));
+        await post2({ entryId: 'e3', appId: 'salt', value: 9 });
+        await a2.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e3][data-a=salt]').value === '9,00', null, { timeout: 8000 });
+        assert.ok(await cell.evaluate(el => el === document.activeElement && el.classList.contains('tutor')));
+        await a2.keyboard.press('Tab'); await new Promise(r => setTimeout(r, 1200));
+        assert.equal(await cell.inputValue(), '9,00');
+        assert.equal(await a2.textContent('[data-out="tot:e3"]'), '9,00');
+        assert.equal(JSON.parse(readFileSync(file2, 'utf8')).competitions[0].entries.find(e => e.id === 'e3').scores.salt[0].v, 9);
+      });
+
+      await step('taula, «Entrada ràpida» amb el ratolí: una nota d’una tutora a mig clic no es menja cap xifra (8,5 es desa 8,5)', async () => {
+        await a2.click('button[data-act=toggleQe]'); await a2.waitForSelector('#qe');
+        const q = await a2.evaluate(() => ({ id: qe.entryId, app: qeCtx().a.id, other: qeCtx().list.find(e => e.id !== qe.entryId).id }));
+        for (const k of ['8', ',', '5']) {
+          const b = await a2.locator(`#qe button[data-act=qeKey][data-k="${k}"]`).boundingBox();
+          await a2.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await a2.mouse.down();
+          if (k === '5') { await post2({ entryId: q.other, appId: q.app, value: 9 }); await a2.waitForFunction(([id, app]) => (((curComp().entries.find(e => e.id === id).scores || {})[app] || [])[0] || {}).v === 9, [q.other, q.app], { timeout: 8000 }); }
+          await new Promise(r => setTimeout(r, 80)); await a2.mouse.up(); await new Promise(r => setTimeout(r, 60));
+        }
+        assert.equal(await a2.textContent('#qedisp'), '8,5');
+        await a2.click('#qesave'); await new Promise(r => setTimeout(r, 300));
+        assert.equal(await a2.evaluate(([id, app]) => curComp().entries.find(e => e.id === id).scores[app][0].v, [q.id, q.app]), 8.5);
+        await a2.click('button[data-act=toggleQe]');
+      });
+
+      await step('mòbil de la tutora, teclat gran: quan surt «Sense connexió…» el teclat no es mou (el dit prem la tecla que volia)', async () => {
+        const t3 = await (await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })).newPage();
+        watch(t3, 'tutora 3');
+        await t3.goto(`http://${lan.address}:${P2}/#codi=4321`); await t3.waitForSelector('text=Quin aparell puntues?');
+        await t3.tap('button[data-act=tutApp][data-a=terra]'); await t3.waitForSelector('#qe');
+        const key = () => t3.locator('.qe-keys button[data-k="5"]').boundingBox();
+        const b0 = await key();
+        await stop2();
+        await t3.waitForSelector('#tutbanner .banner', { timeout: 15000 });
+        assert.equal(Math.round((await key()).y), Math.round(b0.y));
+        assert.equal(await t3.evaluate(([x, y]) => { const b = document.elementFromPoint(x, y).closest('button'); return b && b.dataset.k; }, [b0.x + b0.width / 2, b0.y + b0.height / 2]), '5');
+        // (l'avís es veu, a la franja de dalt)
+        const bn = await t3.locator('#tutbanner .banner').boundingBox();
+        assert.ok(bn.y >= 0 && bn.y + bn.height <= 60, JSON.stringify(bn));
+        await t3.close();
+      });
+      await a2.close();
+    } finally { await stop2(); }
+  }
+
   await step('al fitxer del servidor hi ha les notes', async () => {
     await new Promise(r => setTimeout(r, 600));
     const d = JSON.parse(readFileSync(dataFile, 'utf8'));

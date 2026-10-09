@@ -137,6 +137,11 @@
   th.c-sel,td.c-sel{width:28px;text-align:center}
   .selbar{margin-bottom:10px}
   .selbar .invis{visibility:hidden}
+  /* «Dona per revisades…»: sempre a la seva línia, d'una sola ratlla (si no hi ha res per revisar, amagat però hi és) */
+  .tutrev{display:flex;margin-top:6px}
+  .tutrev .btn{max-width:100%;white-space:nowrap}
+  .tutrev .btn span{overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .tutrev .invis{visibility:hidden}
   .comp-sel{display:inline-flex;vertical-align:-2px;margin-right:4px}
   .chg{color:var(--warn);font-weight:600;margin-top:2px;white-space:normal}
   .badge.bad{background:var(--bad-soft);color:var(--bad)}
@@ -301,6 +306,8 @@
     table.cardify td{display:block;padding:0;border:0}
     table.cardify select,table.cardify input[type=text]{width:100%;max-width:none}
     .selbar label.chk{order:1;flex:1 1 auto}.selbar [data-act=selNone]{order:2}.selbar .btn.danger{order:3;flex:1 1 100%;justify-content:center}
+    /* (sempre d'una ratlla: quan s'hi afegeix el nombre de marcades, la barra no creix i la llista no baixa) */
+    .selbar .btn.danger{white-space:nowrap;min-width:0}.selbar .btn.danger .ell{overflow:hidden;text-overflow:ellipsis;min-width:0}
     table.ins tr{grid-template-columns:28px 60px minmax(0,1fr) 44px;grid-template-areas:"sel bib name del" "sel bib team team" "sel bib st st"}
     table.ins .c-sel{grid-area:sel}.ins .c-bib{grid-area:bib}.ins .c-name{grid-area:name}.ins .c-del{grid-area:del}.ins .c-team{grid-area:team}.ins .c-st{grid-area:st}
     table.ins .c-bib input{width:100%}
@@ -356,8 +363,11 @@
     #tutbanner .banner{padding:4px 10px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     body.kb dialog#dlg .dlg-actions{position:static;margin-bottom:0}
   }
-  /* amb el teclat gran, l'avís de connexió de la tutora no flota a sobre (es veu a la barra de l'aparell) */
-  body.has-qe #tutbanner{position:static}
+  /* amb el teclat gran, l'avís de connexió de la tutora (que també es veu a la barra de l'aparell) surt a la franja de
+     dalt, per sobre del nom de l'app, i no ocupa lloc a la pàgina: si n'ocupés, el teclat baixaria just quan s'hi toca
+     i el dit premeria una altra tecla */
+  body.has-qe #tutbanner{position:fixed;top:0;left:0;right:0;z-index:21;padding:calc(6px + env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 0 max(8px,env(safe-area-inset-left));pointer-events:none}
+  body.has-qe #tutbanner .banner{margin:0;padding:7px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 2px 8px rgba(10,20,40,.18)}
   .qe-net{font-size:12px;font-weight:700;background:rgba(0,0,0,.28);border-radius:6px;padding:2px 6px;margin-left:auto}
   .qe-net:empty{display:none}
   .qe-net:not(:empty) + small{margin-left:8px}
@@ -1588,7 +1598,10 @@ const prefGet = k => { try { return localStorage.getItem('notesgim.pref.' + k); 
 const prefSet = (k, v) => { try { localStorage.setItem('notesgim.pref.' + k, v); } catch (_) {} };
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // «d’una gimnasta», «d’11 competicions», «de 3 gimnastes» (noms femenins)
-const deN = (n, one, many) => (n === 1 ? `d’una ${one}` : `${n === 11 ? 'd’' : 'de '}${n} ${many}`);
+const deQ = (n, one, many) => (n === 1 ? `d’una ${one}` : `${n === 11 ? 'd’' : 'de '}${n} ${many}`);
+// «de» davant d'un nom: «d’» si comença per vocal o h i vocal («d’Interclubs», «d’Hostalric»), però no si és una i o
+// una u que va davant d'una altra vocal («de Iolanda», «de Huelva»)
+const deN = s => (/^h?[aeiouàèéíïòóúü]/i.test(s) && !/^h?[iu][aeiouàèéíòóú]/i.test(s) ? 'd’' : 'de ') + s;
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof s === 'string' ? s : ''); return m ? `${m[3]}/${m[2]}/${m[1]}` : h(s || ''); };
 const ordinal = n => ({ 1: '1r', 2: '2n', 3: '3r', 4: '4t' }[n] || n + 'è');
@@ -2042,6 +2055,17 @@ addEventListener('afterprint', () => keepAlive(0));
 const typingScore = () => { const el = document.activeElement; return !!(el && el.matches && el.matches('input.sc') && el.dataset.last !== el.value); };
 // s'està escrivint en un camp de text de la pàgina (un nom, un dorsal…): no es torna a dibuixar a sota
 const editing = () => { const el = document.activeElement; return !!(el && el.closest && el.closest('#main') && el.matches('input:not([type=checkbox]):not([type=radio]):not(.sc),textarea')); };
+// s'hi ha escrit (una nota, un nom, una hora…) i encara no s'ha desat: no es torna a pintar a sota (es perdria el que
+// s'escriu). Una hora, fins que se'n surt: el navegador avisa d'un canvi a cada part (l'hora, els minuts) i, si es
+// tornés a pintar, el que s'escrivís després aniria a parar a l'hora
+const typing = () => {
+  const el = document.activeElement;
+  if (!(el && el.closest && el.closest('#main'))) return false;
+  if (el.matches('input.sc')) return el.dataset.last !== el.value;
+  if (!el.matches('input:not([type=checkbox]):not([type=radio]),textarea')) return false;
+  return el.value !== (el.type !== 'time' && el._saved !== undefined ? el._saved : el.defaultValue);
+};
+document.addEventListener('change', e => { const t = e.target; if (t && t.matches && t.matches('input,textarea')) t._saved = t.value; }, true);
 const dialogOpen = () => !!(($('#dlg') || {}).open || ($('#confirm') || {}).open);
 const tutorTitle = a => a && a.by === 'tutor' ? `Nota entrada per ${a.who ? 'la tutora ' + a.who : 'una tutora'}${a.at ? ' a les ' + new Date(a.at).toLocaleTimeString('ca', { hour: '2-digit', minute: '2-digit' }) : ''}. Si la canvies, compta com a revisada.` : '';
 // arriben notes noves del servidor (de les tutores): s'afegeixen sense trepitjar el que s'està escrivint.
@@ -2070,29 +2094,39 @@ function applyRemote(remoteDb, rev) {
       const e = c.entries.find(x => x.id === ch.entryId);
       if (!e) continue;
       const a = att(e, { id: ch.appId }, ch.i);
-      $$(`#scoregrid input.sc[data-e="${e.id}"][data-a="${ch.appId}"][data-i="${ch.i}"]`).forEach(inp => {
-        if (inp === document.activeElement) return;
-        const m = Engine.toM(a[inp.dataset.f]);
-        inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value;
-        inp.classList.toggle('tutor', a.by === 'tutor' && !a.ok); inp.title = tutorTitle(a);
-      });
+      $$(`#scoregrid input.sc[data-e="${e.id}"][data-a="${ch.appId}"][data-i="${ch.i}"]`).forEach(inp => scShow(inp, a));
       refreshScoreRow(c, e);
     }
-    const tb = $('#tutorreview'); if (tb) tb.outerHTML = tutorReviewBtn(c, groupsOf(c).find(x => x.key === ui.group));
+    tutorReviewRefresh(c);
     toast(`${plural(changed.length, 'nota nova', 'notes noves')} de les tutores.`);
   } else if (dialogOpen() || editing()) server.deferred = true;
   else renderKeepFocus();
 }
 // el que ha arribat mentre hi havia un diàleg obert o s'escrivia un nom: es mostra quan s'acaba
-// (mai amb el botó del ratolí o el dit a mig clic: si es tornés a pintar entre «prémer» i «deixar anar», el clic es perdria)
-let ptrDown = false;
+// (mai amb el botó del ratolí o el dit a mig clic, amb l'Espai o l'Intro premuts, ni amb un menú ⋯ obert: si es tornés a
+// pintar entre «prémer» i «deixar anar», el clic o la tecla anirien a parar a un botó que ja no hi és, o a un altre)
+// (keyAt: la tecla premuda; si no arriba a la pàgina el «deixar anar» —p. ex. perquè s'ha obert la finestra
+// d'imprimir—, al cap d'un moment ja no compta: mentre es manté premuda, el navegador la repeteix)
+let ptrDown = false, keyAt = 0, tapAt = 0;
+const inHand = () => ptrDown || (keyAt > 0 && Date.now() - keyAt < 1500) || (tapAt > 0 && Date.now() - tapAt < 600) || !!$('.menu.open');
 document.addEventListener('pointerdown', () => { ptrDown = true; }, true);
-document.addEventListener('pointerup', () => { ptrDown = false; applyDeferred(); }, true);
-document.addEventListener('pointercancel', () => { ptrDown = false; applyDeferred(); }, true);
+// (amb el dit, el clic arriba després de deixar anar: s'espera el clic)
+document.addEventListener('pointerup', e => { ptrDown = false; tapAt = e.pointerType === 'mouse' ? 0 : Date.now(); applyDeferred(); if (tapAt) setTimeout(applyDeferred, 650); }, true);
+document.addEventListener('pointercancel', () => { ptrDown = false; tapAt = 0; applyDeferred(); }, true);
+document.addEventListener('click', () => { if (tapAt) { tapAt = 0; applyDeferred(); } }, true);
+// (un desplegable obert amb el ratolí no torna el «deixar anar» a la pàgina: quan es mou el ratolí sense cap botó, ja s'ha acabat)
+document.addEventListener('pointermove', e => { if (ptrDown && !e.buttons && e.pointerType === 'mouse') { ptrDown = false; applyDeferred(); } }, true);
+document.addEventListener('change', e => { if (ptrDown && e.target && e.target.tagName === 'SELECT') ptrDown = false; }, true);
+document.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { keyAt = Date.now(); setTimeout(applyDeferred, 1600); } }, true);
+document.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') { keyAt = 0; applyDeferred(); } }, true);
+addEventListener('blur', () => { ptrDown = false; keyAt = tapAt = 0; applyDeferred(); });
+// keepLater: una pintada d'aquí mateix (renderKeepFocus) que ha arribat a mig clic o amb una nota a mig escriure
+let keepLater = false;
 function applyDeferred() {
   setTimeout(() => {
-    if (!server.deferred || ptrDown || dialogOpen() || editing() || typingScore()) return;
-    server.deferred = false; renderKeepFocus();
+    if (inHand() || typing()) return;
+    if (server.deferred && !dialogOpen() && !editing()) { server.deferred = false; keepLater = false; renderSame(); }
+    else if (keepLater) { keepLater = false; renderSame(); }
   }, 0);
 }
 document.addEventListener('focusout', applyDeferred);
@@ -2104,9 +2138,30 @@ function tutorPending(c, g) {
   for (const e of (g ? g.entries : c.entries)) for (const list of Object.values(e.scores || {})) for (const a of list || []) if (a && a.by === 'tutor' && !a.ok && a.v !== undefined && a.v !== null) n++;
   return n;
 }
+// (el botó hi és sempre, amagat si no hi ha cap nota per revisar, i en una línia seva que no canvia d'alçada: si
+// aparegués a la línia del codi, la graella o el teclat baixarien just quan s'hi clica i el clic aniria a una altra gimnasta)
+const tutorReviewTxt = n => `✓ Dona per revisada${n === 1 ? ' la nota' : `s les ${n} notes`} de les tutores`;
 function tutorReviewBtn(c, g) {
   const n = g ? tutorPending(c, g) : 0;
-  return n ? `<button class="btn sm" id="tutorreview" data-act="reviewTutor" title="Les notes que han entrat les tutores surten amb fons groc fins que les dones per revisades (o les canvies)">✓ Dona per revisada${n === 1 ? ' la nota' : `s les ${n} notes`} de les tutores</button>` : '<span id="tutorreview"></span>';
+  return `<div class="tutrev"><button class="btn sm ${n ? '' : 'invis'}" id="tutorreview" data-act="reviewTutor" ${n ? '' : 'disabled aria-hidden="true" tabindex="-1"'} title="Les notes que han entrat les tutores surten amb fons groc fins que les dones per revisades (o les canvies)"><span>${tutorReviewTxt(n)}</span></button></div>`;
+}
+// el mateix botó, posat al dia sense refer-lo (un clic que hi arriba just ara no es perd)
+function tutorReviewRefresh(c) {
+  const tb = $('#tutorreview'); if (!tb) return;
+  const g = groupsOf(c).find(x => x.key === ui.group), n = g ? tutorPending(c, g) : 0;
+  tb.firstElementChild.textContent = tutorReviewTxt(n);
+  tb.classList.toggle('invis', !n); tb.disabled = !n;
+  if (n) { tb.removeAttribute('aria-hidden'); tb.removeAttribute('tabindex'); } else { tb.setAttribute('aria-hidden', 'true'); tb.tabIndex = -1; }
+}
+// una casella de nota de la graella mostra el que hi ha desat (a: l'intent). També la que té el focus si no s'hi ha
+// escrit res (es torna a seleccionar); si s'hi ha escrit, es deixa com està i es posa al dia en sortir-ne sense desar
+function scShow(inp, a) {
+  const on = inp === document.activeElement;
+  if (on && (inp.value !== inp.dataset.last || inp._typed)) { inp._stale = true; return; }
+  const m = Engine.toM(a[inp.dataset.f]);
+  inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value; inp._stale = false;
+  inp.classList.toggle('tutor', a.by === 'tutor' && !a.ok); inp.title = tutorTitle(a);
+  if (on) inp.select();
 }
 
 // si es tanca la finestra amb una nota escrita però sense Intro, també es desa
@@ -2502,7 +2557,7 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace
   const stamp = db.meta.updated;
   let L = typeof label === 'function' ? label() : label;
   if (L && typeof L === 'object') { type = L.type || type; actions = L.actions || actions; L = L.msg; }
-  try { render(); } finally {
+  try { renderSame(); } finally {
     toast(L, type, { actions: [{ label: 'Desfés', fn: () => {
       if (db.meta.updated !== stamp) { toast('Ja no es pot desfer: s’han fet altres canvis després.', 'bad'); return; }
       if (beforeRestore) beforeRestore();
@@ -2511,7 +2566,7 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace
       db = migrate(JSON.parse(snap));
       Engine.mergeScores(db, cur, { since: Date.parse(stamp) || 0 });
       if (replace && server.on) { server.replaceNext = true; server.replaceAt = Date.now(); }
-      commit(); render(); toast('Desfet.');
+      commit(); renderSame(); toast('Desfet.');
     } }, ...actions] });
   }
 }
@@ -2519,23 +2574,29 @@ function withUndo(label, fn, { beforeRestore, type = 'ok', actions = [], replace
 /* ═══════════════════════════════════════════ render general */
 // torna a pintar però deixa el focus on l'usuari l'ha posat (p. ex. Tab després d'editar una casella de configuració)
 // (data-id: el de la mateixa fila; si no hi és, el focus no va a parar a una altra fila. data-g: el del mateix grup
-// o gènere; data-what i data-types: quin dels botons d'imprimir)
-const FOCUS_KEYS = ['data-chg', 'data-inp', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'data-e', 'data-a', 'data-f', 'data-s', 'data-x', 'data-cat', 'data-id', 'data-g', 'data-what', 'data-types', 'id', 'name'];
+// o gènere; data-what i data-types: quin dels botons d'imprimir; href: quin enllaç, p. ex. la pestanya «Notes 3/462»,
+// que no es pot buscar pel text perquè el nombre canvia)
+const FOCUS_KEYS = ['data-chg', 'data-inp', 'data-i', 'data-k', 'data-key', 'data-act', 'data-scope', 'data-d', 'data-e', 'data-a', 'data-f', 'data-s', 'data-x', 'data-cat', 'data-id', 'data-g', 'data-what', 'data-types', 'id', 'name', 'href'];
 const FOCUS_SEL = 'input, select, button, textarea, summary, a[href]';
 // ids que acaben de canviar (una subdivisió «nova» de les rotacions es desa amb un id de debò): el focus els segueix.
 // Només valen fins a la pintada següent (després, un id «auto-…» pot ser el d'una altra subdivisió)
 const focusIds = new Map();
 // on és el focus dins de root: els atributs (FOCUS_KEYS) i, si n'hi ha més d'un d'igual (p. ex. dos «Imprimeix»),
-// quin d'ells; el <summary> d'un desplegable o un enllaç sense cap d'aquests atributs, pel text (un altre camp sense
-// atributs no es pot saber quin és: no es torna a posar enlloc)
+// quin d'ells; el <summary> d'un desplegable sense cap d'aquests atributs, pel text (un altre camp sense atributs no es
+// pot saber quin és: no es torna a posar enlloc). D'un camp de text, també el que hi ha escrit i on és el cursor.
 function focusMark(root) {
   const a = document.activeElement;
   if (!root || !a || a === document.body || !a.getAttribute || !root.contains(a)) return null;
   const key = FOCUS_KEYS.map(k => a.getAttribute(k)), bare = key.every(v => v === null);
-  if (bare && a.tagName !== 'SUMMARY' && a.tagName !== 'A') return null;
+  if (bare && a.tagName !== 'SUMMARY') return null;
   const txt = bare ? a.textContent.trim() : null;
   const same = focusSame(root, a.tagName, key, txt);
-  return { tag: a.tagName, key, txt, n: same.indexOf(a), of: same.length };
+  const m = { tag: a.tagName, key, txt, n: same.indexOf(a), of: same.length };
+  if (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|reset|file|hidden|color|range)$/.test(a.type))) {
+    m.val = a.value; m.base = a.matches('input.sc') ? a.dataset.last : a.defaultValue;
+    try { m.sel = a.selectionStart === null ? null : [a.selectionStart, a.selectionEnd, a.selectionDirection]; } catch (_) { m.sel = null; }
+  }
+  return m;
 }
 const focusSame = (root, tag, key, txt) => [...root.querySelectorAll(FOCUS_SEL)].filter(x => (txt === null ? FOCUS_KEYS.every((k, i) => x.getAttribute(k) === key[i])
   : x.tagName === tag && FOCUS_KEYS.every(k => x.getAttribute(k) === null) && x.textContent.trim() === txt));
@@ -2550,14 +2611,34 @@ function focusBack(root, m, ids = null, set = null, scroll = false) {
   const el = same.length === m.of ? same[m.n] : m.txt === null ? same[0] : null;
   if (!el || el.disabled) return null;
   el.focus({ preventScroll: !scroll });
-  if (el.tagName === 'INPUT' && el.type !== 'checkbox' && typeof el.select === 'function') el.select();
+  if (m.val !== undefined && 'value' in el) {
+    // la nota que s'hi estava escrivint es queda (si la desada no ha canviat: es desa en sortir-ne o amb Intro), i el
+    // cursor on era: si s'hi acabava de clicar per afegir-hi alguna cosa, no se selecciona tot (ho esborraria)
+    if (m.val !== m.base && el.value === m.base && el.matches('input.sc')) el.value = m.val;
+    if (el.value === m.val && m.sel) { try { el.setSelectionRange(m.sel[0], m.sel[1], m.sel[2] || 'none'); } catch (_) {} }
+    else if (el.tagName === 'INPUT' && typeof el.select === 'function') el.select();
+  } else if (el.tagName === 'INPUT' && el.type !== 'checkbox' && typeof el.select === 'function') el.select();
   return el;
 }
+// torna a pintar la mateixa pantalla ara mateix: el focus es queda al mateix camp i les taules amb barra pròpia (la
+// graella de notes) no tornen a dalt (si no, la casella amb el focus quedaria amagada i s'hi escriuria a cegues)
+function renderSame() {
+  const main = $('#main'), m = focusMark(main), ids = new Map(focusIds);
+  const wraps = $$('#main .tbl-wrap').map(w => [w.scrollTop, w.scrollLeft]);
+  // (els apartats desplegables, com estan ara: el navegador avisa d'haver-ne obert un una mica més tard)
+  $$('#main details[data-open]').forEach(x => { ui[x.dataset.open] = x.open; });
+  render();
+  const now = $$('#main .tbl-wrap');
+  if (now.length === wraps.length) now.forEach((w, i) => { w.scrollTop = wraps[i][0]; w.scrollLeft = wraps[i][1]; });
+  focusBack(main, m, ids);
+}
+// el mateix, però mai a mig clic o a mitja tecla, amb un menú obert ni a sobre del que s'està escrivint: llavors es
+// pinta quan s'acaba (applyDeferred: en deixar anar el botó o la tecla, en tancar el menú o en sortir del camp)
 function renderKeepFocus() {
   setTimeout(() => {
-    const m = focusMark($('#main')), ids = new Map(focusIds);
-    render();
-    focusBack($('#main'), m, ids);
+    if (inHand() || typing()) { keepLater = true; return; }
+    keepLater = false;
+    renderSame();
   }, 0);
 }
 const views = {};
@@ -3353,7 +3434,7 @@ function qeHtml(ctx) {
       ${ctx.tutor ? `<button type="button" class="btn" data-act="qeMove" data-d="1">Salta</button>` : `<button type="button" class="btn" data-act="qeNP" ${ctx.c.locked ? 'disabled' : ''} title="No presentada">${np ? 'Treu NP' : 'NP'}</button>`}
       <button type="button" class="btn primary" id="qesave" data-act="qeSave" data-blocked="${blocked ? 1 : ''}"></button></div>
     <div class="qe-next">${tableLocked ? `Notes bloquejades${ctx.g && Engine.missingScores(ctx.c, ctx.g).total ? `: en aquest grup falten ${plural(Engine.missingScores(ctx.c, ctx.g).total, 'nota', 'notes')}` : ''}.` : next ? `Següent sense nota: <b>${h(next.e.bib)}</b> · ${h(ctx.name(next.e))}${n > 1 ? ` (${ordinal(next.i + 1)} ${word})` : ''}`
-      : (m === null && !np && !locked) ? `És l’última que falta de ${h(a.name)} en aquest grup.` : `✓ Totes les notes de ${h(a.name)} d’aquest grup estan entrades.`}</div>
+      : (m === null && !np && !locked) ? `És l’última que falta ${deN(h(a.name))} en aquest grup.` : `✓ Totes les notes ${deN(h(a.name))} d’aquest grup estan entrades.`}</div>
     <div class="qe-strip" role="list">${list.map(x => { const ok = range(n).some(i => qeHas(ctx, x, i)), lk = range(n).every(i => ctx.locked(x, i));
       return `<button type="button" role="listitem" class="${x === e ? 'cur' : ''} ${x.status === 'np' ? 'np' : ok ? 'done' : ''} ${lk && ctx.tutor ? 'lock' : ''}" data-act="qeGo" data-id="${h(x.id)}" title="${h(ctx.name(x))}">${h(x.bib)}</button>`; }).join('')}</div>
   </div>`;
@@ -3446,14 +3527,22 @@ const qeActions = {
     if (!was) { const nx = qeNextMissing(qeCtx(), ctx.list.indexOf(e)); if (nx) { qe.entryId = nx.e.id; qe.i = nx.i; render(); } }
   },
 };
+// (un botó del teclat gran on s'ha arribat amb el tabulador, no amb el ratolí ni perquè s'ha tornat a pintar)
+let tabAt = 0;
+document.addEventListener('keydown', e => { if (e.key === 'Tab') tabAt = Date.now(); }, true);
+document.addEventListener('pointerdown', () => { tabAt = 0; }, true);
+document.addEventListener('focusin', e => { const t = e.target; if (t && t.closest && t.closest('#qe')) t._tab = Date.now() - tabAt < 500; });
 // teclat de l'ordinador (o de la tauleta) a l'entrada ràpida
 document.addEventListener('keydown', e => {
   if (!$('#qe') || $('#dlg').open || $('#confirm').open || e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && t.matches && t.matches('input, select, textarea')) return;
   const k = e.key;
-  // Intro sobre un botó o enllaç de fora del teclat (p. ex. «Desfés» d'un avís): fa el que diu el botó
-  if ((k === 'Enter' || k === ' ') && t && t.closest && t.closest('a, button, summary, [role=button]') && !t.closest('#qe')) return;
+  // Intro sobre un botó o enllaç de fora del teclat (p. ex. «Desfés» d'un avís), o sobre un botó del teclat gran on
+  // s'ha arribat amb el tabulador (NP, ◀, la tira de dorsals…): fa el que diu el botó. Sobre una tecla de números, sobre
+  // «Desa» o sobre un botó que s'ha clicat amb el ratolí (es queda amb el focus i després s'escriu la nota), desa
+  const b = t && t.closest && t.closest('a, button, summary, [role=button]');
+  if ((k === 'Enter' || k === ' ') && b && (!b.closest('#qe') || (b._tab && !b.closest('.qe-keys') && b.id !== 'qesave'))) return;
   let act = null;
   if (/^[0-9]$/.test(k)) act = ['qeKey', { k }];
   else if (k === ',' || k === '.' || k === "'") act = ['qeKey', { k: ',' }];
@@ -4218,11 +4307,8 @@ function inscTeamsNote(f, list) {
     return `<b>${h(x.name)}</b> (${h(x.grp.category)} ${h(x.grp.level)}, ${x.n})${out ? ` <span class="badge warn" title="L’equip ja hi era: queda amb les del full">${plural(out, 'en surt una', `en surten ${out}`).replace(/^\d+ /, '')}</span>` : ''}`;
   }).join(' · ')}</p>`;
 }
-function inscRefresh() {
-  const d = $('#dlg'), box = d && d.querySelector('.dlg'), top = box ? box.scrollTop : 0;
-  if (!d || !d.open) { openDialog(inscDialog(), { wide: true }); return; }
-  box.innerHTML = inscDialog(); box.scrollTop = top;
-}
+// (al mateix lloc i amb el focus al mateix camp: dlgRefresh)
+function inscRefresh() { dlgRefresh(inscDialog()); }
 // valors de contacte d'una entitat (es guarden a l'entitat, sense repetir-ne)
 function mergeContacts(old, add) {
   const out = Array.isArray(old) ? old.slice() : [];
@@ -4706,7 +4792,8 @@ function tutStatusBar() {
   if (bn && stuckNote !== (bn.dataset.stuck || '')) {
     bn.dataset.stuck = stuckNote;
     let sn = $('#tutstuck');
-    if (!sn) { sn = document.createElement('div'); sn.id = 'tutstuck'; bn.after(sn); }
+    // (amb el teclat gran, a sota del teclat: a sobre, el faria baixar)
+    if (!sn) { sn = document.createElement('div'); sn.id = 'tutstuck'; ($('#qe') || bn).after(sn); }
     sn.innerHTML = stuckNote;
   }
 }
@@ -4714,7 +4801,7 @@ function tutStatusBar() {
 function tutRefresh() {
   // amb el teclat gran no hi ha cap casella amb el focus: es torna a pintar (el que s'està escrivint es manté)
   // (amb el teclat gran: si la tutora està movent la tira de gimnastes, s'espera que acabi)
-  if ($('#qe') && qeStripBusy()) { clearTimeout(tut.qeTimer); tut.qeTimer = setTimeout(tutRefresh, 600); return; }
+  if ($('#qe') && (qeStripBusy() || inHand())) { clearTimeout(tut.qeTimer); tut.qeTimer = setTimeout(tutRefresh, 600); return; }
   if ($('#qe') || !tut.comps.length) { render(); return; }
   if (!$('#scoregrid')) { render(); return; }
   const c = tutComp(); if (!c) { render(); return; }
@@ -4728,13 +4815,25 @@ function tutRefresh() {
     tut.pendingRender = true;
   }
   $$('#scoregrid input.sc').forEach(inp => {
-    if (inp === document.activeElement) return;
-    const e = c.entries.find(x => x.id === inp.dataset.e); if (!e) return;
-    const a = ((e.scores || {})[inp.dataset.a] || [])[+inp.dataset.i] || {};
-    const m = Engine.toM(a.v); inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value;
-    const lk = !!a.locked || Engine.guarded(a); inp.disabled = lk || e.status === 'np'; inp.classList.toggle('locked', lk);
+    const e = c.entries.find(x => x.id === inp.dataset.e); if (e) tutCell(inp, e);
   });
   tutStatusBar();
+}
+// una casella de la llista de la tutora amb el que té la taula (la que té el focus, només si no s'hi ha escrit res: si
+// s'hi ha escrit, en sortir-ne sense enviar-la)
+function tutCell(inp, e) {
+  const a = ((e.scores || {})[inp.dataset.a] || [])[+inp.dataset.i] || {}, on = inp === document.activeElement;
+  if (on && (inp.value !== inp.dataset.last || inp._typed)) { inp._stale = true; return; }
+  const m = Engine.toM(a.v); inp.value = m === null ? '' : fmt(m); inp.dataset.last = inp.value; inp._stale = false;
+  const lk = !!a.locked || Engine.guarded(a); inp.disabled = lk || e.status === 'np'; inp.classList.toggle('locked', lk);
+  if (on && !inp.disabled) inp.select();
+}
+// la casella que s'ha quedat sense posar al dia mentre s'hi escrivia
+function scFresh(inp) {
+  inp._stale = false;
+  const c = ui.view === 'tutor' ? tutComp() : curComp(), e = c && c.entries.find(x => x.id === inp.dataset.e); if (!e) return;
+  if (ui.view === 'tutor') tutCell(inp, e);
+  else { scShow(inp, att(e, { id: inp.dataset.a }, +inp.dataset.i)); refreshScoreRow(c, e); }
 }
 views.tutor = () => {
   const c = tutComp();
@@ -5365,7 +5464,7 @@ const actions = {
   reviewTutor: () => {
     const c = curComp(), g = groupsOf(c).find(x => x.key === ui.group);
     for (const e of g.entries) for (const list of Object.values(e.scores || {})) for (const a of list || []) if (a && a.by === 'tutor') a.ok = true;
-    commit(); render(); toast('Notes de les tutores revisades.', 'ok');
+    commit(); renderSame(); toast('Notes de les tutores revisades.', 'ok');
   },
   autoCompTeams: () => {
     const c = curComp();
@@ -5418,9 +5517,13 @@ const actions = {
     if (!t) return;
     closeDialog();
     if (!(await confirmBox(`Treure l’equip <b>${h(t.name)}</b> d’aquesta competició? Les seves gimnastes hi continuaran com a individuals.`, { ok: 'Treu l’equip', danger: true }))) return;
-    withUndo('Equip tret de la competició.', () => {
+    // (a les rotacions es queden on eren: si les seves gimnastes queden en més d'un grup, es diu)
+    let rotNote = '';
+    withUndo(() => `Equip tret de la competició.${rotNote}`, () => {
+      const sp = rotSplits([c.id]);
       c.teams = c.teams.filter(x => x.id !== t.id);
       c.entries.forEach(e => { if (e.teamId === t.id) { e.teamId = null; e.noAuto = true; } });
+      rotNote = rotSplitNote(sp, false);
     });
   },
 
@@ -5502,7 +5605,7 @@ const actions = {
         <b>Arxivar</b>: deixa de sortir a les llistes i surt de les competicions que vénen on encara no té notes; les passades es mantenen.<br><b>Esborrar del tot</b>: també se’n treuen les inscripcions i les notes de totes les competicions.`,
         [{ value: 'delete', label: 'Esborra-la del tot', cls: 'danger' }, { value: 'archive', label: 'Arxiva la fitxa', cls: 'primary' }]);
       if (pick === 'archive') { let r = { comps: [], weak: [] }; withUndo(() => archiveMsg(g, r), () => { const gg = gymById(g.id); if (gg) r = archiveGym(gg); }); }
-      if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes ${/^h?[aeiouàèéíïòóúü]/i.test(gymName(g)) ? 'd’' : 'de '}${h(gymName(g))} ${deN(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
+      if (pick === 'delete' && await confirmBox(`Segur? S’esborraran les notes ${deN(h(gymName(g)))} ${deQ(used.length, 'competició', 'competicions')}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' }))
         withUndo(`${gymName(g)} esborrada del tot.`, () => {
           db.gymnasts = db.gymnasts.filter(x => x.id !== g.id);
           db.teams.forEach(t => { t.memberIds = t.memberIds.filter(id => id !== g.id); });
@@ -6073,11 +6176,11 @@ const forms = {
       }
     }
     // un equip «nou» amb el nom d'un que ja hi és: s'hi afegeixen les marcades (no se'n treu ningú)
-    let reused = false;
+    let reused = false, rotNote = '';
     closeDialog();
     withUndo(() => {
       const n = teamSize(c, t), alive = c.teams.includes(t), np = teamNP(c, t);
-      const msg = !alive ? `Equip «${name}» tret de la competició (s’ha quedat sense gimnastes).` : `Equip «${name}» ${reused ? 'ja hi era: s’hi han afegit les marcades' : `desat${isNew ? '' : ' en aquesta competició'}`} (${plural(n, 'gimnasta', 'gimnastes')}${np ? ` + ${np} NP` : ''}).${n < c.teamMin ? ` No arriba al mínim (${c.teamMin}).` : n > c.teamMax ? ` Passa del màxim (${c.teamMax}).` : ''}`;
+      const msg = (!alive ? `Equip «${name}» tret de la competició (s’ha quedat sense gimnastes).` : `Equip «${name}» ${reused ? 'ja hi era: s’hi han afegit les marcades' : `desat${isNew ? '' : ' en aquesta competició'}`} (${plural(n, 'gimnasta', 'gimnastes')}${np ? ` + ${np} NP` : ''}).${n < c.teamMin ? ` No arriba al mínim (${c.teamMin}).` : n > c.teamMax ? ` Passa del màxim (${c.teamMax}).` : ''}`) + rotNote;
       const acts = alive && !isNew ? [{ label: 'També a les fitxes', fn: () => {
         // (després d'un Desfés les dades són unes altres: es busquen de nou)
         const cc = compById(c.id), tt = cc && cc.teams.find(x => x.id === t.id);
@@ -6085,10 +6188,14 @@ const forms = {
         // a les fitxes ja hi ha un altre equip amb aquest nom (de la mateixa entitat i grup): en serien dos d'iguals
         const src = tt.sourceTeamId && teamById(tt.sourceTeamId), other = findTeam(tt.clubId, tt, tt.name);
         if (src && sameGroup(src, tt) && other && other !== src) { toast(`A les fitxes ja hi ha un altre equip «${tt.name}» d’aquesta entitat en aquest grup. Canvia-li el nom aquí (per exemple «${tt.name} 2») i torna-ho a provar.`, 'bad'); return; }
-        withUndo(() => `Fitxes de les gimnastes de «${tt.name}» actualitzades.`, () => { syncTeamToRecords(cc, tt); });
+        let rn = '';
+        withUndo(() => `Fitxes de les gimnastes de «${tt.name}» actualitzades.${rn}`, () => { const sp = rotSplits(); syncTeamToRecords(cc, tt); rn = rotSplitNoteAt(sp, cc); });
       } }] : [];
       return { msg, type: alive && (n < c.teamMin || n > c.teamMax) ? 'bad' : 'ok', actions: acts };
     }, () => {
+      // (a les rotacions ningú no es mou de grup sol: si l'equip, o les individuals d'una entitat, queden en més d'un
+      // grup, es diu, aquí i a les altres competicions on també canvia)
+      const sp = rotSplits();
       let ex = null;
       if (!t) {
         // si ja hi ha un equip amb aquest nom (de la mateixa entitat i grup), és aquest
@@ -6109,6 +6216,7 @@ const forms = {
         propagateTeam(master, [], master.memberIds.filter(x => !before.includes(x)), c);
       } else if (isNew && !reused && isUpcoming(c)) syncTeamToRecords(c, t);
       pruneAutoTeams(c);
+      rotNote = rotSplitNoteAt(sp, c);
     });
   },
   print: async f => {
@@ -6190,7 +6298,7 @@ const changes = {
     el.dataset.last = el.value;
     if (el.classList.contains('tutor')) {   // corregida per l'organització: ja no és «per revisar»
       el.classList.remove('tutor'); el.title = '';
-      const tb = $('#tutorreview'); if (tb) tb.outerHTML = tutorReviewBtn(c, groupsOf(c).find(x => x.key === ui.group));
+      tutorReviewRefresh(c);
     }
     el.classList.remove('high');
     const minM = Engine.toM(c.minScore) || 0;
@@ -6248,7 +6356,7 @@ const changes = {
   },
   entryStatus: el => {
     const c = curComp(), e = c && c.entries.find(x => x.id === el.dataset.id); if (!e || c.locked) return;
-    e.status = el.value === 'np' ? 'np' : ''; commit(); render();
+    e.status = el.value === 'np' ? 'np' : ''; commit(); renderSame();
     const w = npTeamWarn(c, e); if (w) toast(`${entryName(e)}: no presentada.${w}`, 'bad');
   },
   cfg: el => {
@@ -6300,10 +6408,11 @@ const changes = {
     imp.hasHeader = el.checked;
     imp.map = el.checked ? range(imp.width).map(i => guessField(imp.rows[0][i]) || imp.map[i])
       : ['name', 'surname', 'club', 'gender', 'category', 'level', 'birth', 'team'].slice(0, imp.width).concat(range(Math.max(0, imp.width - 8)).map(() => ''));
-    openDialog(importDialog(), { wide: true });
+    dlgRefresh(importDialog());
   },
-  impMap: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import.map[+el.dataset.i] = el.value; openDialog(importDialog(), { wide: true }); },
-  impDef: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import[el.dataset.k] = el.value; openDialog(importDialog(), { wide: true }); },
+  // (es torna a pintar al mateix lloc: el focus es queda a la columna i la taula no torna a la primera columna)
+  impMap: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import.map[+el.dataset.i] = el.value; dlgRefresh(importDialog()); },
+  impDef: el => { if (!ui.import) ui.import = importAnalyze($('#imptext').value); if (!ui.import) return; ui.import[el.dataset.k] = el.value; dlgRefresh(importDialog()); },
   clubName: el => {
     const c = clubById(el.dataset.id), v = el.value.trim();
     if (!v) { el.value = c.name; return; }
@@ -6323,9 +6432,9 @@ const changes = {
     });
   },
   setting: el => { S()[el.dataset.k] = el.value; commit(); },
-  tutorsOn: el => { const c = curComp(); c.tutorsOn = el.checked; if (c.tutorsOn && !/^\d{4,6}$/.test(c.tutorPin)) c.tutorPin = String(1000 + Math.floor(Math.random() * 9000)); commit(); render(); },
-  rkSeason: el => { ui.rkSeason = el.value; ui.rkGroup = null; render(); },
-  rkComp: el => { ui.rkOff[el.dataset.id] = !el.checked; render(); },
+  tutorsOn: el => { const c = curComp(); c.tutorsOn = el.checked; if (c.tutorsOn && !/^\d{4,6}$/.test(c.tutorPin)) c.tutorPin = String(1000 + Math.floor(Math.random() * 9000)); commit(); renderSame(); },
+  rkSeason: el => { ui.rkSeason = el.value; ui.rkGroup = null; renderSame(); },
+  rkComp: el => { ui.rkOff[el.dataset.id] = !el.checked; renderSame(); },
   catField: el => {
     const i = +el.dataset.i, c = S().categories[i], k = el.dataset.k;
     if (k === 'name') {
@@ -6570,7 +6679,8 @@ document.addEventListener('keydown', e => {
     actions.printDlg({ dataset: { types: ui.tab === 'inscripcions' ? 'list' : ui.tab === 'classificacions' ? (ui.clsType || 'general') : 'general,teams', group: ui.tab === 'classificacions' && ui.clsGroup !== 'all' ? (ui.clsGroup || '') : '' } });
   } else if (ui.view === 'ranquing') { e.preventDefault(); actions.printRanking(); }
 });
-const closeMenus = () => $$('.menu.open').forEach(m => m.classList.remove('open'));
+// (el que s'havia d'haver pintat mentre era obert, es pinta ara)
+const closeMenus = () => { const o = $$('.menu.open'); o.forEach(m => m.classList.remove('open')); if (o.length) applyDeferred(); };
 document.addEventListener('focusin', e => { if (isPhone() && e.target.matches && e.target.matches('input:not([type=checkbox]), textarea, select')) document.body.classList.add('kb'); });
 document.addEventListener('focusout', () => setTimeout(() => { const a = document.activeElement; if (!(a && a.matches && a.matches('input:not([type=checkbox]), textarea, select'))) document.body.classList.remove('kb'); }, 80));
 // (mai mentre s'escriu: a una tauleta, obrir el teclat pot canviar la mida; es fa quan se surt de la casella)
@@ -6608,7 +6718,7 @@ function selBar(k, { all, del, act, none = 'Desmarca-les', dis = '' }) {
   selOpts[k] = { all, del, act, none, dis };
   const ids = selVisible(k), n = selPicked(k).length, every = ids.length > 0 && n === ids.length;
   return `<div class="toolbar selbar" data-k="${h(k)}"><label class="chk"><input type="checkbox" data-chg="selAll" data-k="${h(k)}" ${every ? 'checked' : ''} ${ids.length && !dis ? '' : 'disabled'}> ${all} (${ids.length})</label>
-    <button class="btn sm danger" data-act="${act}" ${n && !dis ? '' : 'disabled'}>🗑 ${del}${n ? ` (${n})` : ''}</button>
+    <button class="btn sm danger" data-act="${act}" ${n && !dis ? '' : 'disabled'}>🗑 <span class="ell">${del}</span>${n ? ` (${n})` : ''}</button>
     <button class="btn sm ghost ${n ? '' : 'invis'}" data-act="selNone" data-k="${h(k)}" ${n ? '' : 'disabled aria-hidden="true" tabindex="-1"'}>${none}</button></div>`;
 }
 // en marcar-ne una no es torna a pintar la llista (no es mou res de lloc): només les caselles i la barra
@@ -6632,7 +6742,7 @@ async function confirmNotesLoss(ids) {
   const cs = db.competitions.filter(c => c.entries.some(e => ids.has(e.gymnastId) && hasScores(e)));
   if (!cs.length) return true;
   const nG = new Set(cs.flatMap(c => c.entries.filter(e => ids.has(e.gymnastId) && hasScores(e)).map(e => e.gymnastId))).size, lk = cs.some(c => c.locked);
-  return confirmBox(`Segur? S’esborraran les notes ${deN(nG, 'gimnasta', 'gimnastes')} ${deN(cs.length, 'competició', 'competicions')}${lk ? ' (també de les bloquejades)' : ''}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' });
+  return confirmBox(`Segur? S’esborraran les notes ${deQ(nG, 'gimnasta', 'gimnastes')} ${deQ(cs.length, 'competició', 'competicions')}${lk ? ' (també de les bloquejades)' : ''}.`, { ok: 'Esborra-ho', danger: true, typed: 'ESBORRA' });
 }
 // noms d'una llista per a un avís: com a molt 5 (i «i N més»)
 const fewNames = l => (l.length > 5 ? l.slice(0, 5).map(h).join(', ') + ` i ${l.length - 5} més` : l.length > 1 ? l.slice(0, -1).map(h).join(', ') + ' i ' + h(l[l.length - 1]) : h(l[0] || ''));
@@ -7015,6 +7125,12 @@ function rotMaterialize(c, view = rotViewOf(c)) {
   if (map.has(ui.rotSub)) ui.rotSub = map.get(ui.rotSub);
   if (ui.rotBal && map.has(ui.rotBal.subId)) ui.rotBal.subId = map.get(ui.rotBal.subId);
   for (const [a, b] of map) focusIds.set(a, b);
+  // (i els camps que ja hi ha a la pantalla, i les caselles del diàleg d'imprimir, ja porten l'id de debò: un altre canvi
+  // en un d'ells abans de tornar a pintar —p. ex. els minuts de «Comença a» després de l'hora— va a la mateixa subdivisió)
+  if (map.size) {
+    $$('[data-s]').forEach(x => { if (map.has(x.dataset.s)) x.dataset.s = map.get(x.dataset.s); });
+    $$('#dlg input[name=s]').forEach(x => { if (map.has(x.value)) x.value = map.get(x.value); });
+  }
   return map;
 }
 // la subdivisió (vista) d'un id, després de desar-ho tot (un id «auto-…» passa a ser un de real)
@@ -7042,7 +7158,7 @@ function rotTeamMove(c, e, isTeam, name = '') {
   const w = where(c); if (!w || !w.u.split) return null;
   const a = w.v.place.get(e).g, b = other(w.v, w.u, e);
   if (b < 0 || a === b) return null;
-  return { comp: name, msg: `A les rotacions${name ? ` de ${name}` : ''} continua al Grup ${a + 1}; ${isTeam ? 'el seu equip nou és' : 'les altres individuals de la seva entitat són'} al Grup ${b + 1}.`,
+  return { comp: name, msg: `A les rotacions${name ? ' ' + deN(name) : ''} continua al Grup ${a + 1}; ${isTeam ? 'el seu equip nou és' : 'les altres individuals de la seva entitat són'} al Grup ${b + 1}.`,
     action: { label: isTeam ? 'Mou-la amb l’equip' : `Mou-la al Grup ${b + 1}`, fn: () => {
       const cc = compById(c.id); if (!rotGuard(cc)) return;
       const x = cc && e2(cc), w2 = x && where(cc);
@@ -7080,10 +7196,12 @@ function rotSplitNote(before, named = true) {
     const names = [...new Set(us.filter(u => !was.has(u.id)).map(rotUnitName))];
     if (!names.length) continue;
     const l = names.length > 5 ? names.slice(0, 5).concat(`${names.length - 5} més`) : names;
-    out += ` A les rotacions${named ? ` de ${c.name}` : ''}, ${rotJoin(l)} ${names.length === 1 ? 'té' : 'tenen'} gimnastes en més d’un grup (cadascuna s’ha quedat on era): ajunta-les a la pestanya Rotacions i horari.`;
+    out += ` A les rotacions${named ? ' ' + deN(c.name) : ''}, ${rotJoin(l)} ${names.length === 1 ? 'té' : 'tenen'} gimnastes en més d’un grup (cadascuna s’ha quedat on era): ajunta-les a la pestanya Rotacions i horari.`;
   }
   return out;
 }
+// el mateix, la d'aquesta competició sense dir-ne el nom i les altres amb el nom
+const rotSplitNoteAt = (before, c) => rotSplitNote(new Map([...before].filter(([id]) => id === c.id)), false) + rotSplitNote(new Map([...before].filter(([id]) => id !== c.id)));
 function rotGuard(c) {
   if (!c || !c.rot) return false;
   if (c.locked) { toast('La competició està bloquejada: desbloqueja-la per canviar les rotacions.', 'bad'); return false; }
@@ -7366,7 +7484,8 @@ function rotSubsDlgHtml(c, D) {
   const allM = D.subs.filter(s => s.g === 'M').length <= 1;
   const join = genders.map(G => {
     const cats = [...new Set(rotKeysOf(c, G).map(rotCatOf))];
-    return `<div style="margin:6px 0"><b>${G === 'M' ? 'Nois' : 'Noies'}</b><div class="rot-chips">${cats.map(cat => `<label class="chk"><input type="checkbox" name="jc" data-g="${G}" value="${h(cat)}"> ${h(Engine.catTx(cat))} · ${sum(rotKeysOf(c, G).filter(k => rotCatOf(k) === cat))}</label>`).join('')}</div>
+    const pick = (D.pick || {})[G] || [];
+    return `<div style="margin:6px 0"><b>${G === 'M' ? 'Nois' : 'Noies'}</b><div class="rot-chips">${cats.map(cat => `<label class="chk"><input type="checkbox" name="jc" data-chg="rotDraftPick" data-g="${G}" value="${h(cat)}" ${pick.includes(cat) ? 'checked' : ''}> ${h(Engine.catTx(cat))} · ${sum(rotKeysOf(c, G).filter(k => rotCatOf(k) === cat))}</label>`).join('')}</div>
       <button type="button" class="btn sm" data-act="rotDraftJoin" data-g="${G}">Ajunta les marcades</button>
       ${G === 'M' ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-chg="rotDraftAllM" ${allM ? 'checked' : ''}> Tots els nois junts (en una sola subdivisió)</label>` : ''}</div>`;
   }).join('');
@@ -7398,13 +7517,23 @@ const rotMaxNote = (A, mg) => `Si una categoria té més de ${A * mg} gimnastes 
 // torna a pintar el diàleg obert sense moure'l de lloc: el que estava desplegat i el camp on s'era es queden.
 // mv: el botó que ha mogut una fila de la llista (el focus va amb la fila: set = els atributs que té ara; sense set,
 // la fila ja no hi és i el focus no va a cap altra)
-function rotDlgRefresh(html, mv = null) {
+// (també les taules amb barra pròpia es queden on eren, i els apartats desplegables com estan ara: el clic que els ha
+// obert pot ser just abans, i el navegador avisa d'haver-lo obert més tard)
+function dlgRefresh(html, mv = null) {
   const d = $('#dlg'), box = d && d.querySelector('.dlg'), top = box ? box.scrollTop : 0;
   if (!d || !d.open || !box) { openDialog(html, { wide: true }); return; }
+  const opened = new Map([...box.querySelectorAll('details[data-open]')].map(x => [x.dataset.open, x.open]));
+  for (const [k, v] of opened) ui[k] = v;
   const m = focusMark(box), own = !!mv && document.activeElement === mv.el;
-  box.innerHTML = html; box.scrollTop = top;
+  const wraps = [...box.querySelectorAll('.tbl-wrap')].map(w => [w.scrollTop, w.scrollLeft]);
+  box.innerHTML = html;
+  box.querySelectorAll('details[data-open]').forEach(x => { if (opened.has(x.dataset.open)) x.open = opened.get(x.dataset.open); });
+  box.scrollTop = top;
+  const now = [...box.querySelectorAll('.tbl-wrap')];
+  if (now.length === wraps.length) now.forEach((w, i) => { w.scrollTop = wraps[i][0]; w.scrollLeft = wraps[i][1]; });
   if (!own || mv.set) focusBack(box, m, null, own ? mv.set : null, true);
 }
+function rotDlgRefresh(html, mv = null) { dlgRefresh(html, mv); }
 const rotDraftRedraw = (mv = null) => { const c = curComp(), D = ui.rotDraft; if (c && D && D.compId === c.id) rotDlgRefresh(rotSubsDlgHtml(c, D), mv); };
 // una subdivisió del quadre passa a ser una per categoria (i les que passen del màxim, per nivell)
 function rotDraftSplitSub(c, D, i) {
@@ -7531,7 +7660,8 @@ async function rotPrintPrep(c) {
     map = rotMaterialize(c);
     v = rotViewOf(c);
     c.rot.printed = { sig: v.sig, at: new Date().toISOString() };
-    commit();
+    // (la pantalla, com ha quedat desat: sense l'avís de «Torna-les a imprimir» ni les marques NOU)
+    commit(); renderKeepFocus();
   }
   return { v, map };
 }
@@ -7735,8 +7865,9 @@ Object.assign(actions, {
   },
   rotDraftJoin: el => {
     const c = curComp(), D = ui.rotDraft; if (!c || !D) return;
-    const G = el.dataset.g, cats = $$(`#dlg input[name=jc][data-g="${G}"]:checked`).map(i => i.value);
+    const G = el.dataset.g, cats = ((D.pick || {})[G] || []).slice();
     if (!cats.length) { toast('Marca les categories que vols ajuntar.', 'bad'); return; }
+    D.pick[G] = [];   // (ja s'han ajuntat: un altre «Ajunta» no les torna a fer servir sense voler)
     const keys = D.subs.filter(s => s.g === G).flatMap(s => s.keys).filter(k => cats.includes(rotCatOf(k)));
     const tgt = D.subs.find(s => s.g === G && s.keys.some(k => keys.includes(k)));
     if (!tgt) return;
@@ -7763,7 +7894,8 @@ Object.assign(actions, {
   },
   rotDraftReset: () => {
     const c = curComp(), D = ui.rotDraft; if (!c || !D) return;
-    D.reset = true;
+    // (el que s'havia triat abans al quadre ja no compta: «Tots els nois junts» i el màxim són els de la proposta)
+    D.reset = true; delete D.allM; D.mg0 = D.maxGroup;
     D.subs = Engine.rotPlan(c, S(), Object.assign(rotRules(c), { joins: null, apart: [], seen: [], allM: true, subOrder: [], maxGroup: D.maxGroup }), { clubName }).subs.map(s => ({ id: null, g: s.g, keys: [...s.keys] }));
     // (les que ja existien es queden el seu id si tenen les mateixes categories i nivells)
     for (const s of D.subs) { const id = Object.keys(D.orig).find(x => D.orig[x] === JSON.stringify([...s.keys].sort()) && !D.subs.some(y => y.id === x)); if (id) s.id = id; }
@@ -7805,6 +7937,9 @@ Object.assign(actions, {
   },
   rotPrintDlg: el => {
     const c = curComp(); if (!c) return;
+    // (un camp que encara s'està escrivint —Ctrl+P sense sortir-ne— es desa abans de fer la llista de subdivisions: si
+    // és d'una subdivisió «nova», passa a ser de debò i la casella ja en porta l'id)
+    const fa = document.activeElement; if (fa && fa.blur && fa.closest && fa.closest('#main')) fa.blur();
     if (!c.rot || !c.rot.made) { toast('Primer fes les rotacions.', 'bad'); return; }
     if (!rotPrintable(c)) { toast(rotNothingMsg(c), 'bad'); return; }
     const v = rotViewOf(c), only = el && el.dataset && el.dataset.what === 'horari';
@@ -7823,7 +7958,7 @@ function rotAppsHtml(c) {
     if (!c.entries.some(e => genderOf(e) === G) || !A[G].list.length) return '';
     return `<fieldset><legend>${G === 'M' ? 'Nois' : 'Noies'}</legend>${A[G].list.map((id, i) => { const a = apps.get(id); return `<div class="rot-dl"><span>${icon(a)} ${h(a.name)}</span>
       <span class="rot-dlb"><button type="button" class="btn sm" data-act="rotAppsMove" data-g="${G}" data-i="${i}" data-d="-1" aria-label="Abans" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn sm" data-act="rotAppsMove" data-g="${G}" data-i="${i}" data-d="1" aria-label="Després" ${i === A[G].list.length - 1 ? 'disabled' : ''}>↓</button>
-      <label class="chk"><input type="checkbox" name="fin_${G}" value="${id}" ${A[G].fin.includes(id) ? 'checked' : ''}> Tots junts al final</label></span></div>`; }).join('')}
+      <label class="chk"><input type="checkbox" name="fin_${G}" value="${id}" data-chg="rotAppsFin" data-g="${G}" ${A[G].fin.includes(id) ? 'checked' : ''}> Tots junts al final</label></span></div>`; }).join('')}
       ${G === 'M' && !(c.apparatus || []).some(a => norm(a.name).includes('barra fixa')) ? '<button type="button" class="btn sm" data-act="rotAppsFixa">＋ Afegeix la barra fixa (tots junts al final)</button>' : ''}</fieldset>`;
   };
   return `<form data-form="rotApps"><h2>Aparells i ordre de les rotacions</h2>${sec('F')}${sec('M')}
@@ -7912,18 +8047,6 @@ Object.assign(forms, {
       withUndo(() => msg, () => {
         const cc = compById(c.id), N = rotKeyN(cc), sr = rotSet();
         const subs0 = D.subs.filter(s => s.keys.length);
-        // el que es recorda: quines van juntes, quines van separades, els nois, l'ordre i el màxim
-        const joins = [], apart = [];
-        for (const s of subs0) { const cats = [...new Set(s.keys.map(rotCatOf))]; if (cats.length > 1) joins.push({ g: s.g, cats }); }
-        for (const G of ['F', 'M']) {
-          const cap = rotCap(cc, G, mg);
-          for (const cat of [...new Set(rotKeysOf(cc, G).map(rotCatOf))]) {
-            const ks = rotKeysOf(cc, G).filter(k => rotCatOf(k) === cat), n = ks.reduce((t, k) => t + (N.get(k) || 0), 0);
-            const where = new Set(ks.map(k => subs0.findIndex(s => s.keys.includes(k))));
-            if (where.size === 1 && ks.length > 1 && n > cap && new Set(subs0[[...where][0]].keys.map(rotCatOf)).size === 1) joins.push({ g: G, cats: [cat] });
-            if (where.size > 1 && n <= cap) apart.push({ g: G, cat });
-          }
-        }
         // les regles de les categories que no hi ha en aquesta competició es queden per a les properes: una que s'ajuntava
         // amb una d'aquí va amb la subdivisió on ara és aquesta
         const pres = { F: new Set(rotKeysOf(cc, 'F').map(rotCatOf)), M: new Set(rotKeysOf(cc, 'M').map(rotCatOf)) };
@@ -7942,6 +8065,20 @@ Object.assign(forms, {
           const sig = l => l.map(s => JSON.stringify([...s.keys].sort())).sort().join('|');
           return sig(p.subs.filter(s => s.g === G)) === sig(T);
         };
+        // el que es recorda: quines van juntes, quines van separades, els nois, l'ordre i el màxim
+        const joins = [], apart = [];
+        for (const s of subs0) { const cats = [...new Set(s.keys.map(rotCatOf))]; if (cats.length > 1) joins.push({ g: s.g, cats }); }
+        for (const G of ['F', 'M']) {
+          const cap = rotCap(cc, G, mg);
+          for (const cat of [...new Set(rotKeysOf(cc, G).map(rotCatOf))]) {
+            const ks = rotKeysOf(cc, G).filter(k => rotCatOf(k) === cat), n = ks.reduce((t, k) => t + (N.get(k) || 0), 0);
+            const where = new Set(ks.map(k => subs0.findIndex(s => s.keys.includes(k))));
+            if (where.size === 1 && ks.length > 1 && n > cap && new Set(subs0[[...where][0]].keys.map(rotCatOf)).size === 1) joins.push({ g: G, cats: [cat] });
+            // (separades: només si no és l'app que els ha partit per mida, en partir unes categories juntes que passen del
+            // màxim; si no, un dia amb menys gimnastes en faria dues subdivisions petites)
+            if (where.size > 1 && n <= cap && !sizeSplit(G, [cat])) apart.push({ g: G, cat });
+          }
+        }
         for (const j of Array.isArray(sr.joins) ? sr.joins : []) {
           const G = j.g === 'M' ? 'M' : 'F', inn = j.cats.filter(x => pres[G].has(x)), out = j.cats.filter(x => !pres[G].has(x));
           if (!inn.length) { joins.push({ g: G, cats: [...j.cats] }); continue; }
@@ -7964,7 +8101,8 @@ Object.assign(forms, {
         const mSubs = subs0.filter(s => s.g === 'M');
         sr.joins = jm; sr.maxGroup = mg;
         sr.apart = apart.filter((a, i) => apart.findIndex(b => b.g === a.g && b.cat === a.cat) === i);
-        if (pres.M.size > 1) sr.allM = mSubs.length === 1 || (keep && sr.allM && D.allM !== false && sizeSplit('M', [...pres.M]));
+        // (amb «Torna a la proposta de l'app», la proposta és «tots els nois junts», partits per mida si cal)
+        if (pres.M.size > 1) sr.allM = mSubs.length === 1 || (D.allM !== false && (D.reset || sr.allM) && sizeSplit('M', [...pres.M]));
         // les categories que ja ha vist (i decidit): les petites que no hi són s'ajuntaran soles a les properes
         sr.seen = (sr.seen || []).filter(x => !pres[x.g === 'M' ? 'M' : 'F'].has(x.cat)).concat(['F', 'M'].flatMap(G => [...pres[G]].filter(Boolean).map(cat => ({ g: G, cat })))).slice(-200);
         const sigs = subs0.map(s => Engine.rotSig2(s.g, s.keys));
@@ -7999,10 +8137,18 @@ Object.assign(forms, {
 });
 
 /* ─── canvis en camps */
+// el camp és d'una subdivisió (o d'una gimnasta) que ja no hi és tal com es veu: no es fa res i es diu
+const rotGone = () => { toast('Les rotacions han canviat: torna-ho a provar.', 'bad'); renderSame(); };
+function rotStill(c, el) {
+  const sv = rotViewOf(c).subs.find(s => s.id === el.dataset.s);
+  if (sv && (!el.dataset.e || sv.units.some(u => u.entries.some(e => e.id === el.dataset.e)))) return true;
+  rotGone(); return false;
+}
 Object.assign(changes, {
   rotMove: el => {
     const c = curComp(); if (!rotGuard(c)) { render(); return; }
     const to = +el.value;
+    if (!rotStill(c, el)) return;
     let name = '', st = '', sizes = '', subId = el.dataset.s;
     withUndo(() => ({ msg: `${name} → Grup ${to + 1}${st ? ` (${st})` : ''}. Ara: ${sizes}.`, actions: [{ label: 'Reequilibra la resta', fn: () => actions.rotBalance({ dataset: { s: subId } }) }] }), () => {
       const cc = compById(c.id), { sv } = rotFresh(cc, el.dataset.s); if (!sv || !(to >= 0 && to < sv.k)) return;
@@ -8015,7 +8161,7 @@ Object.assign(changes, {
   rotStart: el => {
     const c = curComp(); if (!rotGuard(c)) { render(); return; }
     const g = +el.dataset.g, j = +el.value;
-    if (g === j) return;
+    if (g === j || !rotStill(c, el)) return;
     let a = '', b = '';
     withUndo(() => `Ara aquest grup és el Grup ${j + 1} i comença a ${a}; el que era el Grup ${j + 1} passa a ser el Grup ${g + 1} (${b}).`, () => {
       const cc = compById(c.id), { sv } = rotFresh(cc, el.dataset.s); if (!sv || j >= sv.k || g >= sv.k) return;
@@ -8067,7 +8213,7 @@ Object.assign(changes, {
       val = n;
     }
     const map = rotMaterialize(c), s = c.rot.subs.find(x => x.id === (map.get(el.dataset.s) || el.dataset.s));
-    if (!s) return;
+    if (!s) { rotGone(); return; }
     s[k] = val;
     commit(); renderKeepFocus();
   },
@@ -8082,6 +8228,17 @@ Object.assign(changes, {
     commit(); renderKeepFocus();
   },
   rotNotes: el => { const c = curComp(); if (!rotGuard(c)) { render(); return; } c.rot.notes = el.value.slice(0, 4000); rotSet().notes = c.rot.notes; commit(); },
+  // les caselles dels diàlegs que es tornen a pintar (↑ ↓, «Tots els nois junts»…) es guarden aquí: si no, es
+  // desmarcarien soles i «Desa» o «Ajunta les marcades» no les tindrien
+  rotAppsFin: el => {
+    const A = ui.rotApps, L = A && A[el.dataset.g]; if (!L) return;
+    L.fin = L.fin.filter(x => x !== el.value).concat(el.checked ? [el.value] : []);
+  },
+  rotDraftPick: el => {
+    const D = ui.rotDraft, G = el.dataset.g; if (!D) return;
+    D.pick = D.pick || { F: [], M: [] };
+    D.pick[G] = (D.pick[G] || []).filter(x => x !== el.value).concat(el.checked ? [el.value] : []);
+  },
   rotDraftAllM: el => {
     const D = ui.rotDraft; if (!D) return;
     D.allM = el.checked;
@@ -8148,6 +8305,8 @@ document.addEventListener('drop', async e => {
 document.addEventListener('focusout', e => {
   const el = e.target;
   if (isSc(el) && document.contains(el) && el.dataset.last !== el.value && changes[el.dataset.chg]) changes[el.dataset.chg](el, e);
+  // (mentre s'hi escrivia ha arribat una altra nota per a aquesta casella i no s'ha desat res: es mostra la que hi ha)
+  else if (isSc(el) && el._stale && document.contains(el)) scFresh(el);
 });
 document.addEventListener('input', e => {
   const el = e.target.closest('[data-inp]');
@@ -8206,7 +8365,9 @@ function keepClear(el) {
 // en entrar en una casella de nota, es selecciona tota perquè es pugui sobreescriure.
 // Ha de ser immediat: si s'espera, el que s'escriu de pressa després d'Intro quedaria seleccionat i se sobreescriuria.
 const isSc = el => el && el.matches && el.matches('input.sc');
-document.addEventListener('focusin', e => { if (isSc(e.target)) { e.target.select(); e.target._fresh = true; } });
+document.addEventListener('focusin', e => { if (isSc(e.target)) { e.target.select(); e.target._fresh = true; e.target._typed = false; } });
+// (s'hi ha escrit alguna cosa, encara que sigui la mateixa nota: una nota que arriba ara no la trepitja)
+document.addEventListener('input', e => { if (isSc(e.target)) e.target._typed = true; }, true);
 document.addEventListener('mouseup', e => { if (isSc(e.target) && e.target._fresh) e.preventDefault(); if (e.target) e.target._fresh = false; });
 document.addEventListener('keydown', e => { if (e.target) e.target._fresh = false; }, true);
 

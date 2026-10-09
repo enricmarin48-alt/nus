@@ -457,3 +457,21 @@ test('rànquing de jornades: un equip esborrat i tornat a fer igual (mateix nom 
   const [g] = E.seasonRanking([j1, j2], S, { nameOf, teamGone: id => id === 'T1' });
   assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X', 2]]);
 });
+
+test('rànquing de jornades: si un equip canvia de gimnastes, es diu qui entra i qui en surt, i continua sumant', () => {
+  const mk = (id, gids, s) => {
+    const c = comp({ id });
+    c.teams.push({ id: 't' + id, name: 'Club X', clubId: 'cx', category: 'Aleví', level: 'A', sourceTeamId: 'T1' });
+    gids.forEach(g => c.entries.push(entry(g, { salt: s, barra: s, terra: s }, { gymnastId: g, teamId: 't' + id })));
+    return c;
+  };
+  const j1 = mk('j1', ['a', 'b', 'c', 'd'], 8), j2 = mk('j2', ['a', 'b', 'c', 'e'], 8), j3 = mk('j3', ['a', 'b', 'c', 'e'], 8);
+  const [g] = E.seasonRanking([j1, j2, j3], { categories: CATS, levels: ['A'] }, { nameOf });
+  const t = plain(g.teams[0]);
+  assert.equal(t.n, 3);                                    // les tres jornades sumen: és el mateix equip
+  assert.equal(t.total, 3 * 3 * 3 * 8000);
+  assert.deepEqual(t.changes, [{ compId: 'j2', prevId: 'j1', added: ['e'], removed: ['d'] }]);
+  // sense canvis, res
+  const [g2] = E.seasonRanking([j2, j3], { categories: CATS, levels: ['A'] }, { nameOf });
+  assert.deepEqual(plain(g2.teams[0].changes), []);
+});

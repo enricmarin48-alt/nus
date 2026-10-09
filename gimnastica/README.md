@@ -43,8 +43,12 @@ internet.
    full; si alguna podria formar part d'un equip de la seva entitat, surt l'avís «pot fer equip» (a la
    importació i a Inscripcions). Abans
    d'importar es veu tot i es pot corregir l'entitat, el nivell i si són noies o nois (el full no ho
-   diu). Des d'una competició (*Inscripcions*), també les hi inscriu. Si una gimnasta ja hi és,
-   se n'actualitzen el grup, l'any i l'equip. També les pots entrar una a una o *Enganxa des
+   diu), i es tria a quina competició s'inscriuen (des d'una competició, *Inscripcions*, ja surt
+   triada). **Els equips que diu l'entitat es respecten tal qual** (un de 6 i un de 3 es queden de 6 i
+   de 3): a la competició triada cada gimnasta queda a l'equip del full encara que ja hi fos inscrita
+   amb un altre equip, i l'app no hi posa ni n'hi treu ningú pel seu compte ni en fa d'«igualats». Les
+   altres competicions no es toquen (cada competició té els seus equips; si n'hi ha alguna amb uns altres
+   equips, l'avís ho diu). Si una gimnasta ja hi és, se n'actualitzen el grup, l'any i l'equip. També les pots entrar una a una o *Enganxa des
    d'Excel* qualsevol llista (amb la fila de títols: Nom, Cognoms, Entitat, Gènere, Any de naixement,
    Nivell, i si vols Categoria i Equip). Amb l'any de naixement la **categoria es posa sola**. Es
    queden guardades per a totes les competicions.
@@ -67,7 +71,9 @@ internet.
    per a les medalles, amb el desplegable de les gimnastes de cada equip). *Imprimeix / PDF* i
    *Exporta a Excel* treuen els fulls (classificacions, podi, acta de notes, llistat d'inscripcions i
    fulls de jutge en blanc). Si encara falten notes, s'avisa abans d'imprimir.
-6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips.
+6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips. Si un equip
+   canvia de gimnastes d'una jornada a l'altra, surt l'avís (qui entra i qui en surt) al rànquing i a la
+   classificació per equips de la competició, i l'equip continua sumant igual.
 
 A la pantalla d'inici hi ha la competició del dia amb accés directe a Notes, Classificacions, Podi i
 Inscripcions. Al mòbil, les seccions són a la barra de baix.

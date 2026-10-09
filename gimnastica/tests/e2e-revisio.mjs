@@ -313,9 +313,9 @@ try {
     await pg.click('button[data-act=inscOpen] >> visible=true');
     await pg.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-nivell-A.xlsx')]);
     await pg.waitForSelector('#dlg >> text=ja hi és');
-    assert.ok(await pg.locator('#dlg input[data-k=enroll]').isChecked());
+    assert.equal(await pg.locator('#insccomp').inputValue(), 'k1', 'la competició on s’ha obert');
     await pg.click('#dlg button[data-act=inscDo]');
-    await pg.waitForSelector('.toast:has-text("inscripcions fetes a Jornada avui")');
+    await pg.waitForSelector('.toast:has-text("a Jornada avui:")');
     const d = await data2(), c = d.competitions.find(x => x.id === 'k1');
     const e = n => c.entries.find(x => { const g = d.gymnasts.find(y => y.id === x.gymnastId); return g && g.name + ' ' + g.surname === n && g.clubId === 'c1'; });
     const tname = x => (c.teams.find(t => t.id === x.teamId) || {}).name || null;
@@ -324,6 +324,60 @@ try {
     // a Inscripcions també surt l'avís
     await pg.waitForSelector('tr:has-text("Laia Garcia Puig") .badge:has-text("pot fer equip")');
     assert.ok(e('Ona Bosch') && e('Ona Bosch').category === 'Benjamí');
+  });
+
+  await step('el full de l’entitat mana: equips tal qual a la competició triada (encara que ja hi fossin), cap altra competició canvia i no s’hi fan equips «igualats»', async () => {
+    // una competició passada (com la del 18/04) i una que ve, on l'Elna (EQUIP 2 al full) era a «CG Lleida» amb
+    // equips que s'havien fet sols (5 + 2)
+    await pg.evaluate(() => {
+      const gid = n => db.gymnasts.find(g => g.clubId === 'c1' && g.name + ' ' + g.surname === n).id;
+      const who = ['Anna Serra', 'Berta Pla', 'Carla Coll', 'Dana Mas', 'Elna Font', 'Fiona Ros', 'Gina Gil'].map(gid);
+      const mk = (id, date) => { const c = { id, name: 'Comp ' + id, date, place: 'Lleida', season: 'Curs prova', locked: false, autoTeams: true,
+        teams: [{ id: id + 't1', name: 'CG Lleida', clubId: 'c1', category: 'Aleví', gender: 'F', level: 'A', sourceTeamId: null, auto: true },
+          { id: id + 't2', name: 'CG Lleida 2', clubId: 'c1', category: 'Aleví', gender: 'F', level: 'A', sourceTeamId: null, auto: true }],
+        entries: who.map((g, i) => ({ id: id + 'e' + i, gymnastId: g, clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib: i + 1, teamId: i < 5 ? id + 't1' : id + 't2', status: '', scores: i === 4 ? { salt: [{ v: 8, at: 1 }] } : {} })) };
+        db.competitions.push(normalizeComp(c, S().compDefaults)); };
+      const d = new Date(Date.now() - 30 * 864e5), f = new Date(Date.now() + 20 * 864e5), iso = x => x.toISOString().slice(0, 10);
+      mk('kp', iso(d)); mk('kf', iso(f)); commit();
+    });
+    await pg.goto(url + '#/competicio/kp/inscripcions');
+    await pg.click('button[data-act=inscOpen] >> visible=true');
+    await pg.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-nivell-A.xlsx')]);
+    await pg.waitForSelector('#dlg >> text=ja hi és');
+    assert.equal(await pg.locator('#insccomp').inputValue(), 'kp');
+    await pg.click('#dlg button[data-act=inscDo]');
+    const t = await pg.locator('.toast:has-text("Fulls d’inscripció importats")').last().textContent();
+    assert.ok(t.includes('Comp kf') && t.includes('no s’hi ha tocat res'), 'es diu que l’altra competició té uns altres equips: ' + t);
+    assert.ok(t.includes('canviat d’equip (les notes no canvien)'), 'l’Elna ja tenia notes: ' + t);
+    const d = await data2();
+    const teamsOf = id => { const c = d.competitions.find(x => x.id === id), gn = gid => d.gymnasts.find(g => g.id === gid).name;
+      return Object.fromEntries(c.teams.filter(x => x.category === 'Aleví' && x.level === 'A' && x.clubId === 'c1').map(x => [x.name, c.entries.filter(e => e.teamId === x.id).map(e => gn(e.gymnastId)).sort().join(',')])); };
+    assert.deepEqual(teamsOf('kp'), { 'CG Lleida': 'Anna,Berta,Carla,Dana', 'CG Lleida 2': 'Elna,Fiona,Gina' }, 'com diu el full, encara que ja hi fossin');
+    assert.deepEqual(teamsOf('kf'), { 'CG Lleida': 'Anna,Berta,Carla,Dana,Elna', 'CG Lleida 2': 'Fiona,Gina' }, 'l’altra competició no canvia');
+    assert.ok(d.competitions.find(x => x.id === 'kp').entries.find(e => e.id === 'kpe4').scores.salt[0].v === 8, 'la nota es queda');
+    // «Fes equips per entitat» no toca els equips del full (ni hi posa les individuals)
+    await pg.evaluate(() => { db.competitions.find(c => c.id === 'kp').entries.forEach(e => { if (!e.teamId) delete e.noAuto; }); commit(); });
+    await pg.evaluate(() => actions.autoCompTeams ? actions.autoCompTeams() : null);
+    await pg.waitForTimeout(300);
+    const ok = await pg.$('#confirm[open] button[value=ok]'); if (ok) await ok.click();
+    await pg.waitForTimeout(300);
+    assert.deepEqual(teamsOf('kp'), { 'CG Lleida': 'Anna,Berta,Carla,Dana', 'CG Lleida 2': 'Elna,Fiona,Gina' });
+    const d2 = await data2();
+    assert.deepEqual((await (async () => { const c = d2.competitions.find(x => x.id === 'kp'); return Object.fromEntries(c.teams.filter(x => x.category === 'Aleví' && x.level === 'A' && x.clubId === 'c1').map(x => [x.name, c.entries.filter(e => e.teamId === x.id).length])); })()), { 'CG Lleida': 4, 'CG Lleida 2': 3 }, 'cap equip nou ni «igualat»');
+  });
+
+  await step('si un equip canvia de gimnastes d’una jornada a l’altra, la classificació ho avisa i la puntuació continua sumant', async () => {
+    // a «Comp kf» (després de kp), l'Elna és a «CG Lleida»: a kp, no
+    await pg.evaluate(() => { ui.clsType = 'teams'; ui.clsGroup = 'Aleví||F||A'; location.hash = '#/competicio/kf/classificacions'; });
+    await pg.waitForSelector('.chg');
+    const t = await pg.locator('tr.team-row:has-text("CG Lleida") .chg').first().textContent();
+    assert.ok(t.includes('Canvis respecte de «Comp kp»') && t.includes('entra Elna Font'), t);
+    // al rànquing del curs: l'equip suma les dues jornades i surt l'avís
+    await pg.evaluate(() => { ui.rkSeason = 'Curs prova'; ui.rkType = 'teams'; ui.rkGroup = 'Aleví||F||A'; location.hash = '#/ranquing'; });
+    await pg.waitForSelector('.card .chg');
+    const r = await pg.locator('.card tr:has-text("CG Lleida") .chg').first().textContent();
+    assert.ok(r.includes('Ha canviat de gimnastes') && r.includes('entra Elna Font'), r);
+    assert.ok(await pg.locator('.note.warn:has-text("continua sumant igual")').count());
   });
 } finally {
   await browser.close();

@@ -48,7 +48,9 @@ function fixture() {
   return c;
 }
 const ORDER = { F: ['salt', 'barra', 'terra'], M: ['salt', 'mini', 'terra'] }, FINAL = { F: [], M: ['bfixa'] };
-const RULES = (o = {}) => Object.assign({ joins: null, apart: [], allM: true, maxGroup: 15, order: ORDER, final: FINAL, subOrder: [] }, o);
+// (el 18/04 ella va ajuntar Infantil, Cadet i Juvenil: és la regla recordada de les proves; l'app no n'ajunta cap sola)
+const ICJ = { g: 'F', cats: ['Infantil', 'Cadet', 'Juvenil'] };
+const RULES = (o = {}) => Object.assign({ joins: [ICJ], apart: [], allM: true, maxGroup: 15, order: ORDER, final: FINAL, subOrder: [] }, o);
 const K = (cat, lv, g = 'F') => E.groupKey(cat, g, lv);
 const MODEL_ORDER = [
   JSON.stringify(['F', ['Cadet', 'Infantil', 'Juvenil'], ['A', 'B']]), JSON.stringify(['F', ['Benjamí'], ['A']]), JSON.stringify(['F', ['Benjamí'], ['B']]),
@@ -71,7 +73,7 @@ function solve(c, subId, mode = c.rot.mode, extra = {}) {
 }
 const sizes = sv => sv.groups.map(g => g.n).join('/');
 
-test('subdivisions automàtiques (com el Consell): Benjamí es parteix, Cadet i Juvenil s’ajunten amb Infantil, els nois junts', () => {
+test('subdivisions (com el Consell): Benjamí es parteix, Infantil, Cadet i Juvenil juntes perquè ella les ha ajuntat, els nois junts', () => {
   const c = fixture();
   assert.equal(c.entries.length, 154);
   const p = E.rotPlan(c, settings, RULES(), { clubName });
@@ -80,9 +82,23 @@ test('subdivisions automàtiques (com el Consell): Benjamí es parteix, Cadet i 
   assert.deepEqual(plain(p.subs[1].keys), [K('Benjamí', 'A')]);
   const t = plain(p.notes).map(x => x.t);
   assert.ok(t.includes('split') && t.includes('allM'));
-  assert.deepEqual(plain(p.notes.filter(x => x.t === 'joined').map(x => [x.cat, x.n, x.into])), [['Cadet', 7, 'Infantil'], ['Juvenil', 1, 'Infantil']]);
+  assert.deepEqual(plain(p.notes.filter(x => x.t === 'joins').map(x => x.label)), ['Infantil, Cadet i Juvenil']);
+  assert.ok(!t.includes('small') && !t.includes('joined'));
   const sp = plain(p.notes.find(x => x.t === 'split'));
   assert.deepEqual([sp.label, sp.n, sp.cap, sp.parts], ['Benjamí', 55, 45, ['Benjamí A', 'Benjamí B']]);
+});
+
+test('sense cap regla, cap categoria s’ajunta sola: Cadet i Juvenil van en la seva, i només es diu que són petites', () => {
+  for (const joins of [null, []]) {
+    const p = E.rotPlan(fixture(), settings, RULES({ joins }), { clubName });
+    assert.deepEqual(plain(p.subs.map(s => [s.g, s.n])), [['F', 25], ['F', 26], ['F', 29], ['F', 41], ['F', 19], ['F', 7], ['F', 1], ['M', 6]], JSON.stringify(joins));
+    assert.deepEqual(plain(p.subs.filter(s => s.g === 'F').map(s => E.rotSubLabel(s.keys, fixture()))), ['PREBENJAMÍ A i B', 'BENJAMÍ A', 'BENJAMÍ B', 'ALEVÍ A i B', 'INFANTIL A i B', 'CADET A i B', 'JUVENIL']);
+    assert.deepEqual(plain(p.notes.filter(x => x.t === 'small')), [{ t: 'small', cat: 'Cadet', n: 7 }, { t: 'small', cat: 'Juvenil', n: 1 }]);
+    assert.ok(!p.notes.some(x => x.t === 'joined' || x.t === 'joins'));
+  }
+  // els nois sí que van junts (allM), si ella no ho treu
+  assert.equal(E.rotPlan(fixture(), settings, RULES({ joins: null }), { clubName }).subs.filter(s => s.g === 'M').length, 1);
+  assert.equal(E.rotPlan(fixture(), settings, RULES({ joins: null, allM: false }), { clubName }).subs.filter(s => s.g === 'M').length, 3);
 });
 
 test('categories que van juntes, ordre recordat, una categoria sense partir i nivells separats', () => {
@@ -272,7 +288,7 @@ test('mai es perd ningú: 40 competicions a l’atzar amb canvis', () => {
     }
     make(c);
     for (let k = 0; k < 30; k++) {
-      const op = rnd(7), e = c.entries[rnd(c.entries.length)];
+      const op = rnd(8), e = c.entries[rnd(c.entries.length)];
       if (op === 0) c.entries.splice(c.entries.indexOf(e), 1);
       if (op === 1) c.entries.push({ id: 'n' + k, clubId: 'K' + rnd(14), gender: 'F', category: 'Aleví', level: 'B', teamId: null, status: '', scores: {} });
       if (op === 2 && c.teams.length) e.teamId = c.teams[rnd(c.teams.length)].id;
@@ -280,10 +296,16 @@ test('mai es perd ningú: 40 competicions a l’atzar amb canvis', () => {
       if (op === 4) e.status = e.status ? '' : 'np';
       if (op === 5 && c.rot.subs.length) { const s = c.rot.subs[rnd(c.rot.subs.length)]; c.rot.at[e.id] = { s: s.id, g: rnd(4), m: 1 }; }
       if (op === 6 && c.rot.subs.length) c.rot.subs[rnd(c.rot.subs.length)].k = 1 + rnd(5);
+      // (a una altra subdivisió, a mà: del seu gènere o no, amb un grup que potser no hi és, o a una que no hi és)
+      if (op === 7 && c.rot.subs.length) { const s = c.rot.subs[rnd(c.rot.subs.length)]; c.rot.at[e.id] = { s: rnd(5) ? s.id : 'cap', g: rnd(4), m: 1, x: 1, k: E.groupKey(e.category, e.gender, e.level) }; }
       const v = E.rotView(c, settings, { clubName });
       assert.equal(v.place.size, c.entries.length, 'tothom un sol cop');
       const seen = new Set(); for (const sv of v.subs) for (const g of sv.groups) for (const x of g.entries) { assert.ok(!seen.has(x)); seen.add(x); }
       assert.equal(seen.size, c.entries.length);
+      // mai en una subdivisió de l'altre gènere; els premis de cada categoria i nivell, en una sola subdivisió
+      for (const [x, p] of v.place) assert.equal(v.subs.find(sv => sv.id === p.subId).g, x.gender === 'M' ? 'M' : 'F');
+      const ak = v.subs.flatMap(sv => sv.awardKeys), act = new Set(c.entries.filter(x => x.status !== 'np').map(x => E.groupKey(x.category, x.gender, x.level)));
+      assert.equal(ak.length, new Set(ak).size); assert.deepEqual(plain([...ak].sort()), plain([...act].sort()));
     }
   }
 });
@@ -444,36 +466,37 @@ test('mai una subdivisió on totes són NP ni una de 2 gimnastes per partir un b
 });
 
 test('notes de «Fes les rotacions»: certes i una sola vegada per categoria', () => {
-  const notes = (spec, apps = APPS3) => plain(E.rotPlan(mkc(spec, apps), settings, R2({ joins: null }), {}).notes);
+  const notes = (spec, apps = APPS3, o = {}) => plain(E.rotPlan(mkc(spec, apps), settings, R2(Object.assign({ joins: null }, o)), {}).notes);
   // una sola categoria petita: no hi ha res a dir
   assert.deepEqual(notes([['Aleví', 'F', 'A', 2]]), []);
-  // amb 4 aparells (màxim 60): Aleví va amb Infantil i prou
-  const four = APPS3.concat({ id: 'paral', name: 'Paral·leles', modes: { F: 'total', M: 'off' } });
-  assert.deepEqual(notes([['Aleví', 'F', 'A', 2], ['Infantil', 'F', 'A', 12]], four), [{ t: 'joined', cat: 'Aleví', n: 2, into: 'Infantil' }]);
-  // encadenades: Prebenjamí i Benjamí, totes dues amb Aleví
+  // dues petites: cadascuna en la seva subdivisió, i es diu de totes dues (cap no s'ajunta sola)
   assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 6], ['Aleví', 'F', 'A', 18]]),
-    [{ t: 'joined', cat: 'Prebenjamí', n: 5, into: 'Aleví' }, { t: 'joined', cat: 'Benjamí', n: 6, into: 'Aleví' }]);
-  // petita i la del costat ja és massa gran: es diu, amb el màxim de debò
-  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 44]]), [{ t: 'small', label: 'Prebenjamí', nc: 1, n: 5, cap: 45 }]);
+    [{ t: 'small', cat: 'Prebenjamí', n: 5 }, { t: 'small', cat: 'Benjamí', n: 6 }]);
+  assert.equal(E.rotPlan(mkc([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 6], ['Aleví', 'F', 'A', 18]]), settings, R2({ joins: null }), {}).subs.length, 3);
+  // petita al costat d'una de massa gran o d'una partida per nivells: el mateix
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 44]]), [{ t: 'small', cat: 'Prebenjamí', n: 5 }]);
+  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 26], ['Benjamí', 'F', 'B', 29]]).filter(x => x.t === 'small'), [{ t: 'small', cat: 'Prebenjamí', n: 5 }]);
   // totes NP: cap nota
-  assert.deepEqual(notes([['Aleví', 'F', 'A', 2, 2]]), []);
-  // les dades reals, com sempre
-  assert.deepEqual(plain(E.rotPlan(fixture(), settings, RULES(), { clubName }).notes.filter(x => x.t === 'joined').map(x => [x.cat, x.n, x.into])), [['Cadet', 7, 'Infantil'], ['Juvenil', 1, 'Infantil']]);
+  assert.deepEqual(notes([['Aleví', 'F', 'A', 2, 2], ['Infantil', 'F', 'A', 20]]), []);
+  // les que ella ha ajuntat: es diu que van juntes; si són poques, no se'n diu res més
+  assert.deepEqual(notes([['Aleví', 'F', 'A', 2], ['Infantil', 'F', 'A', 4], ['Cadet', 'F', 'A', 20]], APPS3, { joins: [{ g: 'F', cats: ['Aleví', 'Infantil'] }] }),
+    [{ t: 'joins', g: 'F', label: 'Aleví i Infantil', nc: 2 }]);
 });
 
-test('regles recordades: les categories petites que l’organitzadora no ha vist mai s’ajunten soles; les que ha decidit, no', () => {
+test('regles recordades: ella decideix quines van juntes; de les petites que no ha vist mai, només es diu que són petites', () => {
   const c = fixture();
   const sub = (p, cat) => p.subs.find(s => s.keys.includes(K(cat, 'A'))).keys;
-  // desat en una jornada sense Cadet ni Juvenil (no les ha vistes): s'ajunten amb Infantil
+  // desat en una jornada sense Cadet ni Juvenil (no les ha vistes): es queden soles, i es diu que són petites
   const seenB = ['Prebenjamí', 'Benjamí', 'Aleví', 'Infantil'].map(cat => ({ g: 'F', cat }));
   const a = E.rotPlan(c, settings, RULES({ joins: [], seen: seenB }), { clubName });
-  assert.ok(sub(a, 'Infantil').includes(K('Cadet', 'B')) && sub(a, 'Infantil').includes(K('Juvenil', 'A')));
-  assert.deepEqual(plain(a.notes.filter(x => x.t === 'joined').map(x => x.cat)), ['Cadet', 'Juvenil']);
-  // les ha vistes i les va deixar soles: es queden soles
+  assert.deepEqual(plain(sub(a, 'Infantil')), [K('Infantil', 'A'), K('Infantil', 'B')]);
+  assert.deepEqual(plain(a.notes.filter(x => x.t === 'small').map(x => x.cat)), ['Cadet', 'Juvenil']);
+  // les ha vistes i les va deixar soles: es queden soles, sense dir-ne res
   const b = E.rotPlan(c, settings, RULES({ joins: [], seen: seenB.concat({ g: 'F', cat: 'Cadet' }, { g: 'F', cat: 'Juvenil' }) }), { clubName });
   assert.deepEqual(plain(sub(b, 'Juvenil')), [K('Juvenil', 'A')]);
-  // sense «seen» (com abans): només si no s'ha desat mai
-  assert.deepEqual(plain(sub(E.rotPlan(c, settings, RULES({ joins: [] }), { clubName }), 'Juvenil')), [K('Juvenil', 'A')]);
+  assert.ok(!b.notes.some(x => x.t === 'small'));
+  // les va ajuntar en una jornada d'abans: encara van juntes
+  assert.ok(sub(E.rotPlan(c, settings, RULES({ seen: seenB }), { clubName }), 'Juvenil').includes(K('Infantil', 'B')));
 });
 
 test('«només té N gimnastes» no surt a l’única subdivisió dels nois; «no era a cap subdivisió» diu per què', () => {
@@ -512,18 +535,12 @@ test('inscripcions sense categoria o sense nivell: subdivisió pròpia i noms se
 });
 
 // ── segona revisió
-test('una categoria petita al costat d’una partida per nivells: es diu per què no s’hi ha ajuntat', () => {
-  const notes = spec => plain(E.rotPlan(mkc(spec), settings, R2({ joins: null }), {}).notes.filter(x => x.t === 'small'));
-  // Prebenjamí 5 i Benjamí 55 (A 26 i B 29, partit per nivells): les parts per nivell no s'ajunten mai amb res
-  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 5], ['Benjamí', 'F', 'A', 26], ['Benjamí', 'F', 'B', 29]]),
-    [{ t: 'small', label: 'Prebenjamí', nc: 1, n: 5, cap: 45, lv: 'Benjamí', lvc: 1, big: false }]);
-  // a un costat una de massa gran i a l'altre una partida per nivells: es diuen totes dues coses
-  assert.deepEqual(notes([['Prebenjamí', 'F', 'A', 42], ['Benjamí', 'F', 'A', 5], ['Aleví', 'F', 'A', 30], ['Aleví', 'F', 'B', 20]]),
-    [{ t: 'small', label: 'Benjamí', nc: 1, n: 5, cap: 45, lv: 'Aleví', lvc: 1, big: true }]);
-  // les dades reals amb només 5 Prebenjamí: la nota hi és (i la de Benjamí partit, abans)
+test('una categoria petita: es diu (primer el que s’ha partit), però no s’ajunta amb cap altra', () => {
+  // les dades reals amb només 5 Prebenjamí (noies): la nota hi és, després de la de Benjamí partit, i fa la seva subdivisió
   const c = fixture(); let keep = 5; c.entries = c.entries.filter(e => !(e.gender === 'F' && e.category === 'Prebenjamí') || keep-- > 0);
-  const ts = plain(E.rotPlan(c, settings, RULES(), { clubName }).notes.map(x => x.t + (x.lv ? ':' + x.lv : '')));
-  assert.ok(ts.includes('small:Benjamí') && ts.indexOf('split') < ts.indexOf('small:Benjamí'), ts.join());
+  const p = E.rotPlan(c, settings, RULES(), { clubName }), ts = plain(p.notes.map(x => x.t + (x.cat ? ':' + x.cat : '')));
+  assert.ok(ts.includes('small:Prebenjamí') && ts.indexOf('split') < ts.indexOf('small:Prebenjamí'), ts.join());
+  assert.ok(p.subs.some(s => s.g === 'F' && s.n === 5 && s.keys.every(k => k.startsWith('Prebenjamí'))));
 });
 
 test('un bloc de categories que van juntes partit per nivells: cada part amb els seus nivells i primer el «l’he partit»', () => {
@@ -652,4 +669,144 @@ test('una gimnasta que canvia de subdivisió (se li corregeix el nivell) no és 
   const d2 = E.rotView(c, settings, CTX).issues.find(i => i.t === 'derived');
   assert.equal(d2.n, 2);
   assert.deepEqual(plain(d2.moved.map(m => m.e.id)), [e.id]);
+});
+
+// ─── moure-ho tot: un equip o unes gimnastes a una altra subdivisió (at.x, amb la clau at.k per a la qual s'ha fet)
+const X = (c, e, s, g, m = 1) => { c.rot.at[e.id] = Object.assign({ s, g }, m ? { m: 1 } : {}, { x: 1, k: K(e.category, e.level, e.gender) }); };
+const model = () => { const c = fixture(); make(c, RULES({ subOrder: MODEL_ORDER })); const v = E.rotView(c, settings, CTX); return { c, v, by: l => v.subs.find(s => s.label === l) }; };
+const teamOf = (c, name, cat, lv) => c.teams.find(t => t.name === name && t.category === cat && t.level === lv);
+test('un equip d’Aleví A a la subdivisió de Benjamí B i tornada: hi competeix (amb la seva categoria), els premis i l’horari', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id;
+  const t = teamOf(c, 'C.G. LLEIDA 2', 'Aleví', 'A'), mem = c.entries.filter(e => e.teamId === t.id);
+  assert.equal(mem.length, 4);
+  const at0 = JSON.stringify(c.rot.at), sch0 = E.rotHorRows(E.rotSchedule(E.rotView(c, settings, CTX), c.rot));
+  for (const e of mem) X(c, e, sB, 1);
+  let v = E.rotView(c, settings, CTX), b = v.subs.find(s => s.id === sB), al = v.subs.find(s => s.id === sAl);
+  assert.equal(v.place.size, 154);
+  for (const e of mem) assert.deepEqual(plain(v.place.get(e)), { subId: sB, g: 1, derived: false, x: true, pin: true });
+  const u = b.units.find(x => x.teamId === t.id);
+  assert.ok(u.guest && u.pinned && !u.fresh && u.home === sAl && !u.xs);
+  assert.ok(!al.units.some(x => x.teamId === t.id));
+  assert.deepEqual([b.N, al.N], [33, 37]);
+  assert.deepEqual(plain(b.keys), [K('Benjamí', 'B')]);
+  assert.deepEqual(plain(b.guestKeys), [K('Aleví', 'A')]);
+  assert.equal(b.label, 'BENJAMÍ B', 'el nom és el de les seves categories');
+  assert.ok(b.groups[1].label.includes('ALEVÍ A'), b.groups[1].label);
+  // l'ordre de pas: les d'Aleví A, després de les de Benjamí B del seu grup; a l'Aleví, ja no hi són
+  const seq = E.rotAppSeq(b, 'salt', settings, CTX).find(x => x.G.g === 1).entries;
+  assert.deepEqual(plain(seq.slice(-4).map(e => e.id)), plain(mem.map(e => e.id).sort((p, q) => c.entries.find(e => e.id === p).bib - c.entries.find(e => e.id === q).bib)));
+  assert.ok(!E.rotAppSeq(al, 'salt', settings, CTX).some(x => x.entries.some(e => mem.includes(e))));
+  // Aleví A també competeix a la 6a: els premis, allà (com sempre), i cap avís
+  assert.deepEqual(plain(v.late), []);
+  assert.deepEqual([b.awardsLabel, al.awardsLabel], ['BENJAMÍ B', 'ALEVÍ A i B']);
+  // l'horari: la 3a dura més (un grup de 13 a 1’28’’), l'Aleví, el mateix (el seu grup més llarg no era aquest)
+  assert.ok(b.est.min >= by('BENJAMÍ B').est.min);
+  assert.notEqual(v.sig, E.rotView(fixture(), settings, CTX).sig);
+  // tornada: un grup de la seva subdivisió (sense x) i tot torna a ser com abans
+  for (const e of mem) c.rot.at[e.id] = JSON.parse(at0)[e.id];
+  assert.equal(JSON.stringify(c.rot.at), at0);
+  assert.deepEqual(plain(E.rotHorRows(E.rotSchedule(E.rotView(c, settings, CTX), c.rot))), plain(sch0));
+});
+
+test('tot Aleví A a la 3a: els premis d’Aleví A, després de la 3a (abans); un equip de Benjamí B a la 6a: els de Benjamí B, després de la 6a, i es diu', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id;
+  const alA = c.entries.filter(e => e.gender === 'F' && e.category === 'Aleví' && e.level === 'A');
+  assert.equal(alA.length, 12);
+  for (const e of alA) X(c, e, sB, 0);
+  let v = E.rotView(c, settings, CTX), b = v.subs.find(s => s.id === sB), al = v.subs.find(s => s.id === sAl);
+  assert.deepEqual(plain(b.awardKeys), [K('Benjamí', 'B'), K('Aleví', 'A')]);
+  assert.deepEqual([b.awardsLabel, al.awardsLabel], ['BENJAMÍ B i ALEVÍ A', 'ALEVÍ B']);
+  assert.deepEqual(plain(v.late), [], 'Aleví A competeix abans: no s’ha d’esperar');
+  let rows = E.rotSchedule(v, c.rot).blocks.flatMap(x => x.rows).filter(r => r.kind === 'awards').map(r => r.text);
+  assert.deepEqual(plain(rows), ['PREMIS INFANTIL A i B, CADET A i B i JUVENIL', 'PREMIS BENJAMÍ A', 'PREMIS BENJAMÍ B i ALEVÍ A', 'PREMIS MASCULINA', 'PREMIS PREBENJAMÍ A i B', 'PREMIS ALEVÍ B']);
+  // un equip de Benjamí B a l'Aleví (6a): Benjamí B s'ha d'esperar a la 6a
+  for (const e of alA) delete c.rot.at[e.id];
+  make(c, RULES({ subOrder: MODEL_ORDER }));
+  const fed = c.entries.filter(e => e.teamId === teamOf(c, 'FEDAC LLEIDA', 'Benjamí', 'B').id);
+  for (const e of fed) X(c, e, sAl, 2);
+  v = E.rotView(c, settings, CTX); b = v.subs.find(s => s.id === sB); al = v.subs.find(s => s.id === sAl);
+  assert.deepEqual(plain(v.late.map(l => [l.key, l.home, l.last, l.units.map(u => u.team.name)])), [[K('Benjamí', 'B'), sB, sAl, ['FEDAC LLEIDA']]]);
+  assert.deepEqual(plain([b.awardKeys, b.awards, al.awardsLabel, al.awards]), [[], 0, 'BENJAMÍ B i ALEVÍ A i B', 5]);
+  rows = E.rotSchedule(v, c.rot).blocks.flatMap(x => x.rows).filter(r => r.kind === 'awards').map(r => r.text);
+  assert.ok(!rows.includes('PREMIS BENJAMÍ B') && rows.includes('PREMIS BENJAMÍ B i ALEVÍ A i B'), rows.join(' | '));
+  // si ella hi posa minuts a mà, la fila hi és (sense categories)
+  c.rot.subs.find(s => s.id === sB).awards = 3;
+  rows = E.rotSchedule(E.rotView(c, settings, CTX), c.rot).blocks.flatMap(x => x.rows).filter(r => r.kind === 'awards' && r.subId === sB);
+  assert.deepEqual(plain(rows.map(r => [r.text, r.to - r.from])), [['PREMIS', 3]]);
+});
+
+test('només 2 de les 5 d’un equip a una altra subdivisió: l’equip queda repartit (es diu a totes dues) i les entrenadores hi compten', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id;
+  const t = teamOf(c, 'C.G. LLEIDA', 'Aleví', 'B'), mem = c.entries.filter(e => e.teamId === t.id);
+  assert.equal(mem.length, 5);
+  X(c, mem[0], sB, 2); X(c, mem[1], sB, 2);
+  const v = E.rotView(c, settings, CTX), b = v.subs.find(s => s.id === sB), al = v.subs.find(s => s.id === sAl);
+  const ub = b.units.find(u => u.teamId === t.id), ua = al.units.find(u => u.teamId === t.id);
+  assert.deepEqual([ub.entries.length, ua.entries.length], [2, 3]);
+  assert.deepEqual(plain(ub.xs.map(x => [x.subId, x.entries.length])), [[sAl, 3]]);
+  assert.deepEqual(plain(ua.xs.map(x => [x.subId, x.entries.length])), [[sB, 2]]);
+  assert.ok(b.warnings.some(w => w.t === 'xsplit' && w.unit === ub) && al.warnings.some(w => w.t === 'xsplit' && w.unit === ua));
+  assert.ok(!ub.split && !ua.split, 'dins de cada subdivisió, en un sol grup');
+  // C.G. Lleida amb 1 entrenadora: a la 3a ara surt en 2 grups (les seves de Benjamí B i les 2 d'Aleví B)
+  c.rot.coaches = { CGL: 1 };
+  const b2 = E.rotView(c, settings, CTX).subs.find(s => s.id === sB);
+  assert.ok(b2.clubs.find(x => x.clubId === 'CGL').groups >= 2 && b2.warnings.some(w => w.t === 'coach' && w.clubId === 'CGL'));
+  // una NP també es pot moure, i no compta per als premis ni per a les mides
+  mem[1].status = 'np';
+  const v3 = E.rotView(c, settings, CTX), b3 = v3.subs.find(s => s.id === sB);
+  assert.equal(v3.place.get(mem[1]).subId, sB);
+  assert.equal(b3.N, 30); assert.equal(b3.np, 1);
+});
+
+test('canvis de subdivisió que ja no valen: grups de menys, la subdivisió ja no hi és, una altra categoria o un altre gènere', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id;
+  const t = teamOf(c, 'C.G. LLEIDA 2', 'Aleví', 'A'), mem = c.entries.filter(e => e.teamId === t.id);
+  for (const e of mem) X(c, e, sB, 2);
+  // (a) la 3a passa a tenir 2 grups: continuen a la 3a, on aniria una inscripció nova (amb la seva entitat), marcades NOU
+  c.rot.subs.find(s => s.id === sB).k = 2;
+  let v = E.rotView(c, settings, CTX);
+  for (const e of mem) { const p = v.place.get(e); assert.ok(p.subId === sB && p.derived && p.x && p.g < 2, JSON.stringify(p)); }
+  assert.equal(new Set(mem.map(e => v.place.get(e).g)).size, 1, 'l’equip, junt');
+  assert.ok(v.issues.find(i => i.t === 'derived').n >= 4);
+  c.rot.subs.find(s => s.id === sB).k = 3;
+  // (b) una subdivisió que ja no hi és (o que no té cap gimnasta seva): tornen a la seva, i es diu (back)
+  for (const e of mem) c.rot.at[e.id].s = 'jaNoHiEs';
+  v = E.rotView(c, settings, CTX);
+  for (const e of mem) assert.equal(v.place.get(e).subId, sAl);
+  assert.deepEqual(plain(v.issues.find(i => i.t === 'derived').moved.map(m => [m.e.id, m.from, m.to, m.back])), plain(mem.map(e => [e.id, 'jaNoHiEs', sAl, true])));
+  c.rot.subs.push({ id: 'sSen', g: 'F', keys: [K('Sènior', 'A')], k: 2, extras: [] });
+  for (const e of mem) c.rot.at[e.id].s = 'sSen';
+  v = E.rotView(c, settings, CTX);
+  assert.ok(mem.every(e => v.place.get(e).subId === sAl) && !v.subs.some(s => s.id === 'sSen'));
+  c.rot.subs.pop();
+  // (c) se li canvia el nivell (Aleví A → B): ja no val, va a la de la seva clau nova i es diu d'on a on
+  for (const e of mem) X(c, e, sB, 2);
+  const m0 = mem[0]; m0.level = 'B'; m0.teamId = null;
+  v = E.rotView(c, settings, CTX);
+  assert.equal(v.place.get(m0).subId, sAl);
+  assert.deepEqual(plain(v.issues.find(i => i.t === 'derived').moved.filter(m => m.e === m0).map(m => [m.from, m.to, m.back])), [[sB, sAl, false]]);
+  // (d) a una subdivisió dels nois: no s'hi va mai
+  m0.level = 'A'; m0.teamId = t.id; X(c, m0, by('MASCULINA').id, 0);
+  v = E.rotView(c, settings, CTX);
+  assert.equal(v.place.get(m0).subId, sAl);
+  for (const vv of [v]) assert.equal(vv.place.size, c.entries.length);
+});
+
+test('una gimnasta nova d’un equip que ella ha portat a una altra subdivisió hi va amb el seu equip (NOU); les dades d’abans, com sempre', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id;
+  const t = teamOf(c, 'C.G. LLEIDA 2', 'Aleví', 'A'), mem = c.entries.filter(e => e.teamId === t.id);
+  for (const e of mem) X(c, e, sB, 1);
+  c.entries.push({ id: 'nova', gymnastId: 'gnova', clubId: 'CGL', gender: 'F', category: 'Aleví', level: 'A', teamId: t.id, status: '', bib: 500, scores: {} });
+  const v = E.rotView(c, settings, CTX), p = v.place.get(c.entries.find(e => e.id === 'nova'));
+  assert.deepEqual(plain(p), { subId: sB, g: 1, derived: true, x: true, pin: true });
+  // les dades d'abans d'aquesta versió (sense x) no canvien gens: cap equip fora de la seva subdivisió
+  const c2 = fixture(); make(c2, RULES({ subOrder: MODEL_ORDER }));
+  const v2 = E.rotView(c2, settings, CTX);
+  for (const sv of v2.subs) { assert.deepEqual(plain(sv.guestKeys), []); assert.ok(sv.units.every(u => !u.guest && !u.xs)); assert.equal(sv.awardsLabel, sv.label); }
+  assert.deepEqual(plain(v2.late), []);
+  // una x sense m (ella li ha tret el 📌): continua a la subdivisió triada, però «Reequilibra» la pot moure de grup
+  X(c2, c2.entries[0], v2.subs[1].id, 0, 0);
+  const p2 = E.rotView(c2, settings, CTX).place.get(c2.entries[0]);
+  assert.ok(p2.subId === v2.subs[1].id && p2.x && !p2.pin && !p2.derived);
+  assert.ok(!E.rotView(c2, settings, CTX).subs[1].units.find(u => u.entries.includes(c2.entries[0])).pinned);
 });

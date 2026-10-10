@@ -115,12 +115,17 @@ func TestTutorDataSendsRotations(t *testing.T) {
 	if _, ok := obj(tutorData(db, "1234")[0])["rotation"]; ok {
 		t.Fatal("unes rotacions encara no fetes no s'envien")
 	}
-	comp["rot"] = map[string]any{"made": "2026-04-18T07:00:00.000Z", "subs": []any{map[string]any{"id": "s1", "g": "F", "keys": []any{"Aleví||F||A"}, "k": 3}},
-		"at": map[string]any{"e1": map[string]any{"s": "s1", "g": 1}}}
+	// (e2: l'organitzadora l'ha portada a una altra subdivisió —x, i la clau per a la qual ho ha fet, k—: el mòbil ho ha de
+	// saber per posar-la a l'ordre de pas d'aquella subdivisió)
+	comp["rot"] = map[string]any{"made": "2026-04-18T07:00:00.000Z", "subs": []any{map[string]any{"id": "s1", "g": "F", "keys": []any{"Aleví||F||A"}, "k": 3}, map[string]any{"id": "s2", "g": "F", "keys": []any{"Benjamí||F||A"}, "k": 3}},
+		"at": map[string]any{"e1": map[string]any{"s": "s1", "g": 1}, "e2": map[string]any{"s": "s2", "g": 2.0, "m": 1.0, "x": 1.0, "k": "Aleví||F||A"}}}
 	c := obj(tutorData(db, "1234")[0])
 	r := obj(c["rotation"])
-	if r == nil || str(obj(r["rot"])["made"]) == "" || len(arr(obj(r["rot"])["subs"])) != 1 {
+	if r == nil || str(obj(r["rot"])["made"]) == "" || len(arr(obj(r["rot"])["subs"])) != 2 {
 		t.Fatalf("falten les rotacions: %v", c["rotation"])
+	}
+	if x := obj(obj(obj(r["rot"])["at"])["e2"]); x == nil || x["s"] != "s2" || num(x["g"]) != 2 || num(x["m"]) != 1 || num(x["x"]) != 1 || str(x["k"]) != "Aleví||F||A" {
+		t.Fatalf("el canvi de subdivisió fet a mà ha d'arribar sencer al mòbil: %v", obj(r["rot"])["at"])
 	}
 	if str(obj(r["clubs"])["c1"]) != "CG Lleida" || len(arr(r["teams"])) != 1 || str(obj(arr(r["teams"])[0])["name"]) != "CG Lleida" {
 		t.Fatalf("falten les entitats o els equips: %v", r)

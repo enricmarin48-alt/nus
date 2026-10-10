@@ -1536,7 +1536,9 @@ try {
 
       await step('setena revisió: amb les rotacions fetes, la tutora tria l’aparell i la subdivisió, i el teclat gran segueix l’ordre del full de rotacions (rotació per rotació, la categoria canvia sola, les NP se salten); «Per categoria» és com abans', async () => {
         const f = path.join(dirOf('rotacions'), 'notesgim-dades.json');
+        // (amb la regla del 18/04: Infantil, Cadet i Juvenil juntes, en una sola subdivisió de 5 categories i nivells)
         const d = rotFixture(); Object.assign(d.competitions[0], { tutorsOn: true, tutorPin: '4321' });
+        d.settings.rot = { joins: [{ g: 'F', cats: ['Infantil', 'Cadet', 'Juvenil'] }], apart: [], seen: [], allM: true, maxGroup: 15 };
         Object.assign(d.settings, { dataGen: 2 }); d.meta = { created: new Date(Date.now() - 864e5).toISOString(), updated: new Date(Date.now() - 60000).toISOString(), dbId: 'r7rot' };
         writeFileSync(f, JSON.stringify(d));
         const p = await run(f);

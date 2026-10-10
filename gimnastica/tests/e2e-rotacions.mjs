@@ -1609,6 +1609,10 @@ try {
     assert.ok(t.includes('Competeix a les ') && t.includes('(abans, a les '), t);
     assert.deepEqual((await view()).slice(6).map(s => [s.idx, s.label]), [[0, 'JUVENIL'], [7, 'MASCULINA']]);
     assert.ok(await page.locator('.card.rot-sub h3', { hasText: 'Subdivisió sense gimnastes · JUVENIL' }).count());
+    // (al mòbil, el desplegable de les subdivisions també la diu pel nom)
+    await page.setViewportSize({ width: 360, height: 740 }); await page.evaluate(() => render());
+    assert.deepEqual((await page.locator('.gsel select option').allTextContents()).slice(6).map(x => x.trim()), ['Sense gimnastes · JUVENIL', '7a · MASCULINA']);
+    await page.setViewportSize({ width: 1366, height: 900 }); await page.evaluate(() => render());
     await clearToasts();
     // «Mou…» per tornar-la: la seva no té número (ara no hi ha ningú), i es diu pel nom
     await unitIn(/^6a subdivisió · CADET/, 'Mas Puig, Aina · C.G. Lleida', null).locator('button[data-act=rotMoveDlg]').click();

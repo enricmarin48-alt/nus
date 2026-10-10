@@ -9663,7 +9663,7 @@ function rotGrupsTab(c, v) {
       ${menu((phone ? `<button class="btn" data-act="rotCoachDlg" ${dis}>Entrenadores…</button>` : '') + more)}</div>
     ${rotBanners(c, v)}
     <p class="small muted">${plural(v.subs.filter(s => s.N).length, 'subdivisió', 'subdivisions')} · ${plural(N, 'gimnasta', 'gimnastes')}${NP ? ` (+${NP} NP)` : ''}${sched.start !== null ? ` · ${deN(Engine.rotHM(sched.start))} a ${Engine.rotHM(sched.end)}` : ''}</p>
-    ${phone && v.subs.length > 1 ? groupPicker({ groups: v.subs.map(s => ({ key: s.id, label: `${s.idx ? s.idx + 'a' : '—'} · ${s.label}` })), cur: ui.rotSub, act: 'rotSubPick', label: g => g.label }) : ''}
+    ${phone && v.subs.length > 1 ? groupPicker({ groups: v.subs.map(s => ({ key: s.id, label: `${s.idx ? s.idx + 'a' : 'Sense gimnastes'} · ${s.label}` })), cur: ui.rotSub, act: 'rotSubPick', label: g => g.label }) : ''}
     ${subs.map(sv => rotSubCard(c, v, sv, when, gw)).join('')}
     <details class="card small"><summary><b>Com es fan les subdivisions i els grups?</b></summary>
       <p>Cada categoria va a la seva subdivisió: només van juntes les que ajuntes tu a «Quines categories van juntes…» (i els nois, tots junts, si no ho treus). Una categoria massa gran es parteix per nivells. Cada subdivisió competeix sola: el seu escalfament, les seves rotacions i els seus premis.</p><ol class="steps">

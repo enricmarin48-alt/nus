@@ -1779,7 +1779,8 @@ function sanitize(d) {
   const da = s.compDefaults && s.compDefaults.apparatus;
   if (Array.isArray(da)) { s.compDefaults.apparatus = objs(da); for (const a of s.compDefaults.apparatus) { a.id = fix(a.id) || uid(); a.name = str(a.name); if (!ICONS[a.icon]) a.icon = 'altre'; } }
   const m = d.meta && typeof d.meta === 'object' ? d.meta : {};
-  d.meta = { created: iso(m.created), updated: iso(m.updated), lastBackup: iso(m.lastBackup), dbId: typeof m.dbId === 'string' && SAFE_ID.test(m.dbId) ? m.dbId : uid() };
+  d.meta = { created: iso(m.created), updated: iso(m.updated), lastBackup: iso(m.lastBackup), dbId: typeof m.dbId === 'string' && SAFE_ID.test(m.dbId) ? m.dbId : uid(),
+    hist: Array.isArray(m.hist) ? m.hist.filter(x => typeof x === 'string' && /^[0-9a-z]{1,12}$/.test(x)).slice(-5000) : [] };
   return d;
 }
 function migrate(d) {
@@ -1882,9 +1883,22 @@ function loadDb() {
     saveError = true;
   }
 }
+// la història de les dades: les hores de desar d'abans (en ms, base 36), dins les mateixes dades. Així qualsevol còpia sap
+// de quina versió ve (a Documents, en un USB o en un altre ordinador), sense dependre dels rellotges ni del navegador
+const HIST_MAX = 5000;
+const stampKey = s => { const t = Date.parse(s || ''); return Number.isFinite(t) ? t.toString(36) : null; };
+// a ve de b (o són la mateixa versió): la versió de b és a la història de a
+const descends = (a, b) => { const am = (a && a.meta) || {}, bm = (b && b.meta) || {}; if (!bm.updated) return true; if (am.updated === bm.updated) return true; const k = stampKey(bm.updated); return !!k && Array.isArray(am.hist) && am.hist.includes(k); };
+const hasHist = d => !!(d && d.meta && Array.isArray(d.meta.hist) && d.meta.hist.length);
 let saveSince = 0;
 function commit() {
+  const prev = db.meta.updated;
   db.meta.updated = new Date().toISOString();
+  if (prev && prev !== db.meta.updated) {
+    const h = Array.isArray(db.meta.hist) ? db.meta.hist : (db.meta.hist = []), k = stampKey(prev);
+    if (k && h[h.length - 1] !== k) h.push(k);
+    if (h.length > HIST_MAX) h.splice(0, h.length - HIST_MAX);
+  }
   // (es desa 200 ms després de l'últim canvi, però mai més d'un segon després del primer: si es canvien moltes coses
   // seguides, no es queda tot per desar)
   if (!saveTimer) saveSince = Date.now();
@@ -2257,7 +2271,8 @@ function onlyIn(older, base) {
   if (gyms.length) out.push(plural(gyms.length, 'gimnasta', 'gimnastes') + names(gyms));
   if (clubs.length) out.push(plural(clubs.length, 'entitat', 'entitats') + names(clubs));
   if (teams.length) out.push(plural(teams.length, 'equip', 'equips') + names(teams));
-  return out.length > 1 ? out.slice(0, -1).join(', ') + ' i ' + out[out.length - 1] : out.join('');
+  const n = comps.length + entries + gyms.length + clubs.length + teams.length;
+  return { text: out.length > 1 ? out.slice(0, -1).join(', ') + ' i ' + out[out.length - 1] : out.join(''), n };
 }
 // les dues versions són iguals sense comptar les notes (que ja s'han ajuntat) ni l'hora de desar
 function sameButScores(a, b) {
@@ -2346,22 +2361,28 @@ async function serverInit() {
     db = migrate(remote.db);
     note = 'S’han obert les dades del fitxer ' + (server.dataFile || '') + '. Les que hi havia abans en aquesta finestra no s’han perdut: descarrega-les ara amb el botó d’aquest avís (després es poden restaurar). També des de Configuració → Dades.';
   } else {
-    const mineNewer = Date.parse(db.meta.updated || 0) > Date.parse(rm.updated || 0), local = db;
-    if (!mineNewer) db = migrate(remote.db);
-    const older = mineNewer ? migrate(JSON.parse(JSON.stringify(remote.db))) : local;
-    // si l'altra és una versió que aquesta finestra ja havia vist al fitxer, és la mateixa història: la més nova sencera i,
-    // de l'altra, les notes més noves (p. ex. les de les tutores mentre la finestra era tancada)
-    // (si el fitxer és el més vell i aquesta finestra ja havia vist aquella versió, en el fitxer que sigui, el fitxer és d'abans
-    // del que té aquesta finestra: no s'hi ha fet res més)
-    if (local.meta.updated === rm.updated || (mineNewer ? knewAnywhere(rm.updated) : fileKnew(local.meta.updated))) Engine.mergeScores(db, older);
-    else if (!sameButScores(db, older) || Engine.mergeScores(JSON.parse(JSON.stringify(db)), older).length) {
+    // (de quina versió ve cadascuna: la història és dins les mateixes dades; si encara no en tenen, el que aquesta
+    // finestra recorda haver vist al fitxer)
+    const local = db, R = remote.db, known = hasHist(local) || hasHist(R);
+    const fileFromMine = local.meta.updated === rm.updated || (known ? descends(R, local) : fileKnew(local.meta.updated));
+    const mineFromFile = !fileFromMine && (known ? descends(local, R) : knewAnywhere(rm.updated));
+    if (fileFromMine) { db = migrate(R); Engine.mergeScores(db, local); }   // el fitxer és d'aquí o ve d'aquí: el fitxer
+    else if (mineFromFile) Engine.mergeScores(db, R);                      // aquesta finestra ve del fitxer (i hi pot haver notes noves de les tutores)
+    else {
       // dues còpies de les mateixes dades canviades cada una pel seu compte (p. ex. a Documents i en un USB): s'obre la més
       // nova tal com és, sense barrejar-hi res (es podria tornar a posar el que s'havia esborrat), i l'altra es guarda
-      const only = onlyIn(older, db);
-      if (!mineNewer) { before = JSON.stringify(local); keepBefore(before); }
-      note = `Aquestes dades també s’havien canviat en un altre lloc (una altra còpia, per exemple en un USB): s’ha obert la més nova, ${mineNewer ? 'la d’aquesta finestra' : 'la del fitxer'}, tal com és.`
-        + (only ? ` L’altra tenia ${only} que aquí no hi són, i potser altres canvis (notes, noms, configuració).` : ' L’altra tenia alguns canvis diferents (notes, noms o configuració).')
-        + ` Si els necessites, ${mineNewer ? 'la còpia del fitxer tal com era és a la carpeta copies-notesgim (al costat del fitxer de dades)' : 'descarrega la d’aquesta finestra amb el botó d’aquest avís o des de Configuració → Dades'} i restaura-la amb «Restaura una còpia…», o torna a fer aquells canvis aquí.`;
+      const mineNewer = Date.parse(local.meta.updated || 0) > Date.parse(rm.updated || 0);
+      if (!mineNewer) db = migrate(R);
+      const older = mineNewer ? migrate(JSON.parse(JSON.stringify(R))) : local;
+      if (!sameButScores(db, older) || Engine.mergeScores(JSON.parse(JSON.stringify(db)), older).length) {
+        const only = onlyIn(older, db);
+        if (!mineNewer) { before = JSON.stringify(local); keepBefore(before); }
+        // (la d'aquesta finestra va al fitxer tal com és: el programa no hi ha de barrejar les notes de l'altra; abans en guarda una còpia)
+        else { server.replaceNext = true; server.replaceAt = Date.now(); }
+        note = `Aquestes dades també s’havien canviat en un altre lloc (una altra còpia, per exemple en un USB): s’ha obert la més nova, ${mineNewer ? 'la d’aquesta finestra' : 'la del fitxer'}, tal com és.`
+          + (only.n ? ` L’altra tenia ${only.text} que aquí no ${only.n === 1 ? 'hi és' : 'hi són'}, i potser altres canvis (notes, noms, configuració).` : ' L’altra tenia alguns canvis diferents (notes, noms o configuració).')
+          + ` Si els necessites, ${mineNewer ? 'la còpia del fitxer tal com era és a la carpeta copies-notesgim (al costat del fitxer de dades)' : 'descarrega la d’aquesta finestra amb el botó d’aquest avís o des de Configuració → Dades'} i restaura-la amb «Restaura una còpia…», o torna a fer aquells canvis aquí.`;
+      }
     }
   }
   server.version = remote.version; server.dataRev = remote.dataRev ?? null; server.sentStamp = server.diskStamp = rm.updated || null;
@@ -2421,6 +2442,7 @@ async function keepBefore(raw) {
     if (old && old.raw === raw) return;
     const prev = old && old.raw ? [{ at: old.at, raw: old.raw }, ...(Array.isArray(old.prev) ? old.prev : [])].slice(0, 4) : [];
     await idbSet('abansServidor', { at: new Date().toISOString(), raw, prev });
+    if ($('#offstat')) offlineStatus();   // (Configuració → Dades oberta: que s'hi vegi)
   } catch (_) {}
 }
 async function moveOldBefore() {
@@ -2732,9 +2754,25 @@ async function writeFileNow() {
       const theirs = inFile && !blankDb(inFile);
       const fm = (inFile && inFile.meta) || {};
       const mine = fileStamp && fm.updated === fileStamp;
-      const other = theirs && ((fm.dbId && fm.dbId !== db.meta.dbId) || (!mine && Date.parse(fm.updated || 0) > Date.parse(sessionStamp || 0)));
+      // (amb la història de les dades: el fitxer és una versió d'on venen les d'aquest navegador, o ve d'aquestes; si no, l'ha
+      // canviat algú altre, p. ex. un altre ordinador amb el mateix USB, encara que els rellotges diguin el contrari)
+      const known = hasHist(db) || hasHist(inFile);
+      const other = theirs && ((fm.dbId && fm.dbId !== db.meta.dbId) || (!mine && (known ? !descends(db, inFile) && !descends(inFile, db) : Date.parse(fm.updated || 0) > Date.parse(sessionStamp || 0))));
       if (other) { fileState = 'conflict'; renderSaveState(false); return; }
+      // el fitxer ve de les d'aquest navegador i és més nou (p. ex. una altra pestanya hi acaba de desar): es fa servir aquest
+      if (theirs && !mine && known && fm.updated !== db.meta.updated && descends(inFile, db) && !descends(db, inFile)) {
+        db = migrate(inFile); fileStamp = fm.updated; fileChecked = true; fileDirty = false;
+        try { const raw = JSON.stringify(db); localStorage.setItem(LS_KEY, raw); lastRaw = raw; } catch (_) {}
+        fileState = 'ok'; renderKeepFocus(); return;
+      }
       fileChecked = true;
+      // (el fitxer ja té aquesta mateixa versió: no cal tornar-la a escriure; p. ex. una pestanya que s'acaba d'obrir, i així
+      // no pot escriure la versió que ha llegit a sobre de la que una altra pestanya hi desa en aquell moment)
+      if (theirs && fm.updated && fm.updated === db.meta.updated) {
+        const f0 = await fileHandle.getFile();
+        fileSig = { t: f0.lastModified, n: f0.size }; fileStamp = fm.updated; fileDirty = false; fileState = 'ok';
+        renderSaveState(false); return;
+      }
     }
     fileDirty = false;
     const stamp = db.meta.updated, json = JSON.stringify(db, null, 1);
@@ -5132,7 +5170,7 @@ async function offlineStatus() {
   const bf = await idbGet('abansServidor');
   if (bf && bf.raw) out.push(`Hi ha guardades les dades que tenia aquesta finestra abans de ${h(new Date(bf.at).toLocaleString('ca'))} (les van substituir les del programa o d’una altra finestra). <button class="btn sm" data-act="dlBefore">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore">Esborra-les</button>`);
   // (i les d'abans d'aquestes, si n'hi ha)
-  if (bf && Array.isArray(bf.prev)) bf.prev.forEach((c, k) => { if (c && c.raw) out.push(`També les de ${h(new Date(c.at).toLocaleString('ca'))}. <button class="btn sm" data-act="dlBefore" data-i="${k + 1}">Descarrega-les</button>`); });
+  if (bf && Array.isArray(bf.prev)) bf.prev.forEach((c, k) => { if (c && c.raw) out.push(`També les de ${h(new Date(c.at).toLocaleString('ca'))}. <button class="btn sm" data-act="dlBefore" data-i="${k + 1}">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore" data-i="${k + 1}">Esborra-les</button>`); });
   if ($('#offstat') === el) el.innerHTML = out.join('<br>');
 }
 
@@ -6131,7 +6169,16 @@ const actions = {
     const c = !bf ? null : i ? (Array.isArray(bf.prev) ? bf.prev[i - 1] : null) : bf;
     if (c && c.raw) downloadBlob(new Blob([c.raw], { type: 'application/json' }), `notesgim-abans-${(c.at || '').slice(0, 10)}.json`);
   },
-  dropBefore: async () => { if (!(await confirmBox('Esborrar la còpia de les dades d’abans d’aquesta finestra? Fes-ho només si ja l’has descarregat o no la necessites.', { ok: 'Esborra-la', danger: true }))) return; await idbDel('abansServidor'); offlineStatus(); },
+  // (esborra només la còpia del costat del botó; les altres es queden)
+  dropBefore: async el => {
+    if (!(await confirmBox('Esborrar aquesta còpia de les dades d’abans d’aquesta finestra? Fes-ho només si ja l’has descarregat o no la necessites. Les altres còpies es queden.', { ok: 'Esborra-la', danger: true }))) return;
+    const bf = await idbGet('abansServidor'), i = +(el && el.dataset.i) || 0, prev = (bf && Array.isArray(bf.prev)) ? bf.prev.slice() : [];
+    if (!bf) { offlineStatus(); return; }
+    if (i) { prev.splice(i - 1, 1); await idbSet('abansServidor', Object.assign({}, bf, { prev })); }
+    else if (prev.length) await idbSet('abansServidor', { at: prev[0].at, raw: prev[0].raw, prev: prev.slice(1) });
+    else await idbDel('abansServidor');
+    offlineStatus();
+  },
   tutComp: el => { tut.compId = el.dataset.id; tutPick(); render(); },
   tutGroup: el => { if (el.dataset.g) { tut.group = el.dataset.g; qe.buf = ''; tutPick(); render(); qeIntoView(); } },
   tutApp: el => { tut.app = el.dataset.a; qe.buf = ''; tutSave(); render(); qeIntoView(); },

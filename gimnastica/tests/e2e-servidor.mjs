@@ -1071,18 +1071,53 @@ try {
       const u = read(U);
       assert.deepEqual(u.competitions.map(c => c.name), ['Fase 1'], 'res barrejat: la de l’USB, tal com és');
       assert.ok(u.gymnasts.some(g => g.name === 'Carla')); assert.equal(u.competitions[0].entries[0].scores.salt[0].v, 8.5);
-      // a Documents hi va la mateixa (la finestra ja havia vist la de Documents: no hi ha res a dir)
+      // a Documents: la de Documents (la de casa) tampoc no ve de la de l'USB; es torna a dir, hi va la de la finestra tal com és
+      // i la de Documents es guarda a copies-notesgim
       p = await run(D); w = await open(casa);
       await sleep(1200);
-      assert.equal((await w.evaluate(() => window.__toasts.slice())).filter(x => /altre lloc|altra finestra/.test(x)).length, 0, 'en obrir Documents ja no hi ha res a dir');
+      const t2 = await w.evaluate(() => window.__toasts.slice());
+      assert.ok(t2.some(x => x.includes('altre lloc') && x.includes('Fase 2 (preparada a casa)') && x.includes('copies-notesgim')), 'es diu que Documents tenia la Fase 2: ' + JSON.stringify(t2));
       await w.close(); await kill(p);
       const d = read(D);
       assert.ok(d.gymnasts.some(g => g.name === 'Carla')); assert.equal(d.competitions.find(c => c.id === 'k1').entries[0].scores.salt[0].v, 8.5);
       assert.ok(!d.competitions.some(c => c.id === 'k2') && !d.gymnasts.some((g, i, l) => l.findIndex(x => x.id === g.id) !== i), 'cap còpia barrejada ni repetida');
+      const copies = readdirSync(path.join(docs, 'copies-notesgim')).map(f => readFileSync(path.join(docs, 'copies-notesgim', f), 'utf8'));
+      assert.ok(copies.some(x => x.includes('Fase 2 (preparada a casa)')), 'la de Documents tal com era es guarda');
       // la mateixa finestra, sense canvis, torna a obrir el mateix fitxer: no diu res
       p = await run(D); w = await open(casa); await sleep(800);
       assert.equal((await w.evaluate(() => window.__toasts.slice())).length, 0);
       await w.close(); await kill(p);
+      await casa.close(); await pavello.close();
+    });
+
+    await step('Documents → USB → pavelló (amb el rellotge endarrerit una setmana) → l’USB obert a casa: s’obre la del pavelló tal com és, sense cap avís, i el que s’hi ha tret no torna', async () => {
+      const root = dirOf('usb-pavello'), docs = path.join(root, 'Documents'), usb = path.join(root, 'USB');
+      mkdirSync(docs); mkdirSync(usb);
+      const D = path.join(docs, 'notesgim-dades.json'), U = path.join(usb, 'notesgim-dades.json');
+      writeFileSync(D, JSON.stringify(data('temporada', Date.now() - 3 * 864e5, { gyms: [G('g1', 'Anna'), G('g2', 'Berta'), G('g3', 'Carla')] })));
+      const casa = await windowCtx();
+      // dia 1, a casa: un canvi i es copia la carpeta a l'USB
+      let p = await run(D), w = await open(casa);
+      await w.evaluate(() => { db.clubs[0].name = 'CG Lleida (revisat)'; commit(); });
+      await sleep(1500); await w.close(); await kill(p);
+      writeFileSync(U, readFileSync(D));
+      // dia 2, al pavelló (un ordinador amb el rellotge una setmana endarrerit): una baixa, una nota i una NP
+      const pavello = await windowCtx();
+      await pavello.addInitScript(() => { const D0 = Date, off = -7 * 864e5; window.Date = class extends D0 { constructor(...a) { super(...(a.length ? a : [D0.now() + off])); } static now() { return D0.now() + off; } }; });
+      p = await run(U); w = await open(pavello, '#/competicio/k1/inscripcions');
+      await w.evaluate(() => { const c = db.competitions[0]; c.entries = c.entries.filter(e => e.id !== 'e2'); c.entries.find(e => e.id === 'e1').scores = { salt: [{ v: 8.7, at: Date.now() }] }; c.entries.find(e => e.id === 'e3').status = 'np'; commit(); });
+      await sleep(1500); await w.close(); await kill(p);
+      const u0 = read(U);
+      assert.ok(Date.parse(u0.meta.updated) < Date.parse(read(D).meta.updated), 'la del pavelló té una hora més vella (el rellotge)');
+      // dia 3, a casa: s'obre el NotesGim de l'USB
+      p = await run(U); w = await open(casa);
+      const t = await w.evaluate(() => window.__toasts.slice());
+      assert.equal(t.filter(x => /altre lloc|altra finestra|S’han obert/.test(x)).length, 0, 'cap avís: ' + JSON.stringify(t));
+      const shown = await w.evaluate(() => db.competitions[0].entries.map(e => e.id + ':' + (e.status || '-') + ':' + ((e.scores.salt || [])[0] || {}).v));
+      assert.deepEqual(shown, ['e1:-:8.7', 'e3:np:undefined'], 'la del pavelló, tal com és');
+      await sleep(1200); await w.close(); await kill(p);
+      const u = read(U).competitions[0].entries;
+      assert.deepEqual(u.map(e => e.id), ['e1', 'e3'], 'la baixa no torna'); assert.equal(u.find(e => e.id === 'e3').status, 'np');
       await casa.close(); await pavello.close();
     });
 

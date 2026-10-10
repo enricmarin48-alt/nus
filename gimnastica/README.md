@@ -282,7 +282,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi
   escriu sense preguntar.
-- `tests/fixtures/` — fulls d'inscripció d'exemple (model del Consell, nivell A i B, i un de buit).
+- `tests/fixtures/` — fulls d'inscripció d'exemple (model del Consell, nivell A i B, un de buit, i els de la setena
+  revisió: una gimnasta que ha canviat d'entitat, anys corregits, una entitat amb sigles i una escrita d'una altra manera).
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
   següent», la mida de pantalla de les tauletes i una temporada sencera (la mateixa gimnasta en una altra

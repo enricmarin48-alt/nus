@@ -1381,8 +1381,8 @@ try {
     await page.waitForSelector('#dlg[open] form[data-form=rotMoveDo]');
     await page.check(`#dlg input[name=to][value="${s4}|2"]`); await page.waitForSelector('#rotMvWhat');
     const what = await page.locator('#rotMvWhat').innerText();
-    // (la 3a ja no té premis: la 4a comença abans)
-    assert.ok(/Passen de les 10:25 \(3a subdivisió\) a les 11:[0-2]\d \(4a\)\./.test(what) && what.includes('Els premis de Benjamí B, que ara es fan després de la 3a subdivisió, es faran després de la 4a.'), what);
+    // (la 3a ja no té premis: la 4a comença abans, i el diàleg ho diu, perquè a la llista hi ha l'hora d'ara)
+    assert.ok(/Passen de les 10:25 \(3a subdivisió\) a les 11:[0-2]\d \(4a, que ara comença a les 11:25\)\./.test(what) && what.includes('Els premis de Benjamí B, que ara es fan després de la 3a subdivisió, es faran després de la 4a.'), what);
     await page.click('#dlg button.primary'); await toastHas('FEDAC Lleida → 4a subdivisió');
     const late = 'Els premis de Benjamí B es fan després de la 4a subdivisió, perquè FEDAC Lleida hi competeix.';
     assert.equal((await notes7()).filter(x => x === late).length, 1, (await notes7()).join(' || '));
@@ -1722,6 +1722,276 @@ try {
     await fresh(d);
     intro = await page.locator('main .card p').first().textContent();
     assert.ok(!intro.includes('els nois') && intro.includes('tan igualats com es pugui (encara que calgui barrejar nivells o categories)') && !intro.includes('cada categoria i nivell al seu grup'), intro);
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  // ── moure-ho tot, segona revisió
+  // (on és cada inscripció: «4a/G2», amb 📌 si és fixada a mà i (x) si és en una subdivisió que no és la seva)
+  const placeOf = ids => page.evaluate(ids => { const c = curComp(), v = rotViewOf(c); return ids.map(id => { const e = c.entries.find(x => x.id === id), p = v.place.get(e), sv = v.subs.find(s => s.id === p.subId); return `${sv.idx}a/G${p.g + 1}${c.rot.at[id] && c.rot.at[id].m ? '📌' : ''}${p.x ? '(x)' : ''}`; }); }, ids);
+  // (respon una pregunta de dues opcions o una confirmació, i en torna el text)
+  const answer = async value => { await page.waitForSelector('#confirm[open]'); const t = (await page.locator('#confirm').textContent()).replace(/\s+/g, ' '); await page.click(`#confirm button[value="${value}"]`); return t; };
+  const gOf = id => page.evaluate(id => rotViewOf(curComp()).place.get(curComp().entries.find(e => e.id === id)).g, id);
+  const nameOf = id => page.evaluate(id => entryName(curComp().entries.find(e => e.id === id)), id);
+  // «Mou…» d'una unitat: només les ids marcades (si no, totes) a la subdivisió s, Grup g
+  const mouDlg = async (u, s, g, only = null) => {
+    await u.locator('button[data-act=rotMoveDlg]').click(); await page.waitForSelector('#dlg[open] form[data-form=rotMoveDo]');
+    if (only) for (const v of await page.$$eval('#dlg input[name=who]', l => l.map(x => x.value))) if (!only.includes(v)) await page.locator(`#dlg input[name=who][value="${v}"]`).uncheck();
+    await page.check(`#dlg input[name=to][value="${s}|${g}"]`); await page.waitForSelector('#rotMvWhat');
+  };
+  // imprimir: el text del primer avís (i s'imprimeix igualment)
+  const printWarn = async (what = null) => {
+    await page.evaluate(() => { window.print = () => { window.__p = $('#print').innerHTML; }; window.__p = null; });
+    await page.evaluate(w => actions.rotPrintDlg({ dataset: w ? { what: w } : {} }), what); await page.waitForSelector('#dlg[open] form[data-form=rotPrint]');
+    await page.click('#dlg button.primary');
+    const t = await answer('ok'); await okConfirms7();
+    await page.waitForFunction(() => window.__p !== null);
+    await page.evaluate(() => { document.body.classList.remove('printing'); $('#print').innerHTML = ''; });
+    return t;
+  };
+
+  await step('moure-ho tot (2a): «Mou…» 2 de les 5 a un altre grup de la mateixa subdivisió: cada tros fixat (📌), «repartit a mà», el desplegable compta bé, i cap eina no ho desfà', async () => {
+    await fresh(); await make(); await clearToasts();
+    const s4 = await subId(3), ids = await unitIds('ALEVÍ A i B', 'C.G. Lleida', 'Aleví B');
+    const g0 = await gOf(ids[0]), tg = g0 === 0 ? 2 : 0;
+    await mouDlg(unitIn('ALEVÍ A i B', 'C.G. Lleida', 'Aleví B'), s4, tg, ids.slice(0, 2));
+    assert.ok((await page.locator('#dlg').textContent()).includes('Quedarà fixat a mà (📌), i les 3 que es queden, on són: «Reequilibra» no ho mourà.'));
+    await page.click('#dlg button.primary'); await toastHas('2 gimnastes de C.G. Lleida → Grup');
+    const want = ids.map((id, i) => `4a/G${(i < 2 ? tg : g0) + 1}📌`);
+    assert.deepEqual(await placeOf(ids), want);
+    // a la targeta, els dos trossos amb el 📌, i l'avís diu que l'ha repartit ella
+    const parts = card('ALEVÍ A i B').locator('.rot-u').filter({ has: page.locator('.nm', { hasText: /^C\.G\. Lleida$/ }) }).filter({ hasText: '· Aleví B' });
+    assert.equal(await parts.count(), 2);
+    for (let i = 0; i < 2; i++) assert.equal(await parts.nth(i).locator('summary', { hasText: '📌' }).count(), 1, 'el 📌 a tots dos trossos');
+    const chip = (await card('ALEVÍ A i B').locator('.chip', { hasText: 'repartit a mà' }).textContent()).replace(/\s+/g, ' ');
+    const pp = [[tg, 2], [g0, 3]].sort((a, b) => a[0] - b[0]).map(([g, n]) => `${n} al Grup ${g + 1}`);
+    assert.ok(chip.includes(`L’equip C.G. Lleida està repartit a mà: ${pp.join(' i ')}.`) && chip.includes('Ajunta-les'), chip);
+    // el desplegable: al grup on n'hi ha 2, s'hi sumen les 3 que encara no hi són
+    const nG = await page.evaluate(([s, g]) => rotViewOf(curComp()).subs.find(x => x.id === s).groups[g].n, [s4, tg]);
+    const opt = (await parts.first().locator('select[data-chg=rotMove] option').allTextContents()).find(o => o.startsWith(`→ Grup ${tg + 1}`));
+    assert.ok(opt && opt.endsWith(`(${nG} → ${nG + 3})`), opt);
+    // «Torna a fer els grups d'aquesta subdivisió» → «Mantén…»
+    await clearToasts();
+    await card('ALEVÍ A i B').locator('button[data-act=menuToggle]').click(); await card('ALEVÍ A i B').locator('button[data-act=rotRedoSub]').click();
+    assert.ok((await answer('keep')).includes('Mantén els equips que has mogut a mà'));
+    await toastHas('Grups refets'); assert.deepEqual(await placeOf(ids), want, 'Torna a fer els grups');
+    // «Reequilibra» (no proposa ajuntar-les, ni fer fora les altres)
+    await clearToasts();
+    await card('ALEVÍ A i B').locator('.card-head button[data-act=rotBalance]').click(); await page.waitForTimeout(250);
+    if (await page.evaluate(() => $('#dlg').open)) { assert.ok(!(await page.locator('#dlg').textContent()).includes('C.G. Lleida · Aleví B')); await page.click('#dlg button.primary'); await toastHas('Reequilibrada'); }
+    assert.deepEqual(await placeOf(ids), want, 'Reequilibra');
+    // «Com es fan els grups…» → «Desa»
+    await clearToasts();
+    await page.evaluate(() => actions.rotOptsDlg()); await page.click('#dlg button.primary'); await toastHas('Desat: grups refets');
+    assert.deepEqual(await placeOf(ids), want, 'Com es fan els grups');
+    // «Nombre de grups…»: 4, i tornar a 3
+    for (const k of ['4', '3']) { await clearToasts(); await page.evaluate(([s, k]) => actions.rotSetK({ dataset: { s, k } }), [s4, k]); await toastHas(`Ara hi ha ${k} grups`); assert.deepEqual(await placeOf(ids), want, 'Nombre de grups ' + k); }
+    // «Torna-les a fer de zero» → «Mantén…»
+    await clearToasts();
+    await page.click('.toolbar .menu button[data-act=menuToggle]'); await page.click('.menu.open button[data-act=rotRedoAll]');
+    await answer('keep'); await toastHas('Grups refets a totes les subdivisions');
+    assert.deepEqual(await placeOf(ids), want, 'Torna-les a fer de zero');
+    // tornar a obrir l'app
+    await page.waitForTimeout(400); await page.reload(); await page.waitForSelector('.card.rot-sub');
+    assert.deepEqual(await placeOf(ids), want, 'després de tornar a obrir');
+    // «Ajunta-les»: totes al grup on n'hi ha més, fixades
+    await clearToasts();
+    await card('ALEVÍ A i B').locator('.chip', { hasText: 'repartit a mà' }).locator('button[data-act=rotJoinSplit]').click();
+    await toastHas('C.G. Lleida: totes al Grup');
+    assert.deepEqual(await placeOf(ids), ids.map(() => `4a/G${g0 + 1}📌`));
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): un empat (2 de les 4 a un altre grup) i 2 gimnastes d’un equip a dos grups d’una altra subdivisió: «Mantén…» les deixa on són', async () => {
+    await fresh(); await make(); await clearToasts();
+    const s3 = await subId(2), s4 = await subId(3), ids = await unitIds('ALEVÍ A i B', 'C.G. Lleida 2', 'Aleví B');
+    assert.equal(ids.length, 4);
+    const g0 = await gOf(ids[0]), tg = g0 === 0 ? 2 : 0;
+    await mouDlg(unitIn('ALEVÍ A i B', 'C.G. Lleida 2', 'Aleví B'), s4, tg, ids.slice(0, 2));
+    await page.click('#dlg button.primary'); await toastHas('2 gimnastes de C.G. Lleida 2 → Grup');
+    const want = ids.map((id, i) => `4a/G${(i < 2 ? tg : g0) + 1}📌`);
+    assert.deepEqual(await placeOf(ids), want);
+    await clearToasts();
+    await card('ALEVÍ A i B').locator('button[data-act=menuToggle]').click(); await card('ALEVÍ A i B').locator('button[data-act=rotRedoSub]').click();
+    await answer('keep'); await toastHas('Grups refets');
+    assert.deepEqual(await placeOf(ids), want, 'empat: cada tros on era');
+    // una de C.G. Lleida (Aleví B) al Grup 1 de la 3a, i una altra al Grup 3
+    const i5 = await unitIds('ALEVÍ A i B', 'C.G. Lleida', 'Aleví B');
+    for (const [i, g] of [[0, 0], [1, 2]]) {
+      await clearToasts();
+      await mouDlg(unitIn('ALEVÍ A i B', 'C.G. Lleida', 'Aleví B'), s3, g, [i5[i]]);
+      await page.click('#dlg button.primary'); await toastHas('→ 3a subdivisió');
+    }
+    assert.deepEqual(await placeOf(i5.slice(0, 2)), ['3a/G1📌(x)', '3a/G3📌(x)']);
+    await clearToasts();
+    await card('BENJAMÍ B').locator('button[data-act=menuToggle]').click(); await card('BENJAMÍ B').locator('button[data-act=rotRedoSub]').click();
+    assert.ok((await answer('keep')).includes('Mantén els equips que has mogut a mà (📌 1)'));
+    await toastHas('Grups refets');
+    assert.deepEqual(await placeOf(i5.slice(0, 2)), ['3a/G1📌(x)', '3a/G3📌(x)']);
+    // (i el 📌 a cada una, al seu grup)
+    assert.equal(await card('BENJAMÍ B').locator('.rot-u', { hasText: 'C.G. Lleida' }).filter({ hasText: '· Aleví B' }).locator('summary', { hasText: '📌' }).count(), 2);
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): un equip portat a una altra subdivisió amb els de la seva entitat: si «Reequilibra» no millora res, no ho diu ni ho ofereix, i no fa fora les altres del grup', async () => {
+    await fresh(); await make(); await clearToasts();
+    const s3 = await subId(2);
+    assert.equal((await view())[2].sizes, '10/9/10');
+    await unitIn(/^2a subdivisió · BENJAMÍ A/, 'C.G. Lleida 2', null).locator('select[data-chg=rotMove]').selectOption(`${s3}|1`);
+    const t = await (await toastHas('C.G. Lleida 2 → 3a subdivisió')).textContent();
+    assert.ok(!t.includes('Reequilibra'), t);
+    assert.equal((await view())[2].sizes, '10/15/10');
+    const c3 = (await card('BENJAMÍ B').textContent()).replace(/\s+/g, ' ');
+    assert.ok(!c3.includes('Es pot repartir més bé') && !c3.includes('Es poden separar') && !c3.includes('Es poden ajuntar'), c3);
+    await clearToasts();
+    await card('BENJAMÍ B').locator('.card-head button[data-act=rotBalance]').click();
+    await toastHas('Ja està tan equilibrada');
+    // «Torna a fer els grups» → «Mantén…»: la portada es queda al Grup 2 amb altres de Benjamí B, i els grups no queden més desiguals
+    await clearToasts();
+    await card('BENJAMÍ B').locator('button[data-act=menuToggle]').click(); await card('BENJAMÍ B').locator('button[data-act=rotRedoSub]').click();
+    await answer('keep'); await toastHas('Grups refets');
+    const s = (await view())[2].sizes.split('/').map(Number);
+    assert.ok(Math.max(...s) <= 15 && Math.max(...s) - Math.min(...s) <= 5, s.join('/'));
+    assert.ok(await page.evaluate(s3 => { const sv = rotViewOf(curComp()).subs.find(x => x.id === s3), u = sv.units.find(x => x.guest); return u.g === 1 && u.pinned && sv.groups[1].units.some(x => !x.guest); }, s3));
+    // en el mateix grup que la seva, després de moure una sola gimnasta, «Reequilibra la resta» surt si millora
+    await clearToasts();
+    await unitIn(/^2a subdivisió · BENJAMÍ A/, 'INEF Lleida', null).locator('select[data-chg=rotMove]').selectOption(String(await page.evaluate(() => (rotViewOf(curComp()).subs[1].units.find(u => u.clubId === 'INEF').g + 1) % 3)));
+    const t2 = await (await toastHas('INEF Lleida → Grup')).textContent();
+    const useful = await page.evaluate(() => { const c = curComp(), sv = rotViewOf(c).subs[1]; return rotBalance(c, sv).useful; });
+    assert.equal(t2.includes('Reequilibra la resta'), useful, t2);
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): una subdivisió que es queda sense gimnastes: ↑ ↓ hi passen per sobre, el quadre de categories la numera com la pantalla, i a Notes les seves NP no tenen un «0a subdivisió»', async () => {
+    await fresh(fixture()); await make(); await clearToasts();
+    const cad = (await view()).find(s => s.label.startsWith('CADET'));
+    await unitIn('JUVENIL', 'Mas Puig, Aina · C.G. Lleida', null).locator('select[data-chg=rotMove]').selectOption(`${cad.id}|1`);
+    await toastHas('→ 6a subdivisió'); await clearToasts();
+    assert.deepEqual((await view()).filter(s => s.idx >= 5 || !s.idx).map(s => `${s.idx}·${s.label}`), ['5·INFANTIL A i B', '6·CADET A i B', '0·JUVENIL', '7·MASCULINA']);
+    // «Quines categories van juntes…»: els números i les gimnastes que hi competeixen, com a la pantalla
+    await page.click('button[data-act=rotSubsDlg] >> visible=true'); await page.waitForSelector('#dlg[open] form[data-form=rotSubs]');
+    const list = await page.$$eval('#dlg .rot-dlist li', l => l.map(x => x.innerText.replace(/\s+/g, ' ').trim()));
+    assert.ok(list[5].startsWith('6a · CADET A i B · 8 gimnastes (1 portada d’una altra)'), list[5]);
+    assert.ok(list[6].startsWith('Sense gimnastes · JUVENIL · cap gimnasta (1 portada a una altra)') && !list[6].includes('Ajunta-la'), list[6]);
+    assert.ok(list[7].startsWith('7a · MASCULINA · 6 gimnastes'), list[7]);
+    const adv = await page.$$eval('#dlg select[data-chg=rotDraftKey] option', l => [...new Set(l.map(o => o.textContent))]);
+    assert.ok(adv.includes('Subdivisió sense gimnastes (JUVENIL)') && adv.includes('7a subdivisió') && !adv.includes('8a subdivisió'), adv.join(' | '));
+    await page.click('#dlg button[data-act=closeDlg]');
+    // ↓ a Cadet: passa per sobre de la de Juvenil (sense gimnastes) i va després de Masculina
+    await card('CADET A i B').locator('button[data-act=rotSubMove][data-d="1"]').click();
+    assert.ok((await toastTxt('ara és la')).includes('La 6a subdivisió ara és la 7a.'));
+    await clearToasts();
+    assert.deepEqual((await view()).filter(s => s.idx >= 5 || !s.idx).map(s => `${s.idx}·${s.label}`), ['5·INFANTIL A i B', '6·MASCULINA', '0·JUVENIL', '7·CADET A i B']);
+    // ↓ a la de Juvenil (sense gimnastes): es diu pel nom, i després ja és l'última
+    await card(/· JUVENIL$/).locator('button[data-act=rotSubMove][data-d="1"]').click();
+    assert.ok((await toastTxt('ara va')).includes('La subdivisió de JUVENIL (sense gimnastes) ara va després de la 7a.'));
+    await clearToasts();
+    assert.ok(await card(/· JUVENIL$/).locator('button[data-act=rotSubMove][data-d="1"]').isDisabled());
+    assert.ok(await card('CADET A i B').locator('button[data-act=rotSubMove][data-d="1"]').isDisabled(), 'després només hi ha la de Juvenil, sense gimnastes');
+    // Notes: Cadet A (1) no hi va (NP) i les de Cadet B, a la d'Infantil: la subdivisió de Cadet es queda sense ningú que competeixi
+    await fresh(fixture()); await make(); await clearToasts();
+    const r = await page.evaluate(() => {
+      const c = curComp(); let v = rotViewOf(c);
+      const cad = v.subs.find(s => s.label.startsWith('CADET')), inf = v.subs.find(s => s.label.startsWith('INFANTIL'));
+      const a = c.entries.find(e => e.category === 'Cadet' && e.level === 'A');
+      changes.entryStatus({ dataset: { id: a.id }, value: 'np' });
+      for (const u of rotViewOf(c).subs.find(s => s.id === cad.id).units.filter(u => u.key.endsWith('B'))) { v = rotViewOf(c); const sv = v.subs.find(s => s.id === cad.id), uu = sv.units.find(x => x.id === u.id); rotMoveDo(c, v, sv, uu, uu.entries, inf.id, 0, rotUnitName(uu)); }
+      v = rotViewOf(c);
+      const g = groupsOf(c).find(x => x.key === groupKeyOf(a)), sal = c.apparatus.find(x => x.id === 'salt') || c.apparatus[0];
+      return { idx: v.subs.find(s => s.id === cad.id).idx, blocks: judgeBlocks(c, g, sal, undefined, true).map(b => [b.title, b.list.length]) };
+    });
+    assert.equal(r.idx, 0);
+    assert.deepEqual(r.blocks, [['', 1]], JSON.stringify(r.blocks));
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): «Ajunta-les aquí» diu qui torna, i l’avís d’imprimir diu «les individuals de La Salle Reus repartides»', async () => {
+    await fresh(); await make(); await clearToasts();
+    const s4 = await subId(3), s5 = await subId(4), ids = await unitIds('ALEVÍ A i B', 'La Salle Reus · 2 individuals', 'Aleví B');
+    const moved = (await page.evaluate(() => sortEntries(rotViewOf(curComp()).subs[3].units.find(u => rotUnitName(u) === 'La Salle Reus · 2 individuals').entries).map(e => e.id)))[0];
+    const stays = ids.find(id => id !== moved), mvName = await nameOf(moved);
+    await mouDlg(unitIn('ALEVÍ A i B', 'La Salle Reus · 2 individuals', null), s5, 1, [moved]);
+    await page.click('#dlg button.primary'); await toastHas(`${mvName} → 5a subdivisió`); await clearToasts();
+    assert.ok((await printWarn('')).includes('4a i 5a: les individuals de La Salle Reus repartides en 2 subdivisions'));
+    // «Ajunta-les aquí» a la 4a: torna la que s'havia mogut (no l'altra)
+    await clearToasts();
+    await card('ALEVÍ A i B').locator('button[data-act=rotJoinX]').click();
+    const t = await toastTxt(`${mvName} → 4a subdivisió`);
+    assert.ok(t.includes('Ha tornat a la seva subdivisió.') && t.includes('Les individuals de La Salle Reus tornen a estar juntes.') && !t.includes(await nameOf(stays)), t);
+    assert.deepEqual((await placeOf([moved, stays])).map(x => x.split('/')[0]), ['4a', '4a']);
+    // a un altre grup de la 4a: «repartides a mà», i en imprimir, «repartides en 2 grups»
+    await clearToasts();
+    const g = await gOf(stays), tg = g === 2 ? 0 : 2;
+    await mouDlg(unitIn('ALEVÍ A i B', 'La Salle Reus · 2 individuals', null), s4, tg, [moved]);
+    await page.click('#dlg button.primary'); await toastHas(`${mvName} → Grup`); await clearToasts();
+    const chip = (await card('ALEVÍ A i B').locator('.chip', { hasText: 'La Salle Reus' }).textContent()).replace(/\s+/g, ' ');
+    assert.ok(chip.includes('Les individuals de La Salle Reus estan repartides a mà: 1 al Grup') && chip.includes('Ajunta-les'), chip);
+    assert.ok((await printWarn('')).includes('4a: les individuals de La Salle Reus repartides en 2 grups'));
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): als nois, l’avís de les entrenadores diu «Ajunta’ls»; i si l’hora no canvia, «Continua competint a les…»', async () => {
+    await fresh(); await make(); await clearToasts();
+    await page.click('button[data-act=rotCoachDlg] >> visible=true'); await page.fill('#dlg input[name=c_CGL]', '1'); await page.click('#dlg button.primary');
+    await toastHas('surt en');
+    const chip = await card('MASCULINA').locator('.chip', { hasText: 'entrenadora' }).textContent();
+    assert.ok(chip.includes('Ajunta’ls') && !chip.includes('Ajunta-les'), chip);
+    assert.deepEqual(await page.evaluate(() => { const v = rotViewOf(curComp()); return [rotJoinLbl(v.subs.find(s => s.g === 'M'), 'CGL'), rotJoinLbl(v.subs[3], 'CGL')]; }), ['Ajunta’ls', 'Ajunta-les']);
+    await page.click('button[data-act=rotCoachDlg] >> visible=true'); await page.fill('#dlg input[name=c_CGL]', ''); await page.click('#dlg button.primary');
+    await toastHas('Entrenadores desades'); await clearToasts();
+    // els nois separats: el de Benjamí, a la d'Aleví (la seva es queda sense gimnastes i la d'Aleví comença abans)
+    await page.click('button[data-act=rotSubsDlg] >> visible=true'); await page.waitForSelector('#dlg[open] form[data-form=rotSubs]');
+    await page.uncheck('#dlg input[data-chg=rotDraftAllM]'); await page.click('#dlg button.primary'); await toastHas('Desat'); await clearToasts();
+    const M = await page.evaluate(() => rotViewOf(curComp()).subs.filter(s => s.g === 'M').map(s => ({ id: s.id, label: s.label, idx: s.idx })));
+    const bj = M.find(s => s.label.endsWith('– BENJAMÍ')), al = M.find(s => s.label.endsWith('– ALEVÍ'));
+    await mouDlg(card(bj.label).locator('.rot-u').first(), al.id, 0);
+    const what = (await page.locator('#rotMvWhat').innerText()).replace(/\s+/g, ' ');
+    const m = /Continuarà competint a les (\d+:\d+) \((\d+)a subdivisió, que ara comença a les (\d+:\d+)\)\./.exec(what);
+    assert.ok(m && m[1] !== m[3] && +m[2] === al.idx, what);
+    assert.ok(!/de les (\d+:\d+) .* a les \1 /.test(what), what);
+    await page.click('#dlg button.primary');
+    const t = await toastTxt('→ ');
+    assert.ok(/Continua competint a les \d+:\d+\./.test(t) && !t.includes('(abans, a les'), t);
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): uns minuts de premis posats a mà en una subdivisió que es queda sense premis: es diu al diàleg, en moure, a les dues pestanyes i en imprimir l’horari', async () => {
+    await fresh(); await make(); await clearToasts();
+    const s2 = await subId(1), s3 = await subId(2);
+    await page.click('button[data-act=rotSeg][data-v=horari]');
+    const inp = `input[data-chg=rotSubField][data-s="${s2}"][data-k=awards]`;
+    await page.fill(inp, '5'); await page.press(inp, 'Tab'); await page.waitForTimeout(300); await clearToasts();
+    await page.click('button[data-act=rotSeg][data-v=grups]'); await page.waitForSelector('.card.rot-sub');
+    await mouDlg(unitIn(/^2a subdivisió · BENJAMÍ A/, 'C.G. Lleida 2', null), s3, 1);
+    assert.ok((await page.locator('#rotMvWhat').innerText()).includes('La 2a subdivisió ja no donarà cap premi, però hi has posat 5′ de premis: si no calen, esborra’n els minuts a Horari.'));
+    await page.click('#dlg button.primary');
+    assert.ok((await toastTxt('C.G. Lleida 2 → 3a subdivisió')).includes('La 2a subdivisió ja no dona cap premi, però hi has posat 5′ de premis: si no calen, esborra’n els minuts a Horari.'));
+    const note = 'La 2a subdivisió no dona cap premi, però hi has posat 5′ de premis (a l’horari surt «PREMIS» sol): si no calen, esborra’n els minuts a Horari.';
+    assert.equal((await notes7()).filter(x => x.includes(note)).length, 1, (await notes7()).join(' || '));
+    await page.click('button[data-act=rotSeg][data-v=horari]'); await page.waitForSelector('table.rot-hor');
+    assert.equal((await notes7()).filter(x => x.includes(note)).length, 1);
+    await clearToasts();
+    assert.ok((await printWarn('horari')).includes('2a: 5′ de premis, però no hi ha cap categoria per premiar'));
+    // sense els minuts, ja no es diu
+    await page.fill(inp, ''); await page.press(inp, 'Tab'); await page.waitForTimeout(300);
+    await page.click('button[data-act=rotSeg][data-v=grups]'); await page.waitForSelector('.card.rot-sub');
+    assert.equal((await notes7()).filter(x => x.includes('no dona cap premi')).length, 0);
+    assert.equal(errors.length, 0, errors.join('\n'));
+  });
+
+  await step('moure-ho tot (2a): al mòbil, després de portar un equip a una altra subdivisió, la pantalla hi va i el focus segueix l’equip; Desfés hi torna', async () => {
+    await fresh(); await make(); await clearToasts();
+    await page.setViewportSize({ width: 360, height: 740 }); await page.evaluate(() => render());
+    const s2 = await subId(1), s3 = await subId(2);
+    await page.selectOption('#main .gsel select', s2); await page.waitForFunction(() => $('.card.rot-sub h3').textContent.startsWith('2a subdivisió · BENJAMÍ A'));
+    const b = unitIn(/^2a subdivisió · BENJAMÍ A/, 'C.G. Lleida 2', null).locator('button[data-act=rotMoveDlg]');
+    await b.focus(); await page.keyboard.press('Enter'); await page.waitForSelector('#dlg[open] form[data-form=rotMoveDo]');
+    await page.check(`#dlg input[name=to][value="${s3}|1"]`); await page.waitForSelector('#rotMvWhat');
+    await page.locator('#dlg button.primary').focus(); await page.keyboard.press('Enter'); await toastHas('C.G. Lleida 2 → 3a subdivisió');
+    const f = await page.evaluate(() => { const a = document.activeElement; return a === document.body ? 'BODY' : `${a.dataset.act}|${a.dataset.s}|${a.closest('.rot-sub') ? a.closest('.rot-sub').querySelector('h3').textContent : ''}`; });
+    assert.ok(f.startsWith(`rotMoveDlg|${s3}|3a subdivisió · BENJAMÍ B`), f);
+    await page.locator('.toast button', { hasText: 'Desfés' }).first().click(); await toastHas('Desfet');
+    assert.equal(await page.evaluate(() => ui.rotSub), s2);
+    await page.setViewportSize({ width: 1366, height: 900 }); await page.evaluate(() => render());
     assert.equal(errors.length, 0, errors.join('\n'));
   });
 } finally {

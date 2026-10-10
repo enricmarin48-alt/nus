@@ -853,3 +853,95 @@ test('una gimnasta nova d’un equip que ella ha portat a una altra subdivisió 
   assert.ok(p2.subId === v2.subs[1].id && p2.x && !p2.pin && !p2.derived);
   assert.ok(!E.rotView(c2, settings, CTX).subs[1].units.find(u => u.entries.includes(c2.entries[0])).pinned);
 });
+
+test('un equip repartit a mà en dos grups: cada tros fixat (📌) és un tros de la unitat, també si hi ha empat o si el grup on n’hi ha més no és fixat', () => {
+  const { c, by } = model(), sAl = by('ALEVÍ A i B').id;
+  const t = teamOf(c, 'C.G. LLEIDA', 'Aleví', 'B'), mem = c.entries.filter(e => e.teamId === t.id);
+  const g0 = E.rotView(c, settings, CTX).place.get(mem[0]).g, g1 = (g0 + 1) % 3;
+  // 2 de les 5, a mà a un altre grup; les altres 3, on eren (sense 📌): el grup on n'hi ha més no és fixat
+  for (const e of mem.slice(0, 2)) c.rot.at[e.id] = { s: sAl, g: g1, m: 1 };
+  for (const e of mem.slice(2)) c.rot.at[e.id] = { s: sAl, g: g0 };
+  let v = E.rotView(c, settings, CTX), u = v.subs.find(s => s.id === sAl).units.find(x => x.teamId === t.id);
+  assert.equal(u.g, g0, 'el grup de l’equip, on n’hi ha més');
+  assert.ok(u.split && u.pinned);
+  assert.deepEqual(plain(u.hand), [g1]);
+  assert.deepEqual(plain(u.parts.map(p => [p.g, p.n, p.hand])).sort((a, b) => a[0] - b[0]), [[g0, 3, false], [g1, 2, true]].sort((a, b) => a[0] - b[0]));
+  assert.deepEqual(mem.map(e => v.place.get(e).pin), [true, true, false, false, false]);
+  assert.ok(v.subs.find(s => s.id === sAl).warnings.some(w => w.t === 'split' && w.unit === u));
+  // les 3 també fixades (com fa «Mou…»): tots dos trossos
+  for (const e of mem.slice(2)) c.rot.at[e.id].m = 1;
+  u = E.rotView(c, settings, CTX).subs.find(s => s.id === sAl).units.find(x => x.teamId === t.id);
+  assert.deepEqual(plain(u.hand), [g0, g1].sort());
+  // empat (2 i 2): el grup de l'equip és el primer, i el tros fixat és el que ella ha mogut, sigui quin sigui
+  const t2 = teamOf(c, 'C.G. LLEIDA 2', 'Aleví', 'B'), m2 = c.entries.filter(e => e.teamId === t2.id);
+  assert.equal(m2.length, 4);
+  c.rot.at[m2[0].id] = { s: sAl, g: 2, m: 1 }; c.rot.at[m2[1].id] = { s: sAl, g: 2, m: 1 };
+  c.rot.at[m2[2].id] = { s: sAl, g: 0 }; c.rot.at[m2[3].id] = { s: sAl, g: 0 };
+  v = E.rotView(c, settings, CTX); u = v.subs.find(s => s.id === sAl).units.find(x => x.teamId === t2.id);
+  assert.deepEqual([u.g, plain(u.hand)], [0, [2]]);
+  assert.deepEqual(m2.map(e => [v.place.get(e).g, v.place.get(e).pin]), [[2, true], [2, true], [0, false], [0, false]]);
+  // una gimnasta nova de l'equip va al grup on n'hi ha més (amb el seu tros: fixada si aquell ho és)
+  c.entries.push({ id: 'nova', gymnastId: 'gnova', clubId: 'CGL', gender: 'F', category: 'Aleví', level: 'B', teamId: t.id, status: '', bib: 501, scores: {} });
+  v = E.rotView(c, settings, CTX);
+  assert.deepEqual(plain(v.place.get(c.entries.find(e => e.id === 'nova'))), { subId: sAl, g: g0, derived: true, x: false, pin: true });
+});
+
+test('repartir amb el que ella ha posat a mà: una categoria portada d’una altra subdivisió, o un tros fixat en un grup d’una altra categoria, no fa fora les que ja hi són', () => {
+  const U = (id, size, clubId, ko = 0, cat = 0, extra = {}) => Object.assign({ id, size, ko, cat, clubId, sortName: id }, extra);
+  // Benjamí B (clau 0) i un equip de Benjamí A (clau 1) que ella hi ha portat, fixat al Grup 2 amb les de la seva entitat
+  const bb = guest => [U('cgl', 5, 'CGL'), U('cgl2', 4, 'CGL'), U('fedac', 6, 'FEDAC'), U('inef', 4, 'INEF'), U('bp', 3, 'BP'), U('art', 3, 'ART'), U('lsr', 4, 'LSR'), U('guest', 6, 'CGL', 1, 1, { guest })];
+  const prev = { cgl: 1, cgl2: 1, fedac: 0, inef: 2, bp: 0, art: 2, lsr: 2, guest: 1 };
+  // (si la convidada comptés com una categoria més, les de Benjamí B marxarien del Grup 2: 15 · 6 · 14)
+  const was = E.rotPartition(bb(false), { k: 3, maxGroup: 15, mode: 'cat', pins: { guest: 1 } });
+  assert.deepEqual(plain(was.cost.sizes)[1], 6);
+  for (const opts of [{ pins: { guest: 1 } }, { pins: { guest: 1 }, prev }]) {
+    const r = E.rotPartition(bb(true), Object.assign({ k: 3, maxGroup: 15, mode: 'cat' }, opts));
+    assert.equal(r.assign.guest, 1);
+    assert.ok(Object.keys(r.assign).some(id => id !== 'guest' && r.assign[id] === 1), 'el Grup 2 no és només per a la convidada');
+    assert.ok(Math.max(...r.cost.sizes) - Math.min(...r.cost.sizes) <= 2, plain(r.cost.sizes).join('/'));
+    assert.ok(r.ok && r.exact);
+  }
+  // Aleví A (clau 0) al Grup 1; un tros d'Aleví B (clau 1) fixat a mà al Grup 1: amb mk/mc (hi compta com Aleví A), no se'n
+  // mou cap d'Aleví A
+  const al = mk => [U('a1', 6, 'CGL'), U('a2', 4, 'CGL'), U('a3', 1, 'FEDAC'), U('a4', 1, 'LSR'), U('b1', 5, 'INEF', 1), U('b2', 6, 'FEDAC', 1), U('b3', 4, 'CGL', 1),
+    U('b4', 3, 'CGL', 1), U('b5', 2, 'ART', 1), U('b6', 2, 'LSR', 1), U('tros', 2, 'CGL', 1, 0, mk ? { mk: 0, mc: 0 } : {})];
+  const pa = { a1: 0, a2: 0, a3: 0, a4: 0, b1: 2, b2: 2, b3: 1, b4: 1, b5: 2, b6: 1, tros: 0 };
+  const r0 = E.rotPartition(al(false), { k: 3, maxGroup: 15, mode: 'cat', pins: { tros: 0 }, prev: pa });
+  assert.ok(['a1', 'a2', 'a3', 'a4'].every(id => r0.assign[id] !== 0), 'sense mk, les d’Aleví A marxen del Grup 1');
+  const r1 = E.rotPartition(al(true), { k: 3, maxGroup: 15, mode: 'cat', pins: { tros: 0 }, prev: pa });
+  assert.ok(['a1', 'a2', 'a3', 'a4'].every(id => r1.assign[id] === 0) && r1.ok && r1.exact, JSON.stringify(plain(r1.assign)));
+  // (el càlcul exacte i el de comprovació diuen el mateix cost, també amb convidades i mk)
+  for (const [us, o] of [[bb(true), { pins: { guest: 1 } }], [al(true), { pins: { tros: 0 } }], [al(true).concat(U('g2', 3, 'BP', 1, 0, { guest: true })), { pins: { tros: 0 } }]]) {
+    const r = E.rotPartition(us, Object.assign({ k: 3, maxGroup: 15, mode: 'cat' }, o));
+    assert.equal(r.cost.total, E.rotEval(us, r.assign, Object.assign({ k: 3, maxGroup: 15, mode: 'cat' }, o)).total);
+    assert.ok(r.ok);
+  }
+});
+
+test('el repartiment exacte és el millor de tots (comprovat un per un), també amb convidades, trossos fixats i mk', () => {
+  let seed = 7; const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  for (let t = 0; t < 60; t++) {
+    const U = 4 + rnd(4), k = 2 + rnd(2), nK = 1 + rnd(3), units = [], pins = {};
+    for (let i = 0; i < U; i++) {
+      const ko = rnd(nK), u = { id: 'u' + i, size: 1 + rnd(7), ko, cat: ko, clubId: 'c' + rnd(3), sortName: 'u' + i };
+      if (rnd(4) === 0) u.guest = true;
+      if (rnd(3) === 0) { pins[u.id] = rnd(k); if (!u.guest && rnd(2)) { u.mk = rnd(nK); u.mc = u.mk; } }
+      units.push(u);
+    }
+    // (que hi hagi totes les claus de 0 a nK-1, com a la subdivisió)
+    units.forEach((u, i) => { if (i < nK) { u.ko = i; u.cat = i; } });
+    const opts = { k, maxGroup: 12, mode: rnd(2) ? 'cat' : 'bal', pins, coaches: rnd(2) ? { c0: 1 } : {} };
+    // (i, la meitat de les vegades, on són ara: «Reequilibra» en mou el mínim)
+    if (rnd(2)) { opts.prev = {}; for (const u of units) opts.prev[u.id] = u.id in pins ? pins[u.id] : rnd(k); }
+    const r = E.rotPartition(units, opts);
+    let best = Infinity;
+    const a = {}, rec = i => {
+      if (i === U) { best = Math.min(best, E.rotEval(units, a, opts).total); return; }
+      const id = units[i].id;
+      for (let g = 0; g < k; g++) { if (id in pins && pins[id] !== g) continue; a[id] = g; rec(i + 1); }
+    };
+    rec(0);
+    assert.ok(r.exact && r.ok, `cas ${t}`);
+    assert.equal(r.cost.total, best, `cas ${t}: ${JSON.stringify(units)} ${JSON.stringify(opts)}`);
+  }
+});

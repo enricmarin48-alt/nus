@@ -1223,7 +1223,10 @@ const Engine = (() => {
   }
 
   // ── repartiment òptim de les unitats d'una subdivisió en k grups
-  // units: [{ id, size, ko, cat, clubId, sortName }] (ko / cat: ordre de la seva clau / categoria dins la subdivisió)
+  // units: [{ id, size, ko, cat, clubId, sortName, guest, mk, mc }] (ko / cat: ordre de la seva clau / categoria dins la
+  // subdivisió. Per a «cada categoria i nivell al seu grup», les que ella ha posat a mà no han de fer fora les que ja hi
+  // són: guest —la categoria i nivell no és de la subdivisió, l'hi ha portat d'una altra— no hi compta; i mk / mc, si hi
+  // són, la clau i la categoria amb què hi compta —p. ex. un tros fixat en un grup d'una altra categoria, com si fos d'aquella—)
   // opts: { k, maxGroup, mode, pins:{id:g}, prev:{id:g}|null, coaches:{clubId:n}, budget }
   function rotPrepare(unitsIn, opts = {}) {
     const units = (unitsIn || []).filter(u => u && u.size > 0).slice().sort((a, b) =>
@@ -1236,18 +1239,19 @@ const Engine = (() => {
     const ci = units.map(u => clubs.indexOf(u.clubId || ('-' + u.id)));
     const lim = clubs.map(c => { const n = own(opts.coaches, c) ? opts.coaches[c] : 0; return isInt(n) && n > 0 ? n : 0; });
     const nK = units.reduce((m, u) => Math.max(m, u.ko + 1), 0), nC = units.reduce((m, u) => Math.max(m, u.cat + 1), 0);
-    const W = Object.assign({}, ROT_WC, ROT_MODES[opts.mode === 'bal' ? 'bal' : 'cat']);
-    return { units, k, pin, prev, ci, lim, nK, nC, nClubs: clubs.length, N: units.reduce((s, u) => s + u.size, 0),
+    const W = Object.assign({}, ROT_WC, ROT_MODES[opts.mode === 'bal' ? 'bal' : 'cat']), fr = units.map(u => !!u.guest);
+    const mk = units.map(u => (isInt(u.mk) && u.mk >= 0 && u.mk < nK ? u.mk : u.ko)), mc = units.map(u => (isInt(u.mc) && u.mc >= 0 && u.mc < nC ? u.mc : u.cat));
+    return { units, k, pin, prev, ci, lim, nK, nC, fr, mk, mc, nClubs: clubs.length, N: units.reduce((s, u) => s + u.size, 0),
       maxG: Math.max(1, (opts.maxGroup | 0) || 15), stab: !!opts.prev, W };
   }
   // cost d'un repartiment (tot enters): com més baix, millor
   function rotCost(P, a) {
-    const { units, k, N, maxG, ci, lim, prev, nK, nC, nClubs, W } = P;
+    const { units, k, N, maxG, ci, lim, prev, nK, nC, nClubs, W } = P, fr = P.fr || [], mk = P.mk || units.map(u => u.ko), mc = P.mc || units.map(u => u.cat);
     const n = new Array(k).fill(0), kc = new Array(k * nK).fill(0), cc = new Array(k * nC).fill(0);
     const ck = new Array(nClubs * nK * k).fill(0), cl = new Array(nClubs * k).fill(0);
     let stab = 0;
     units.forEach((u, i) => {
-      const g = a[i]; n[g] += u.size; kc[g * nK + u.ko] = 1; cc[g * nC + u.cat] = 1;
+      const g = a[i]; n[g] += u.size; if (!fr[i]) { kc[g * nK + mk[i]] = 1; cc[g * nC + mc[i]] = 1; }
       ck[(ci[i] * nK + u.ko) * k + g] = 1; cl[ci[i] * k + g] = 1;
       if (P.stab && prev[i] >= 0 && prev[i] !== g) stab += u.size;
     });
@@ -1313,13 +1317,15 @@ const Engine = (() => {
   }
   // 3) ramificació i poda: el millor repartiment possible (si no s'acaba el pressupost de passos)
   function rotBnB(P, inc, incCost, budget) {
-    const { units, k, pin, prev, ci, lim, nK, nC, nClubs, N, maxG, W } = P, K2 = k * k, U = units.length;
-    const ord = [...units.keys()].sort((x, y) => units[x].ko - units[y].ko || units[y].size - units[x].size || x - y);
+    const { units, k, pin, prev, ci, lim, nK, nC, nClubs, N, maxG, W } = P, K2 = k * k, U = units.length, fr = P.fr || [];
+    const mk = P.mk || units.map(u => u.ko), mc = P.mc || units.map(u => u.cat);
+    // (per ordre de la clau amb què compten: així una clau nova en un grup sempre és més gran que les que ja hi són)
+    const ord = [...units.keys()].sort((x, y) => mk[x] - mk[y] || units[y].size - units[x].size || x - y);
     const pinnedG = new Array(k).fill(false); pin.forEach(g => { if (g >= 0) pinnedG[g] = true; });
     const n = new Array(k).fill(0), kd = new Array(k).fill(0), cd = new Array(k).fill(0), hi = new Array(k).fill(-1);
     const kc = new Array(k * nK).fill(0), cc = new Array(k * nC).fill(0), ckc = new Array(nClubs * nK * k).fill(0), ckd = new Array(nClubs * nK).fill(0);
     const clc = new Array(nClubs * k).fill(0), cld = new Array(nClubs).fill(0), keyAny = new Array(nK).fill(0), remKey = new Array(nK).fill(0);
-    units.forEach(u => { remKey[u.ko]++; });
+    units.forEach((u, i) => { if (!fr[i]) remKey[mk[i]]++; });
     let best = incCost, bestA = inc.slice(), nodes = 0, done = true, mon = 0, empty = k;
     const a = new Array(U).fill(-1);
     // fita de l'equilibri (enters): el mínim de Σ(k·n_g − N)² un cop posades R gimnastes més
@@ -1339,26 +1345,31 @@ const Engine = (() => {
       if (K2 * (mon + W.MIX * Math.max(0, unseen - empty)) + balLB(R) >= best) return;
       const i = ord[t], u = units[i], c = ci[i];
       let twin = -1;
-      if (t > 0) { const j = ord[t - 1], v = units[j]; if (v.ko === u.ko && ci[j] === c && v.size === u.size && pin[j] < 0 && pin[i] < 0 && prev[j] === prev[i]) twin = a[j]; }
+      if (t > 0) { const j = ord[t - 1], v = units[j]; if (v.ko === u.ko && mk[j] === mk[i] && fr[j] === fr[i] && ci[j] === c && v.size === u.size && pin[j] < 0 && pin[i] < 0 && prev[j] === prev[i]) twin = a[j]; }
       let triedEmpty = false;
       for (let g = 0; g < k; g++) {
         if (pin[i] >= 0 && g !== pin[i]) continue;
         if (twin > 0 && g < twin) continue;
         if (pin[i] < 0 && !P.stab && n[g] === 0 && !pinnedG[g]) { if (triedEmpty) continue; triedEmpty = true; }
-        const s0 = mon, wasEmpty = n[g] === 0; let d = 0;
-        if (kc[g * nK + u.ko]++ === 0) { if (kd[g]++ > 0) d += W.MIX + W.GAP * (u.ko - hi[g] - 1); hi[g] = Math.max(hi[g], u.ko); }
-        if (cc[g * nC + u.cat]++ === 0 && cd[g]++ > 0) d += W.CAT;
+        // (empty: els grups sense cap categoria i nivell que compti —buits, o només amb les que ella hi ha portat d'una altra—)
+        const s0 = mon, f = fr[i], wasEmpty = !f && kd[g] === 0, K = mk[i], C = mc[i]; let d = 0;
+        if (!f) {
+          if (kc[g * nK + K]++ === 0) { if (kd[g]++ > 0) d += W.MIX + W.GAP * (K - hi[g] - 1); hi[g] = Math.max(hi[g], K); }
+          if (cc[g * nC + C]++ === 0 && cd[g]++ > 0) d += W.CAT;
+        }
         const q = c * nK + u.ko; if (ckc[q * k + g]++ === 0 && ckd[q]++ > 0) d += W.CLUB;
         if (clc[c * k + g]++ === 0) { if (cld[c]++ > 0) d += W.CLUB2; if (lim[c] && cld[c] > lim[c]) d += W.COACH; }
         d += W.CAP * (Math.max(0, n[g] + u.size - maxG) - Math.max(0, n[g] - maxG));
         if (P.stab && prev[i] >= 0 && prev[i] !== g) d += W.STAB * u.size;
-        n[g] += u.size; mon += d; a[i] = g; remKey[u.ko]--; keyAny[u.ko]++; if (wasEmpty) empty--;
+        n[g] += u.size; mon += d; a[i] = g; if (!f) { remKey[K]--; keyAny[K]++; } if (wasEmpty) empty--;
         rec(t + 1, R - u.size);
-        if (wasEmpty) empty++; keyAny[u.ko]--; remKey[u.ko]++; a[i] = -1; mon = s0; n[g] -= u.size;
+        if (wasEmpty) empty++; if (!f) { keyAny[K]--; remKey[K]++; } a[i] = -1; mon = s0; n[g] -= u.size;
         if (--clc[c * k + g] === 0) cld[c]--;
         if (--ckc[q * k + g] === 0) ckd[q]--;
-        if (--cc[g * nC + u.cat] === 0) cd[g]--;
-        if (--kc[g * nK + u.ko] === 0) { kd[g]--; hi[g] = -1; for (let x = nK - 1; x >= 0; x--) if (kc[g * nK + x]) { hi[g] = x; break; } }
+        if (!f) {
+          if (--cc[g * nC + C] === 0) cd[g]--;
+          if (--kc[g * nK + K] === 0) { kd[g]--; hi[g] = -1; for (let x = nK - 1; x >= 0; x--) if (kc[g * nK + x]) { hi[g] = x; break; } }
+        }
         if (!done) return;
       }
     }
@@ -1614,7 +1625,10 @@ const Engine = (() => {
         const votes = new Array(k).fill(0); st.forEach(a => { if (a) votes[a.g]++; });
         let best = 0; for (let x = 1; x < k; x++) if (votes[x] > votes[best]) best = x;
         u.g = best; u.split = votes.filter(v => v > 0).length > 1; u.fresh = false;
-        u.pinned = st.some(a => a && a.m === 1 && a.g === best);
+        // (hand: els grups on ella n'ha posat alguna a mà —📌—; si l'ha repartida, cada tros és fixat al seu grup, també el
+        // que no és el que en té més)
+        u.hand = [...new Set(st.filter(a => a && a.m === 1).map(a => a.g))].sort((a, b) => a - b);
+        u.pinned = u.hand.length > 0;
         u.entries.forEach((e, i) => gOf.set(e, st[i] ? { g: st[i].g, derived: false } : { g: best, derived: true }));
       }
       for (const [e, x] of gOf) if (e.status !== 'np') load[x.g]++;
@@ -1630,7 +1644,7 @@ const Engine = (() => {
         }
         if (x < 0 && u.n > 0) { const kc = byCnt(e => e.status !== 'np' && ek.get(e) === u.key); x = leastAmong(i => kc[i] > 0); }
         if (x < 0) x = u.n > 0 ? leastAmong(() => true) : 0;
-        u.g = x; u.fresh = true; u.split = false; u.pinned = false;
+        u.g = x; u.fresh = true; u.split = false; u.pinned = false; u.hand = [];
         for (const e of u.entries) gOf.set(e, { g: x, derived: true });
         load[x] += u.n;
       }
@@ -1645,9 +1659,12 @@ const Engine = (() => {
         for (const e of u.entries) {
           const x = gOf.get(e), G2 = groups[x.g];
           G2.entries.push(e); if (e.status === 'np') G2.np++; else G2.n++;
-          // (x: competeix fora de la seva subdivisió; pin: la seva unitat és fixada)
-          place.set(e, { subId: s.id, g: x.g, derived: x.derived, x: u.guest, pin: !!u.pinned });
+          // (x: competeix fora de la seva subdivisió; pin: el tros de la seva unitat que és en aquest grup és fixat a mà)
+          place.set(e, { subId: s.id, g: x.g, derived: x.derived, x: u.guest, pin: u.hand.includes(x.g) });
         }
+        // els trossos de la unitat, un per grup (n: les que no són NP; hand: fixat a mà)
+        u.parts = [...Array(k).keys()].map(g => ({ g, entries: u.entries.filter(e => gOf.get(e).g === g) })).filter(p => p.entries.length)
+          .map(p => Object.assign(p, { n: p.entries.filter(e => e.status !== 'np').length, hand: u.hand.includes(p.g) }));
       }
       for (const G2 of groups) {
         const act = [...new Set(G2.entries.filter(e => e.status !== 'np').map(e => ek.get(e)))];
@@ -6884,7 +6901,8 @@ function judgeBlocks(c, g, a, rv = c.rot && c.rot.made ? rotViewOf(c) : null, np
   const list = sortEntries(g.entries).filter(e => np || e.status !== 'np');
   if (!rv) return [{ title: '', list }];
   const mine = new Set(list), out = [], seen = new Set();
-  for (const sv of rv.subs) for (const b of Engine.rotAppSeq(sv, a.id, S(), rotCtx())) {
+  // (una subdivisió sense cap gimnasta que competeixi no té número: les seves NP van a «Altres»)
+  for (const sv of rv.subs) if (sv.idx) for (const b of Engine.rotAppSeq(sv, a.id, S(), rotCtx())) {
     const l = b.entries.filter(e => mine.has(e) && !seen.has(e));
     if (l.length) { l.forEach(e => seen.add(e)); out.push({ title: `${sv.idx}a subdivisió · ${b.r === null ? 'tots junts al final' : `rotació ${b.r + 1}`} · Grup ${b.G.g + 1}`, list: l }); }
   }
@@ -9281,25 +9299,78 @@ function rotNew(c) {
   return r;
 }
 const rotNewSub = (g, keys, k) => ({ id: uid(), g, keys: [...keys], k, kSet: false, name: '', dur: null, awards: null, start: null, extras: [] });
-// entrada del càlcul de grups d'una subdivisió
-const rotUnitsIn = sv => sv.units.filter(u => u.n > 0).map(u => ({ id: u.id, size: u.n, ko: u.ko, cat: u.cat, clubId: u.clubId, sortName: u.sortName }));
+// els trossos d'una subdivisió per als càlculs de grups. Cada unitat és un tros (no se separa mai); però si ella n'ha posat
+// gimnastes a mà (📌) en un grup, les d'aquell grup són un tros fixat en aquell grup (id «unitat#grup»), i la resta de la
+// unitat, si n'hi ha, un altre de lliure: el que ella ha repartit a mà es queda repartit. keep = false: tot lliure (es
+// torna a fer tot). { id, u, entries, n (no NP), pin (el grup fixat, o -1), g (on és ara), prev (per no moure'l si no
+// cal, o -1), split (lliure i en més d'un grup: l'app l'ajunta) }
+function rotPieces(sv, keep = true) {
+  const out = [];
+  for (const u of sv.units) {
+    const hp = keep ? u.parts.filter(p => p.hand) : [], free = u.parts.filter(p => !hp.includes(p));
+    for (const p of hp) out.push({ id: u.id + '#' + p.g, u, entries: p.entries, n: p.n, pin: p.g, g: p.g, prev: p.g, split: false });
+    if (free.length) out.push({ id: u.id, u, entries: free.flatMap(p => p.entries), n: free.reduce((t, p) => t + p.n, 0), pin: -1,
+      g: free.length === 1 ? free[0].g : u.g, prev: free.length === 1 && !u.fresh ? free[0].g : -1, split: free.length > 1 });
+  }
+  return out;
+}
+const rotHas = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+// entrada del càlcul de grups d'una subdivisió. Per a «cada categoria i nivell al seu grup», el que ella ha posat a mà no fa
+// fora les que ja hi són: les que ha portat d'una altra subdivisió no hi compten (guest), i un tros fixat en un grup on no
+// n'hi ha cap més de la seva categoria i nivell hi compta com la que més n'hi ha (mk, mc)
+function rotPieceIn(ps) {
+  return ps.filter(p => p.n > 0).map(p => {
+    const x = { id: p.id, size: p.n, ko: p.u.ko, cat: p.u.cat, clubId: p.u.clubId, sortName: p.u.sortName, guest: !!p.u.guest };
+    if (p.pin >= 0 && !p.u.guest) {
+      const by = new Map();
+      for (const q of ps) if (q.pin < 0 && q.n > 0 && !q.u.guest && q.g === p.pin) by.set(q.u.ko, (by.get(q.u.ko) || 0) + q.n);
+      let b = null; for (const [ko, n] of by) if (!b || n > b.n || (n === b.n && ko < b.ko)) b = { ko, n };
+      if (b && !by.has(p.u.ko)) { x.mk = b.ko; x.mc = ps.find(q => q.u.ko === b.ko).u.cat; }
+    }
+    return x;
+  });
+}
 const rotOpts = (c, sv, extra = {}) => Object.assign({ k: sv.k, maxGroup: c.rot.maxGroup, mode: c.rot.mode, coaches: c.rot.coaches, budget: 200000 }, extra);
+// els grups fixats (pins) i on és cada tros ara (prev) de la subdivisió, per als càlculs
+function rotPinsOf(ps, withPrev) {
+  const pins = {}, prev = {};
+  for (const p of ps) if (p.n > 0) { if (p.pin >= 0) pins[p.id] = p.pin; if (withPrev && p.prev >= 0) prev[p.id] = p.prev; }
+  return withPrev ? { pins, prev } : { pins };
+}
 // el que faria «Reequilibra»: es mantenen les fixades (📌) i es mou el mínim de gimnastes
 function rotBalanceInput(c, sv) {
-  const pins = {}, prev = {};
-  for (const u of sv.units) if (u.n > 0) { if (u.pinned) pins[u.id] = u.g; if (!u.fresh && !u.split) prev[u.id] = u.g; }
-  return { units: rotUnitsIn(sv), opts: rotOpts(c, sv, { pins, prev }) };
+  const pieces = rotPieces(sv);
+  return { pieces, units: rotPieceIn(pieces), opts: rotOpts(c, sv, rotPinsOf(pieces, true)) };
 }
 const rotBalMemo = new Map();
+// → { assign, moves: [{ id, to, p }], cost, exact, after (les mides de després), useful (millora alguna cosa que es veu: per
+// a l'avís «Es pot repartir més bé» i el botó «Reequilibra la resta»), why (el que millora: Set de 'sizes', 'cat', 'club',
+// 'coach', 'over', 'split') }
 function rotBalance(c, sv) {
-  const inp = rotBalanceInput(c, sv), key = JSON.stringify([inp.units, inp.opts]);
-  if (rotBalMemo.has(key)) return rotBalMemo.get(key);
-  const r = Engine.rotPartition(inp.units, inp.opts);
-  const moves = sv.units.filter(u => u.n > 0 && (u.split || r.assign[u.id] !== u.g)).map(u => ({ id: u.id, to: r.assign[u.id] }));
-  const out = { assign: r.assign, moves, cost: r.cost, exact: r.exact };
-  if (rotBalMemo.size > 300) rotBalMemo.clear();
-  rotBalMemo.set(key, out);
-  return out;
+  const inp = rotBalanceInput(c, sv), now = {};
+  for (const x of inp.pieces) now[x.id] = x.g;
+  // (on és ara cada tros també compta: el cost d'ara en depèn)
+  const key = JSON.stringify([inp.units, inp.opts, now]);
+  let r = rotBalMemo.get(key);
+  if (!r) {
+    const p = Engine.rotPartition(inp.units, inp.opts);
+    r = { assign: p.assign, cost: p.cost, exact: p.exact, cost0: Engine.rotEval(inp.units, now, inp.opts) };
+    if (rotBalMemo.size > 300) rotBalMemo.clear();
+    rotBalMemo.set(key, r);
+  }
+  const to = x => (x.pin >= 0 ? x.pin : rotHas(r.assign, x.id) ? r.assign[x.id] : x.g);
+  const moves = inp.pieces.filter(x => x.n > 0 && x.pin < 0 && (x.split || to(x) !== x.g)).map(x => ({ id: x.id, to: to(x), p: x }));
+  const after = range(sv.k).map(g => inp.pieces.filter(x => to(x) === g).reduce((t, x) => t + x.n, 0));
+  // (millora: s'ajunta un tros repartit, es compleixen més les entrenadores o el màxim, el grup més gran és més petit o,
+  // sense que cap grup sigui més gran ni més petit que ara, els grups són més iguals; o, si es fa així, cada categoria i
+  // nivell més al seu grup; o, amb les mateixes mides, els equips d'una entitat més junts. Si no, no es diu que es pot
+  // repartir més bé: p. ex., una categoria que ella ha portat d'una altra subdivisió no fa fora les altres del seu grup)
+  const c0 = r.cost0, c1 = r.cost, mx = l => Math.max(...l), mn = l => Math.min(...l), b = sv.sizes;
+  const keys = x => x.mix + x.cat + x.gap, cl = x => x.club + x.club2, same = mx(after) === mx(b) && mn(after) === mn(b);
+  const even = mx(after) < mx(b) || (mx(after) <= mx(b) && mn(after) >= mn(b) && c1.bal < c0.bal);
+  const why = new Set(!moves.length ? [] : [moves.some(m => m.p.split) && 'split', c1.coach < c0.coach && 'coach', c1.cap < c0.cap && 'over', even && 'sizes',
+    c.rot.mode !== 'bal' && keys(c1) < keys(c0) && 'cat', same && cl(c1) < cl(c0) && 'club'].filter(Boolean));
+  return { assign: r.assign, moves, cost: r.cost, exact: r.exact, after, useful: why.size > 0, why };
 }
 // el lloc d'una gimnasta (r: unes rotacions) a la subdivisió s, Grup g (m: fixada a mà). Si s no és la de la seva categoria
 // i nivell, l'hi ha portat ella (x), i es recorda per a quina categoria, gènere i nivell (k); a la seva, ja no cal
@@ -9307,12 +9378,12 @@ function rotPlace(r, e, s, g, m) {
   const k = groupKeyOf(e), home = r.subs.find(x => x.keys.includes(k));
   return Object.assign({ s, g }, m ? { m: 1 } : {}, home && home.id !== s ? { x: 1, k } : {});
 }
-// escriu el grup de cada gimnasta d'una subdivisió (unitat → grup). pinned: les unitats fixades a mà
-// (les que ella hi ha portat d'una altra subdivisió s'hi queden)
-function rotWrite(c, sv, assign, pinned = new Set()) {
-  for (const u of sv.units) {
-    const g = Object.prototype.hasOwnProperty.call(assign, u.id) && Number.isInteger(assign[u.id]) ? assign[u.id] : u.g;
-    for (const e of u.entries) c.rot.at[e.id] = rotPlace(c.rot, e, sv.id, g, pinned.has(u.id));
+// escriu el grup de cada gimnasta d'una subdivisió (tros → grup; pieces: rotPieces). Els trossos fixats a mà (📌) es
+// queden al seu grup i fixats (les que ella hi ha portat d'una altra subdivisió s'hi queden)
+function rotWrite(c, sv, assign, pieces) {
+  for (const p of pieces) {
+    const g = p.pin >= 0 ? p.pin : rotHas(assign, p.id) && Number.isInteger(assign[p.id]) ? assign[p.id] : p.g;
+    for (const e of p.entries) c.rot.at[e.id] = rotPlace(c.rot, e, sv.id, g, p.pin >= 0);
   }
 }
 // el que es mostra «on aniria» (inscripcions noves, categories noves) queda desat a r (newId: l'id de cada subdivisió
@@ -9358,12 +9429,11 @@ function rotHomeTxt(es, verb) {
 }
 // torna a fer els grups d'una subdivisió (keep: es queden les fixades; si no, les que ella hi ha portat d'una altra
 // subdivisió tornen a la seva)
+// (el que ella ha repartit a mà en més d'un grup, cada tros al seu: rotPieces)
 function rotRedoSub(c, sv, keep = true) {
   if (!keep) { const gs = rotGuests(rotViewOf(c), sv); if (gs.length) { rotSendHome(c, gs); sv = rotViewOf(c).subs.find(s => s.id === sv.id) || sv; } }
-  const pins = {}, pinned = new Set();
-  if (keep) for (const u of sv.units) if (u.pinned && u.n > 0 && u.g < sv.k) { pins[u.id] = u.g; pinned.add(u.id); }
-  const r = Engine.rotPartition(rotUnitsIn(sv), rotOpts(c, sv, { pins }));
-  rotWrite(c, sv, r.assign, pinned);
+  const ps = rotPieces(sv, keep), r = Engine.rotPartition(rotPieceIn(ps), rotOpts(c, sv, rotPinsOf(ps, false)));
+  rotWrite(c, sv, r.assign, ps);
   return r;
 }
 // després de canviar l'equip d'una gimnasta (Inscripcions, o la fitxa): si a les rotacions el seu equip nou (o les
@@ -9391,7 +9461,8 @@ function rotTeamMove(c, e, isTeam, name = '') {
       const x = cc && e2(cc), w2 = x && where(cc);
       const p = w2 ? other(w2.v, w2.u, x) : null, sv2 = p && w2.v.subs.find(s => s.id === p.subId);
       if (!w2 || !p || (w2.v.place.get(x).subId === p.subId && w2.v.place.get(x).g === p.g)) { toast('Ja no cal: les rotacions han canviat.', 'bad'); return; }
-      const pin = !!(sv2.units.find(u => u.id === w2.u.id) || {}).pinned;
+      // (fixada si el tros del seu equip que és en aquell grup ho és)
+      const pin = ((sv2.units.find(u => u.id === w2.u.id) || {}).hand || []).includes(p.g);
       withUndo(`${entryName(x)} → ${p.subId === w2.sv.id ? '' : `${rotSubNm(sv2)}, `}Grup ${p.g + 1}, amb ${isTeam ? 'el seu equip' : mf(x, 'els de la seva entitat', 'les de la seva entitat')}.`, () => {
         const map = rotMaterialize(cc);
         cc.rot.at[x.id] = rotPlace(cc.rot, x, map.get(p.subId) || p.subId, p.g, pin);
@@ -9471,6 +9542,9 @@ const rotKeyTxt = k => { const p = Engine.rotKeyParts(k) || { category: k, gende
 // el nom curt d'una unitat (l'equip, l'entitat de les individuals o la gimnasta) i el que se'n diu en una frase
 const rotUnitShort = u => (u.team ? u.team.name : u.clubId ? clubName(u.clubId) : entryName(u.entries[0]));
 const rotUnitWho = u => (u.team ? `L’equip ${u.team.name}` : u.clubId ? `${mf(u.entries, 'Els individuals', 'Les individuals')} ${deN(clubName(u.clubId))}` : entryName(u.entries[0]));
+// per a l'avís d'imprimir, un equip o les individuals d'una entitat repartits (all: totes, també les d'altres subdivisions):
+// «C.G. Lleida 2 repartit», «les individuals de La Salle Reus repartides»
+const rotSplitWho = (u, all) => (u.team ? `${u.team.name} repartit` : `${mf(all, 'els individuals', 'les individuals')} ${deN(clubName(u.clubId))} ${mf(all, 'repartits', 'repartides')}`);
 // «3a subdivisió · BENJAMÍ B (i C.G. Lleida · Aleví A)»: amb les que ella hi ha portat d'una altra (les 2 primeres)
 const rotSubTitle = sv => {
   const g = [...new Set(sv.units.filter(u => u.guest).map(u => `${rotUnitShort(u)} · ${rotKeyTxt(u.key).replace(' (nois)', '')}`))];
@@ -9482,13 +9556,22 @@ const rotSubNm = (sv, short = false) => (!sv ? 'subdivisió' : sv.idx ? sv.idx +
 // «de les 9:25», «a la 1:05»: l'hora amb l'article
 const rotAtHM = min => `${Math.floor((((Math.round(min) % 1440) + 1440) % 1440) / 60) === 1 ? 'la' : 'les'} ${Engine.rotHM(min)}`;
 const rotJoin = l => Engine.joinI(l);
+// «Ajunta-les» / «Ajunta’ls» (nois) de les gimnastes d'una entitat en una subdivisió
+const rotJoinLbl = (sv, clubId) => mf(sv.units.filter(u => u.clubId === clubId).flatMap(u => u.entries), 'Ajunta’ls', 'Ajunta-les');
 // textos dels avisos d'una subdivisió
 function rotWarnHtml(c, sv, bal, v) {
   const out = [], dis = c.locked ? 'disabled' : '';
   let overBtn = false;   // (el botó «Fes-ne N» dels grups massa grans, un sol cop)
   for (const w of sv.warnings) {
     if (w.t === 'over') { const need = Math.min(12, Math.ceil(sv.N / w.max)); out.push(`<span class="chip bad">⚠ El Grup ${w.g + 1} té ${w.n} gimnastes (el màxim és ${w.max}).${need > sv.k && !overBtn ? ` <button class="btn sm" data-act="rotSetK" data-s="${sv.id}" data-k="${need}" ${dis}>Fes-ne ${need}</button>` : ''}</span>`); if (need > sv.k) overBtn = true; }
-    else if (w.t === 'split') out.push(`<span class="chip warn">⚠ ${h(rotUnitName(w.unit))} té gimnastes en ${w.q} grups. <button class="btn sm" data-act="rotJoinSplit" data-s="${sv.id}" data-e="${h(w.unit.handle)}" ${dis}>${mf(w.unit.entries, 'Ajunta’ls', 'Ajunta-les')}</button></span>`);
+    else if (w.t === 'split') {
+      // (si l'ha repartit ella, a mà, es diu: «L’equip C.G. Lleida està repartit a mà: 2 al Grup 1 i 3 al Grup 2»; si
+      // només n'ha mogut unes, quines: «2 al Grup 1 (mogudes a mà) i 3 al Grup 2»)
+      const u = w.unit, ps = u.parts, byHand = l => mf(l, l.length === 1 ? 'mogut' : 'moguts', l.length === 1 ? 'moguda' : 'mogudes') + ' a mà', all = ps.every(p => p.hand);
+      const txt = rotJoin(ps.map(p => `${p.entries.length} al Grup ${p.g + 1}${p.hand && !all ? ` (${byHand(p.entries)})` : ''}`));
+      const what = u.hand.length ? `${h(rotUnitWho(u))} ${u.team ? 'està repartit' : mf(u.entries, 'estan repartits', 'estan repartides')}${all ? ' a mà' : ''}: ${h(txt)}.` : `${h(rotUnitName(u))} té gimnastes en ${w.q} grups.`;
+      out.push(`<span class="chip warn">⚠ ${what} <button class="btn sm" data-act="rotJoinSplit" data-s="${sv.id}" data-e="${h(u.handle)}" ${dis}>${mf(u.entries, 'Ajunta’ls', 'Ajunta-les')}</button></span>`);
+    }
     // (en més d'una subdivisió: les que no són a la seva, les hi ha portat ella a mà —o hi han anat amb el seu equip—; la
     // resta pot ser-hi perquè ella les ha deixat, o perquè n'ha canviat l'equip, el nivell… El botó les porta totes aquí)
     else if (w.t === 'xsplit') {
@@ -9498,14 +9581,17 @@ function rotWarnHtml(c, sv, bal, v) {
       const txt = rotJoin(parts.map(x => `${x.es.length} ${x.at}${x.x && !allX ? ` (${byHand(x.es)})` : ''}`)) + (allX ? ` (${mf(es, 'tots', 'totes')} ${byHand(es)})` : '');
       out.push(`<span class="chip warn">⚠ ${h(rotUnitWho(u))} ${u.team ? 'està repartit' : mf(es, 'estan repartits', 'estan repartides')}: ${h(txt)}. <button class="btn sm" data-act="rotJoinX" data-s="${sv.id}" data-e="${h(u.handle)}" ${dis}>${mf(es, 'Ajunta’ls aquí', 'Ajunta-les aquí')}</button></span>`);
     }
-    else if (w.t === 'coach') out.push(`<span class="chip warn">⚠ ${h(clubName(w.clubId))} té ${w.L === 1 ? '1 entrenadora' : w.L + ' entrenadores'} però surt en ${w.q} grups. <button class="btn sm" data-act="rotBalance" data-s="${sv.id}" ${dis}>Ajunta-les</button></span>`);
+    else if (w.t === 'coach') out.push(`<span class="chip warn">⚠ ${h(clubName(w.clubId))} té ${w.L === 1 ? '1 entrenadora' : w.L + ' entrenadores'} però surt en ${w.q} grups. <button class="btn sm" data-act="rotBalance" data-s="${sv.id}" ${dis}>${rotJoinLbl(sv, w.clubId)}</button></span>`);
     else if (w.t === 'empty') out.push(`<span class="chip warn">⚠ El Grup ${w.g + 1} és buit: l’aparell queda lliure.</span>`);
     else if (w.t === 'rest') out.push(`<span class="chip">ℹ Hi ha ${plural(w.k, 'grup', 'grups')} i ${plural(w.A, 'aparell', 'aparells')}: a cada rotació ${w.k - w.A === 1 ? '1 grup descansa' : `${w.k - w.A} grups descansen`}.</span>`);
     else if (w.t === 'fewer') out.push(`<span class="chip">ℹ Hi ha ${plural(w.k, 'grup', 'grups')} i ${plural(w.A, 'aparell', 'aparells')}: a cada rotació ${w.A - w.k === 1 ? 'queda lliure 1 aparell' : `queden lliures ${w.A - w.k} aparells`}. <button class="btn sm" data-act="rotSetK" data-s="${sv.id}" data-k="${w.A}" ${dis}>Fes-ne ${w.A}</button></span>`);
     else if (w.t === 'small') out.push(`<span class="chip">ℹ Aquesta subdivisió només té ${plural(w.n, 'gimnasta', 'gimnastes')}. <button class="btn sm" data-act="rotSubsDlg" ${dis}>Quines categories van juntes…</button></span>`);
   }
   const sw = sv.warnings.find(w => w.t.startsWith('spread'));
-  if (bal && bal.moves.length) out.unshift(`<span class="chip ${sw ? 'warn' : ''}">${sw ? '⚠' : 'ℹ'} Es pot repartir més bé${sw ? ` (ara ${deN(sv.minN)} a ${sv.maxN} gimnastes)` : ''}. <button class="btn sm" data-act="rotBalance" data-s="${sv.id}" ${dis}>↻ Reequilibra…</button></span>`);
+  // (només si «Reequilibra» millora alguna cosa que es veu; les entrenadores i un equip repartit ja tenen el seu avís)
+  const why = bal && bal.useful ? bal.why : new Set(), even = why.has('sizes') || why.has('over'), big = even && sw;
+  if (even || why.has('cat') || why.has('club')) out.unshift(`<span class="chip ${big ? 'warn' : ''}">${big ? '⚠' : 'ℹ'} ${even ? 'Es pot repartir més bé' : why.has('cat') ? 'Es poden separar més les categories i els nivells' : 'Es poden ajuntar més els equips d’una mateixa entitat'}${big ? ` (ara ${deN(sv.minN)} a ${sv.maxN} gimnastes)` : ''}. <button class="btn sm" data-act="rotBalance" data-s="${sv.id}" ${dis}>↻ Reequilibra…</button></span>`);
+  else if (why.size) { /* (ho diu l'avís de les entrenadores o del repartit) */ }
   else if (sw && sw.t === 'spreadKey') out.unshift(`<span class="chip">ℹ El Grup ${sw.g + 1} (${h(sw.label)}, ${sw.n}) és més gran perquè cada categoria i nivell va al seu grup.</span>`);
   else if (sw && sw.t === 'spreadUnit') out.unshift(`<span class="chip">ℹ L’equip ${h(rotUnitName(sw.unit))} (${sw.n}) no es pot partir.</span>`);
   else if (sw) out.unshift(`<span class="chip">ℹ Més igualats no poden ser sense separar equips o les gimnastes d’una entitat.</span>`);
@@ -9602,8 +9688,12 @@ function rotLateHtml(v) {
     const sv = v.subs.find(s => s.id === x.last), ns = x.units.map(who), one = x.units.length === 1 && (x.units[0].team || x.units[0].n === 1);
     return `Els premis ${deN(rotKeyTxt(x.key))} es fan després de la ${rotSubNm(sv)}, perquè ${rotJoin(ns.length > 2 ? ns.slice(0, 2).concat(`${ns.length - 2} més`) : ns)} hi ${one ? 'competeix' : 'competeixen'}.`;
   });
+  // (una subdivisió sense cap premi però amb minuts de premis posats a mà: a l'horari surt «PREMIS» sol)
+  for (const sv of v.subs) if (rotAwardsAlone(sv)) l.push(`La ${rotSubNm(sv)} no dona cap premi, però hi has posat ${sv.awards}′ de premis (a l’horari surt «PREMIS» sol): si no calen, esborra’n els minuts a Horari.`);
   return l.length ? `<div class="note">${h(l.join(' '))}</div>` : '';
 }
+// una subdivisió amb gimnastes que no dona cap premi, però amb minuts de premis posats a mà
+const rotAwardsAlone = sv => !!sv && sv.N > 0 && !sv.awardKeys.length && Number.isInteger(sv.sub.awards) && sv.sub.awards > 0;
 // a quina hora comença cada subdivisió (id → la fila «Competició» de l'horari)
 const rotWhenMap = (c, v) => { const m = new Map(); for (const b of Engine.rotSchedule(v, c.rot).blocks) for (const r of b.rows) if (r.kind === 'comp') m.set(r.subId, r); return m; };
 // «Gina Jové Gil ha passat de la 2a subdivisió (9:25) a la 3a (10:25)» (wa / wb: les hores d'abans i les d'ara)
@@ -9683,15 +9773,16 @@ const rotGridW = () => { const m = $('#main'); if (!m) return 0; const cs = getC
 // when: a quina hora comença cada subdivisió (rotWhenMap)
 function rotSubCard(c, v, sv, when, gw = 0) {
   const dis = c.locked ? 'disabled' : '', row = when.get(sv.id);
-  const i = v.subs.indexOf(sv);
+  // (↑ ↓: es passa per davant o per darrere de la primera que té gimnastes; les que no en tenen no compten)
+  const i = v.subs.indexOf(sv), upOk = v.subs.slice(0, i).some(s => s.N), downOk = v.subs.slice(i + 1).some(s => s.N);
   const bal = c.locked || !sv.N || sv.k < 2 ? null : rotBalance(c, sv);
   const sw = sv.warnings.some(w => w.t === 'spread');
-  const badge = `<span class="badge ${bal && bal.moves.length && sw ? 'warn' : 'ok'}" title="El grup més gran marca el temps de cada rotació">Grups: ${sv.sizes.join(' · ')}</span>`;
+  const badge = `<span class="badge ${bal && (bal.why.has('sizes') || bal.why.has('over')) && sw ? 'warn' : 'ok'}" title="El grup més gran marca el temps de cada rotació">Grups: ${sv.sizes.join(' · ')}</span>`;
   const multi = sv.clubs.filter(x => x.groups > 1).map(x => `${h(clubName(x.clubId))} (${x.groups})`);
   const head = `<div class="card-head"><div style="min-width:0;flex:1"><h3 style="margin:0">${h(rotSubTitle(sv))}${sv.real ? '' : ' <span class="badge warn">nova</span>'}</h3>
       <div class="small muted">${plural(sv.N, 'gimnasta', 'gimnastes')}${sv.np ? ` (+${sv.np} NP)` : ''} · ${plural(sv.k, 'grup', 'grups')}${row ? ` · ${Engine.rotHM(row.from)} – ${Engine.rotHM(row.to)} (${sv.dur}′${sv.sub.dur ? ' fixada' : ''})` : ''}</div></div>
-    <div class="actions"><button class="btn sm" data-act="rotSubMove" data-s="${sv.id}" data-d="-1" title="Passa-la abans" aria-label="Passa-la abans" ${dis || (i === 0 ? 'disabled' : '')}>↑</button>
-      <button class="btn sm" data-act="rotSubMove" data-s="${sv.id}" data-d="1" title="Passa-la després" aria-label="Passa-la després" ${dis || (i === v.subs.length - 1 ? 'disabled' : '')}>↓</button>
+    <div class="actions"><button class="btn sm" data-act="rotSubMove" data-s="${sv.id}" data-d="-1" title="Passa-la abans" aria-label="Passa-la abans" ${dis || (upOk ? '' : 'disabled')}>↑</button>
+      <button class="btn sm" data-act="rotSubMove" data-s="${sv.id}" data-d="1" title="Passa-la després" aria-label="Passa-la després" ${dis || (downOk ? '' : 'disabled')}>↓</button>
       <button class="btn sm" data-act="rotBalance" data-s="${sv.id}" title="Torna a repartir els equips que no has fixat (📌). Abans de canviar res et mostro què es mourà." ${dis || (sv.k < 2 || !sv.N ? 'disabled' : '')}>↻ Reequilibra</button>
       ${menu(`<button class="btn" data-act="rotRename" data-s="${sv.id}" ${dis}>Canvia el nom…</button><button class="btn" data-act="rotSetK" data-s="${sv.id}" ${dis}>Nombre de grups…</button>
         <button class="btn" data-act="rotUnpin" data-s="${sv.id}" ${dis}>Treu les fixacions (📌)</button><button class="btn" data-act="rotRedoSub" data-s="${sv.id}" ${dis}>Torna a fer els grups d’aquesta subdivisió</button>`)}</div></div>`;
@@ -9705,16 +9796,17 @@ function rotSubCard(c, v, sv, when, gw = 0) {
     const opts = range(sv.k).map(j => `<option value="${j}" ${j === G.g ? 'selected' : ''}>${h(rotStation(sv, j))}</option>`).join('');
     const units = G.units.map(u => {
       const here = u.entries.filter(e => v.place.get(e).g === G.g), n = here.filter(e => e.status !== 'np').length, np = here.length - n;
-      const name = rotUnitName(u);
+      const name = rotUnitName(u), pin = u.hand.includes(G.g);
+      // (el grup de l'equip: si és repartit, on n'hi ha més; a un altre grup s'hi sumen les que encara no hi són)
       const mv = range(sv.k).map(x => x === u.g ? `<option value="${x}" selected>Grup ${x + 1}${stTxt(x)}</option>`
-        : `<option value="${x}">→ Grup ${x + 1}${stTxt(x)} (${sv.groups[x].n} → ${sv.groups[x].n + u.n})</option>`).join('');
+        : `<option value="${x}">→ Grup ${x + 1}${stTxt(x)} (${sv.groups[x].n} → ${sv.groups[x].n + u.entries.filter(e => e.status !== 'np' && v.place.get(e).g !== x).length})</option>`).join('');
       const mvX = others.map(o => `<optgroup label="${h(subHead(o, u.guest && o.id === u.home))}">${range(o.k).map(x => `<option value="${o.id}|${x}">→ Grup ${x + 1}${o.P ? ` · ${h(rotStation(o, x))}` : ''} (${o.groups[x].n} → ${o.groups[x].n + u.n})</option>`).join('')}</optgroup>`).join('');
       return `<div class="rot-u ${u.fresh || u.derived ? 'fresh' : ''} ${n === 0 ? 'np-all' : ''}">
-        <details><summary><span class="nm">${h(name)}</span><span class="muted small">${h(rotKeyLabel(u, sv))}</span> <span class="badge">${n}</span>${np ? ` <span class="muted small">${n ? `+${np} NP` : '(totes NP)'}</span>` : ''}${u.pinned ? ' <span title="Fixat a mà">📌</span>' : ''}${u.fresh || u.derived ? ' <span class="badge warn">NOU</span>' : ''}${u.split || u.xs ? ' <span class="badge warn">⚠ repartit</span>' : ''}</summary>
+        <details><summary><span class="nm">${h(name)}</span><span class="muted small">${h(rotKeyLabel(u, sv))}</span> <span class="badge">${n}</span>${np ? ` <span class="muted small">${n ? `+${np} NP` : '(totes NP)'}</span>` : ''}${pin ? ' <span title="Fixat a mà">📌</span>' : ''}${u.fresh || u.derived ? ' <span class="badge warn">NOU</span>' : ''}${u.split || u.xs ? ' <span class="badge warn">⚠ repartit</span>' : ''}</summary>
           <div class="small rot-mem">${sortEntries(here).map(e => `${e.bib ? h(e.bib) + ' · ' : ''}${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}`).join('<br>')}</div></details>
         <div class="rot-ua"><select data-chg="rotMove" data-s="${sv.id}" data-e="${h(u.handle)}" aria-label="Grup ${deN(h(name))}" ${dis}>${others.length ? `<optgroup label="${h(subHead(sv, false))}">${mv}</optgroup>${mvX}` : mv}</select>
           <button class="btn sm" data-act="rotMoveDlg" data-s="${sv.id}" data-e="${h(u.handle)}" title="A un altre grup o a una altra subdivisió${u.entries.length > 1 ? `: ${mf(u.entries, 'tots o només alguns', 'totes o només algunes')}` : ''}" aria-label="Mou ${h(name)}…" ${dis}>Mou…</button>
-          ${u.pinned ? `<button class="btn sm ghost" data-act="rotPin" data-s="${sv.id}" data-e="${h(u.handle)}" title="Fixat a mà: «Reequilibra» no el mourà. Clica per deixar-lo lliure${u.guest ? ' (es queda en aquesta subdivisió)' : ''}." aria-label="Deixa’l lliure" ${dis}>📌</button>` : ''}</div></div>`;
+          ${pin ? `<button class="btn sm ghost" data-act="rotPin" data-s="${sv.id}" data-e="${h(u.handle)}" title="Fixat a mà: «Reequilibra» no el mourà. Clica per deixar-lo lliure${u.guest ? ' (es queda en aquesta subdivisió)' : ''}." aria-label="Deixa’l lliure" ${dis}>📌</button>` : ''}</div></div>`;
     }).join('');
     return `<div class="rot-col"><div class="rot-gh"><b>Grup ${G.g + 1}</b> ${sv.P ? `<label class="small">comença a <select data-chg="rotStart" data-s="${sv.id}" data-g="${G.g}" aria-label="Aparell on comença el Grup ${G.g + 1}" ${dis}>${opts}</select></label>` : ''}
         <span class="badge">${G.n}</span>${G.np ? ` <span class="muted small">+${G.np} NP</span>` : ''}</div>
@@ -9806,8 +9898,28 @@ function rotDraftStart(c) {
   return D;
 }
 const rotDraftSort = (D, keys) => keys.sort(Engine.rotKeyCmp(S()));
+// les gimnastes que competirien a cada subdivisió del quadre, tal com quedarien (les que ella ha portat a una altra
+// subdivisió s'hi queden si aquella encara hi és, com en desar-ho): n, i les portades d'una altra (inn) o a una altra (out).
+// num: el número que tindria (com a la pantalla: una sense gimnastes no en té, 0)
+function rotDraftN(c, D) {
+  const N = rotKeyN(c), sum = ks => ks.reduce((t, k) => t + (N.get(k) || 0), 0);
+  let rows = D.subs.map(s => ({ n: sum(s.keys), inn: [], out: [] }));
+  if (c.rot && c.rot.made) {
+    const ids = D.subs.map((s, i) => s.id || '~draft-' + i);
+    const r = Object.assign({}, c.rot, { printed: {}, subs: D.subs.map((s, i) => Object.assign({}, c.rot.subs.find(x => x.id === s.id) || { k: 3 }, { id: ids[i], g: s.g, keys: [...s.keys] })) });
+    const v = Engine.rotView(Object.assign({}, c, { rot: r }), S(), rotCtx());
+    rows = D.subs.map((s, i) => {
+      const sv = v.subs.find(x => x.id === ids[i]), es = c.entries.filter(e => e.status !== 'np'), at = e => (v.place.get(e) || {}).subId;
+      return { n: sv ? sv.N : 0, inn: es.filter(e => at(e) === ids[i] && !s.keys.includes(groupKeyOf(e))), out: es.filter(e => s.keys.includes(groupKeyOf(e)) && at(e) !== ids[i]) };
+    });
+  }
+  let k = 0;
+  return rows.map(x => Object.assign(x, { num: x.n > 0 ? ++k : 0 }));
+}
 function rotSubsDlgHtml(c, D) {
-  const N = rotKeyN(c), sum = ks => ks.reduce((t, k) => t + (N.get(k) || 0), 0), cmp = Engine.rotKeyCmp(S());
+  const N = rotKeyN(c), sum = ks => ks.reduce((t, k) => t + (N.get(k) || 0), 0), cmp = Engine.rotKeyCmp(S()), R = rotDraftN(c, D);
+  // (el nom de cada subdivisió del quadre, amb el número que tindrà: «6a subdivisió», o «Subdivisió sense gimnastes (JUVENIL)»)
+  const nameOf = i => (R[i].num ? `${R[i].num}a subdivisió` : `Subdivisió sense gimnastes (${L(D.subs[i])})`);
   const L = s => Engine.rotSubLabel(s.keys.slice().sort(cmp), c);
   const genders = ['F', 'M'].filter(G => rotKeysOf(c, G).length);
   const allM = D.subs.filter(s => s.g === 'M').length <= 1;
@@ -9819,10 +9931,13 @@ function rotSubsDlgHtml(c, D) {
       ${G === 'M' ? `<label class="chk" style="margin-top:6px"><input type="checkbox" data-chg="rotDraftAllM" ${allM ? 'checked' : ''}> Tots els nois junts (en una sola subdivisió)</label>` : ''}</div>`;
   }).join('');
   const list = D.subs.map((s, i) => {
-    const n = sum(s.keys), A = rotCap(c, s.g, 1), prevSame = D.subs.slice(0, i).some(x => x.g === s.g);
+    // (les gimnastes que hi competeixen: les seves i les que ella hi ha portat d'una altra, menys les que ha portat a una altra)
+    const { n, inn, out } = R[i], A = rotCap(c, s.g, 1), prevSame = D.subs.slice(0, i).some(x => x.g === s.g);
     const cats = new Set(s.keys.map(rotCatOf)), canSplit = cats.size > 1 || new Set(s.keys.map(k => (Engine.rotKeyParts(k) || {}).level)).size > 1;
-    return `<li><div class="rot-dl"><span><b>${i + 1}a</b> · ${h(L(s))} · ${plural(n, 'gimnasta', 'gimnastes')} <span class="small muted">${s.g === 'M' ? 'nois' : 'noies'}</span>
-        ${n < 4 * A && prevSame ? ` <span class="small muted">· només ${plural(n, 'gimnasta', 'gimnastes')}</span> <button type="button" class="btn sm" data-act="rotDraftMerge" data-i="${i}">Ajunta-la amb l’anterior</button>` : ''}</span>
+    const brought = (l, w) => `${l.length} ${mf(l, l.length === 1 ? 'portat' : 'portats', l.length === 1 ? 'portada' : 'portades')} ${w}`;
+    const mv = [inn.length && brought(inn, 'd’una altra'), out.length && brought(out, 'a una altra')].filter(Boolean);
+    return `<li><div class="rot-dl"><span><b>${R[i].num ? R[i].num + 'a' : 'Sense gimnastes'}</b> · ${h(L(s))} · ${n ? plural(n, 'gimnasta', 'gimnastes') : 'cap gimnasta'}${mv.length ? ` <span class="small muted">(${rotJoin(mv)})</span>` : ''} <span class="small muted">${s.g === 'M' ? 'nois' : 'noies'}</span>
+        ${n > 0 && n < 4 * A && prevSame ? ` <span class="small muted">· només ${plural(n, 'gimnasta', 'gimnastes')}</span> <button type="button" class="btn sm" data-act="rotDraftMerge" data-i="${i}">Ajunta-la amb l’anterior</button>` : ''}</span>
       <span class="rot-dlb"><button type="button" class="btn sm" data-act="rotDraftMove" data-i="${i}" data-d="-1" aria-label="Abans" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn sm" data-act="rotDraftMove" data-i="${i}" data-d="1" aria-label="Després" ${i === D.subs.length - 1 ? 'disabled' : ''}>↓</button>
       <button type="button" class="btn sm" data-act="rotDraftSplit" data-i="${i}" title="Cada categoria (o cada nivell) en una subdivisió" ${canSplit ? '' : 'disabled'}>Separa</button></span></div></li>`;
   }).join('');
@@ -9830,7 +9945,7 @@ function rotSubsDlgHtml(c, D) {
   const adv = keys.map(k => {
     const p = Engine.rotKeyParts(k) || { category: k, gender: 'F', level: '' }, at = D.subs.findIndex(s => s.keys.includes(k));
     return `<label class="f rot-adv"><span>${h(Engine.catTx(p.category))} ${p.gender === 'M' ? 'masculí' : 'femení'} · ${p.level ? `Nivell ${h(p.level)}` : 'sense nivell'} · ${N.get(k) || 0}</span><select data-chg="rotDraftKey" data-k="${h(k)}">
-      ${D.subs.map((s, i) => s.g === p.gender ? `<option value="${i}" ${i === at ? 'selected' : ''}>${i + 1}a subdivisió</option>` : '').join('')}<option value="new">Una de nova (al final)</option></select></label>`;
+      ${D.subs.map((s, i) => s.g === p.gender ? `<option value="${i}" ${i === at ? 'selected' : ''}>${h(nameOf(i))}</option>` : '').join('')}<option value="new">Una de nova (al final)</option></select></label>`;
   }).join('');
   const A = rotCap(c, 'F', 1);
   return `<form data-form="rotSubs"><h2>Quines categories van juntes</h2>
@@ -9988,14 +10103,16 @@ async function rotPrintPrep(c, what) {
   const w = [];
   for (const sv of v.subs) for (const x of sv.warnings) {
     if (x.t === 'over') w.push(`${sv.idx}a, Grup ${x.g + 1}: ${x.n} gimnastes`);
-    else if (x.t === 'split') w.push(`${sv.idx}a: ${rotUnitName(x.unit)} repartit en ${x.q} grups`);
+    else if (x.t === 'split') w.push(`${sv.idx}a: ${rotSplitWho(x.unit, x.unit.entries)} en ${x.q} grups`);
     // (en més d'una subdivisió: un sol cop, a la primera on surt; «3a i 4a: C.G. Lleida 2 repartit en 2 subdivisions»)
     else if (x.t === 'xsplit' && !v.subs.slice(0, v.subs.indexOf(sv)).some(s2 => s2.units.some(u => u.id === x.unit.id))) {
       const ns = [sv].concat(x.others.map(o => v.subs.find(s2 => s2.id === o.subId))).filter(s2 => s2 && s2.idx).map(s2 => s2.idx).sort((a, b) => a - b);
-      w.push(`${rotJoin(ns.map(n => n + 'a'))}: ${rotUnitName(x.unit)} repartit en ${x.others.length + 1} subdivisions`);
+      w.push(`${rotJoin(ns.map(n => n + 'a'))}: ${rotSplitWho(x.unit, x.unit.entries.concat(...x.others.map(o => o.entries)))} en ${x.others.length + 1} subdivisions`);
     }
     else if (x.t === 'coach') w.push(`${sv.idx}a: ${clubName(x.clubId)} en ${x.q} grups`);
   }
+  // (a l'horari, uns minuts de premis en una subdivisió que no en dona cap: hi surt «PREMIS» sol)
+  if (what.includes('horari')) for (const sv of v.subs) if (rotAwardsAlone(sv)) w.push(`${sv.idx}a: ${sv.awards}′ de premis, però no hi ha cap categoria per premiar`);
   if (w.length && !(await confirmBox(`Encara hi ha avisos:<br>${w.map(h).join('<br>')}<br><br>Vols imprimir igualment?`, { ok: 'Imprimeix' }))) return null;
   // (una subdivisió «nova» passa a ser de debò amb un altre id: map diu el nou de cada una, per a les triades al diàleg)
   let map = new Map();
@@ -10022,12 +10139,18 @@ function rotPrintHtml(c, v, what, subIds) {
 
 /* ─── moure-ho tot: un equip, o unes gimnastes, a un altre grup o a una altra subdivisió (del mateix gènere) */
 // com quedarien les rotacions si les inscripcions es anessin a la subdivisió to, Grup g (v: les d'ara; no es desa res)
-function rotMoveSim(c, v, es, to, g) {
+// (stay: rotMvStay)
+function rotMoveSim(c, v, es, to, g, stay = []) {
   const r = JSON.parse(JSON.stringify(c.rot));
   rotSave(r, v, id => id);
+  for (const e of stay) if (r.at[e.id]) r.at[e.id].m = 1;
   for (const e of es) r.at[e.id] = rotPlace(r, e, to, g, true);
   return Engine.rotView(Object.assign({}, c, { rot: r }), S(), rotCtx());
 }
+// les de la unitat u que es queden on són quan ella en mou només unes a un altre grup de la mateixa subdivisió: també
+// queden fixades (📌), perquè «Reequilibra» o «Torna a fer els grups» no les ajuntin amb les que ha mogut i desfacin el
+// que ha fet. (A una altra subdivisió, no cal: d'una subdivisió a una altra no hi mou res cap eina)
+const rotMvStay = (u, es, sv, to) => (to === sv.id ? u.entries.filter(e => !es.includes(e)) : []);
 // què canvia (de v0 a v1) en moure les inscripcions es de la unitat u, de la subdivisió sv a la subdivisió to: frases
 // curtes. Per al diàleg «Mou…», el que passarà, amb els números de subdivisió d'ara (els que ella veu a la pantalla). done:
 // per a l'avís, un cop fet, el que ha passat, amb els números de després (una subdivisió que es queda sense gimnastes ja
@@ -10036,9 +10159,13 @@ function rotMvSays(c, v0, v1, u, es, sv, to, done = false) {
   const V = done ? v1 : v0, out = [], one = es.length === 1, nm = (id, short) => rotSubNm(V.subs.find(s => s.id === id), short);
   if (to !== sv.id) {
     if (u.guest && to === u.home) out.push(`${done ? (one ? 'Ha tornat' : 'Han tornat') : one ? 'Torna' : 'Tornen'} a la seva subdivisió.`);
-    const w0 = rotWhenMap(c, v0).get(sv.id), w1 = rotWhenMap(c, v1).get(to);
-    if (w0 && w1) out.push(done ? `${one ? 'Competeix' : 'Competeixen'} a ${rotAtHM(w1.from)} (abans, a ${rotAtHM(w0.from)}).`
-      : `${one ? 'Passa' : 'Passen'} de ${rotAtHM(w0.from)} (${nm(sv.id)}) a ${rotAtHM(w1.from)} (${nm(to, true)}).`);
+    // (a l'hora d'arribada, la subdivisió on va pot començar abans o després que ara —p. ex. si la d'on surt es queda
+    // sense gimnastes—: al diàleg, es diu, perquè a la llista hi surt l'hora d'ara)
+    const w0 = rotWhenMap(c, v0).get(sv.id), w1 = rotWhenMap(c, v1).get(to), wn = rotWhenMap(c, v0).get(to);
+    const moves = wn && w1 && wn.from !== w1.from ? `, que ara comença a ${rotAtHM(wn.from)}` : '';
+    if (w0 && w1) out.push(done ? (w0.from === w1.from ? `${one ? 'Continua' : 'Continuen'} competint a ${rotAtHM(w1.from)}.` : `${one ? 'Competeix' : 'Competeixen'} a ${rotAtHM(w1.from)} (abans, a ${rotAtHM(w0.from)}).`)
+      : w0.from === w1.from ? `${one ? 'Continuarà' : 'Continuaran'} competint a ${rotAtHM(w1.from)} (${nm(to)}${moves}).`
+      : `${one ? 'Passa' : 'Passen'} de ${rotAtHM(w0.from)} (${nm(sv.id)}) a ${rotAtHM(w1.from)} (${nm(to, true)}${moves}).`);
     const s1 = v1.subs.find(s => s.id === sv.id);
     if (sv.N > 0 && (!s1 || !s1.N)) out.push(done ? `La subdivisió ${deN(sv.label)} s’ha quedat sense gimnastes.` : `La ${nm(sv.id)} es quedarà sense gimnastes.`);
   }
@@ -10066,6 +10193,9 @@ function rotMvSays(c, v0, v1, u, es, sv, to, done = false) {
   const a0 = awardAt(v0);
   for (const [k, id] of awardAt(v1)) if (a0.has(k) && a0.get(k) !== id) out.push(done ? `Els premis ${deN(rotKeyTxt(k))} ara es fan després de la ${nm(id)}.`
     : `Els premis ${deN(rotKeyTxt(k))}, que ara es fan després de la ${nm(a0.get(k))}, es faran després de la ${nm(id, true)}.`);
+  // (i una subdivisió que es queda sense premis però on ella hi ha posat minuts de premis: a l'horari hi sortiria «PREMIS» sol)
+  for (const s2 of v1.subs) { const s0 = v0.subs.find(x => x.id === s2.id);
+    if (s0 && s0.awardKeys.length && rotAwardsAlone(s2)) out.push(`La ${nm(s2.id)} ja no ${done ? 'dona' : 'donarà'} cap premi, però hi has posat ${s2.awards}′ de premis: si no calen, esborra’n els minuts a Horari.`); }
   return out;
 }
 // el diàleg «Mou…». ui.rotMv: { compId, s (la subdivisió), e (la unitat: una de les seves inscripcions), ids (les
@@ -10084,7 +10214,7 @@ function rotMoveHtml(c) {
   const { M, v, sv, u, es } = st, when = rotWhenMap(c, v), nSel = es.filter(e => e.status !== 'np').length;
   st.M.sig = v.sig;
   // (el que canviaria surt just a sota de la subdivisió triada: al mòbil, on s'ha tocat)
-  const T = es.length && rotMvTarget(st), says = T ? rotMvSays(c, v, rotMoveSim(c, v, es, T.to, T.g), u, es, sv, T.to) : [];
+  const T = es.length && rotMvTarget(st), stay = T ? rotMvStay(u, es, sv, T.to) : [], says = T ? rotMvSays(c, v, rotMoveSim(c, v, es, T.to, T.g, stay), u, es, sv, T.to) : [];
   // (el focus, en obrir-lo, a la primera de «Qui»: amb el teclat es va de dalt a baix, qui, on i «Mou-les»)
   const who = sortEntries(u.entries).map((e, i) => `<label class="chk"><input type="checkbox" name="who" value="${h(e.id)}" data-chg="rotMvWho" ${M.ids.includes(e.id) ? 'checked' : ''} ${i === 0 ? 'autofocus' : ''}> ${e.bib ? h(e.bib) + ' · ' : ''}${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}${u.split ? ` <span class="small muted">(Grup ${v.place.get(e).g + 1})</span>` : ''}</label>`).join('');
   const where = v.subs.filter(o => o.g === sv.g && o.k > 0).map(o => {
@@ -10102,25 +10232,39 @@ function rotMoveHtml(c) {
     <p class="small muted">Ara ${sv.idx ? `a la ${sv.idx}a subdivisió` : 'en una subdivisió sense gimnastes'}${u.split ? '' : `, Grup ${u.g + 1}`}${u.guest ? ` (la seva és la ${h(rotSubNm(v.subs.find(s => s.id === u.home), true))})` : ''}.</p>
     <fieldset><legend>Qui</legend><div class="rot-mvw">${who}</div></fieldset>
     <fieldset><legend>On</legend>${where}${other ? '<p class="small muted" style="margin:6px 0 0">Les noies i els nois van en subdivisions separades (fan aparells diferents).</p>' : ''}</fieldset>
-    <p class="small muted">Quedarà fixat a mà (📌): «Reequilibra» no ho mourà. Es pot desfer.</p>
+    <p class="small muted">Quedarà fixat a mà (📌)${stay.length ? `, i ${stay.length === 1 ? `${mf(stay, 'el', 'la')} que es queda, on és` : `${mf(stay, 'els', 'les')} ${stay.length} que es queden, on són`}` : ''}: «Reequilibra» no ho mourà. Es pot desfer.</p>
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn primary" ${T ? '' : 'disabled'}>${ok}</button></div></form>`;
 }
 // fa el moviment (les inscripcions es de la unitat u, de la subdivisió sv a la subdivisió to, Grup g) amb Desfés. L'avís
 // diu el que ha passat, amb els números de les subdivisions tal com queden a la pantalla. name: qui es mou
 function rotMoveDo(c, v0, sv, u, es, to, g, name) {
-  const v1 = rotMoveSim(c, v0, es, to, g), tv = v1.subs.find(s => s.id === to), says = rotMvSays(c, v0, v1, u, es, sv, to, true);
+  const stay = rotMvStay(u, es, sv, to), v1 = rotMoveSim(c, v0, es, to, g, stay), tv = v1.subs.find(s => s.id === to), says = rotMvSays(c, v0, v1, u, es, sv, to, true);
   const msg = `${name} → ${to === sv.id ? '' : `${rotSubNm(tv)}, `}Grup ${g + 1}${tv && tv.P ? ` (${rotStation(tv, g)})` : ''}.${tv ? ` Ara: ${tv.sizes.join(' · ')}.` : ''}${says.length ? ' ' + says.join(' ') : ''}`;
   let t = to;   // (si la subdivisió era «nova», es desa amb un altre id)
-  withUndo(() => ({ msg, actions: [{ label: 'Reequilibra la resta', fn: () => actions.rotBalance({ dataset: { s: t } }) }] }), () => {
+  const sub0 = ui.rotSub;
+  // (el botó «Reequilibra», només si millora alguna cosa de la subdivisió on ha anat)
+  withUndo(() => {
+    const cc = compById(c.id), s2 = cc && rotViewOf(cc).subs.find(s => s.id === t), b = s2 && s2.N && s2.k > 1 && !cc.locked ? rotBalance(cc, s2) : null;
+    return { msg, actions: b && b.useful ? [{ label: to === sv.id ? 'Reequilibra la resta' : `Reequilibra la ${rotSubNm(s2)}`, fn: () => actions.rotBalance({ dataset: { s: t } }) }] : [] };
+  }, () => {
     const cc = compById(c.id), map = rotMaterialize(cc);
     t = map.get(to) || to;
+    for (const e of stay) { const a = cc.rot.at[e.id]; if (a) a.m = 1; }
     for (const e of es) cc.rot.at[e.id] = rotPlace(cc.rot, e, t, g, true);
-    // (el focus —el desplegable o el «Mou…» de la unitat— la segueix a la targeta de l'altra subdivisió)
-    if (to !== sv.id) focusIds.set(map.get(sv.id) || sv.id, t);
-  });
+    // (el focus —el desplegable o el «Mou…» de la unitat— la segueix a la targeta de l'altra subdivisió, si a la d'on surt
+    // ja no hi és; al mòbil, que només en mostra una, es passa a aquella)
+    if (to !== sv.id) {
+      focusIds.set(map.get(sv.id) || sv.id, t);
+      const u2 = (rotViewOf(cc).subs.find(s => s.id === t) || { units: [] }).units.find(x => x.entries.some(e => e.id === es[0].id));
+      if (u2 && u2.handle !== u.handle) focusIds.set(u.handle, u2.handle);
+      if (es.length === u.entries.length && isPhone()) ui.rotSub = t;
+    }
+  }, { beforeRestore: () => { if (ui.rotSub === t) ui.rotSub = sub0; } });
 }
-// qui es mou, per a l'avís: tot l'equip (el seu nom), una gimnasta (el seu nom) o «2 gimnastes de C.G. Lleida»
-const rotMvName = (u, es) => (es.length === u.entries.length ? rotUnitName(u) : es.length === 1 ? entryName(es[0]) : `${plural(es.length, 'gimnasta', 'gimnastes')} ${deN(rotUnitShort(u))}`);
+// qui es mou, per a l'avís: tot l'equip (el seu nom), una gimnasta (el seu nom) o «2 gimnastes de C.G. Lleida» (u: la
+// unitat d'on surten; es: les que es mouen, que poden ser d'unes quantes subdivisions)
+const rotMvName = (u, es) => (es.length === u.entries.length && es.every(e => u.entries.includes(e)) ? rotUnitName(u)
+  : es.length === 1 ? entryName(es[0]) : `${plural(es.length, 'gimnasta', 'gimnastes')} ${deN(rotUnitShort(u))}`);
 
 /* ─── accions */
 // l'avís «Fent…» mentre es calcula: se'n va quan surt el del resultat (torna la funció que el treu)
@@ -10149,19 +10293,23 @@ Object.assign(actions, {
     const c = curComp(); if (!rotGuard(c)) return;
     withUndo('Desades on eren.', () => { rotMaterialize(compById(c.id)); });
   },
+  // ↑ ↓: passa per davant o per darrere de la primera que té gimnastes (les que no en tenen no tenen número: passar-hi
+  // per davant no canvia res). Una sense gimnastes es diu pel nom: «La subdivisió de JUVENIL (sense gimnastes) ara va
+  // després de la 6a.»
   rotSubMove: el => {
     const c = curComp(); if (!rotGuard(c)) return;
-    const d = +el.dataset.d;
-    let a = 0, b = 0;
-    withUndo(() => `La ${a}a subdivisió ara és la ${b}a.`, () => {
+    const d = +el.dataset.d, nb = v => { const i = v.subs.findIndex(s => s.id === id0); let j = i + d; while (j >= 0 && j < v.subs.length && !v.subs[j].N) j += d; return i < 0 || j < 0 || j >= v.subs.length ? null : { i, j }; };
+    let id0 = el.dataset.s, msg = '';
+    if (!nb(rotViewOf(c))) { toast(d > 0 ? 'Ja és l’última.' : 'Ja és la primera.'); return; }
+    withUndo(() => msg, () => {
       const cc = compById(c.id), map = rotMaterialize(cc), id = map.get(el.dataset.s) || el.dataset.s;
-      const subs = cc.rot.subs, view = rotViewOf(cc), shown = view.subs.map(s => s.id);
-      const i = shown.indexOf(id), j = i + d;
-      if (i < 0 || j < 0 || j >= shown.length) return;
-      const si = subs.findIndex(s => s.id === shown[i]), sj = subs.findIndex(s => s.id === shown[j]);
+      id0 = id;
+      const subs = cc.rot.subs, view = rotViewOf(cc), ij = nb(view); if (!ij) return;
+      const { i, j } = ij, si = subs.findIndex(s => s.id === id), sj = subs.findIndex(s => s.id === view.subs[j].id);
       [subs[si], subs[sj]] = [subs[sj], subs[si]];
-      const after = rotViewOf(cc);
-      a = view.subs[i].idx || i + 1; b = (after.subs.find(s => s.id === id) || {}).idx || j + 1;
+      const after = rotViewOf(cc), me = after.subs.find(s => s.id === id), o = after.subs.find(s => s.id === view.subs[j].id);
+      msg = view.subs[i].idx ? `La ${view.subs[i].idx}a subdivisió ara és la ${me.idx}a.`
+        : `La subdivisió ${deN(me.label)} (sense gimnastes) ara va ${d > 0 ? 'després' : 'abans'} de la ${o.idx}a.`;
       const sr = rotSet(), sigs = after.subs.map(s => Engine.rotSig2(s.g, s.keys));
       sr.subOrder = [...new Set(sigs.concat(sr.subOrder.filter(x => !sigs.includes(x))))].slice(0, 60);
     });
@@ -10189,7 +10337,7 @@ Object.assign(actions, {
     let dropped = [];
     withUndo(() => `Ara hi ha ${plural(k, 'grup', 'grups')}: he tornat a fer els d’aquesta subdivisió.${dropped.length ? ` (${dropped.join(', ')} ja no hi ${dropped.length === 1 ? 'està fixat' : 'estan fixats'})` : ''}`, () => {
       const cc = compById(c.id); let { sv } = rotFresh(cc, el.dataset.s); if (!sv) return;
-      dropped = sv.units.filter(u => u.pinned && u.g >= k).map(rotUnitName);
+      dropped = sv.units.filter(u => u.hand.some(g => g >= k)).map(rotUnitName);
       sv.sub.k = k; sv.sub.kSet = true;
       sv = rotViewOf(cc).subs.find(s => s.id === sv.id);
       rotRedoSub(cc, sv, true);
@@ -10269,8 +10417,9 @@ Object.assign(actions, {
     const v = rotViewOf(c), sv = v.subs.find(s => s.id === el.dataset.s), u = sv.units.find(x => x.entries.some(e => e.id === el.dataset.e));
     if (!u || !u.xs) return;
     // (des de la primera de les altres: el que es diu de l'hora i de «torna a la seva», d'aquella)
-    const from = v.subs.find(s => s.id === u.xs[0].subId), uf = from.units.find(x => x.id === u.id);
-    rotMoveDo(c, v, from, uf, u.xs.flatMap(x => x.entries), sv.id, u.g, rotUnitName(u));
+    // (l'avís diu qui es mou —les de les altres subdivisions—, no les que ja hi eren: tot l'equip, o una o unes gimnastes)
+    const from = v.subs.find(s => s.id === u.xs[0].subId), uf = from.units.find(x => x.id === u.id), es = u.xs.flatMap(x => x.entries);
+    rotMoveDo(c, v, from, uf, es, sv.id, u.g, u.team ? u.team.name : es.length === 1 ? entryName(es[0]) : rotMvName(uf, es));
   },
   // «Mou…»: tot l'equip o només unes gimnastes, a un altre grup o a una altra subdivisió
   rotMoveDlg: el => {
@@ -10285,10 +10434,11 @@ Object.assign(actions, {
     const c = curComp(); if (!rotGuard(c)) return;
     const v = rotViewOf(c), sv = v.subs.find(s => s.id === el.dataset.s);
     if (!sv || sv.k < 2) return;
-    const r = rotBalance(c, sv), byId = new Map(sv.units.map(u => [u.id, u]));
-    if (!r.moves.length) { toast('Ja està tan equilibrada com es pot sense moure els equips fixats (📌).'); return; }
-    const after = range(sv.k).map(g => sv.units.filter(u => u.n > 0 && r.assign[u.id] === g).reduce((t, u) => t + u.n, 0));
-    const lines = r.moves.map(m => { const u = byId.get(m.id); return u.split ? `${h(rotUnitName(u))} (${u.n}): s’ajunta al Grup ${m.to + 1}` : u.fresh ? `${h(rotUnitName(u))} (${u.n}, nou): al Grup ${m.to + 1}` : `${h(rotUnitName(u))} (${u.n}): del Grup ${u.g + 1} al Grup ${m.to + 1}`; });
+    // (només si millora alguna cosa que es veu: si no, no es mou res)
+    const r = rotBalance(c, sv), after = r.after;
+    if (!r.useful) { toast('Ja està tan equilibrada com es pot sense moure els equips fixats (📌).'); return; }
+    // (amb la categoria i el nivell, si n'hi ha més d'un: «C.G. Lleida 2 · Benjamí B (4)»)
+    const lines = r.moves.map(({ p, to }) => { const nm = h(rotUnitName(p.u) + rotKeyLabel(p.u, sv)); return p.split ? `${nm} (${p.n}): s’ajunta al Grup ${to + 1}` : p.u.fresh ? `${nm} (${p.n}, nou): al Grup ${to + 1}` : `${nm} (${p.n}): del Grup ${p.g + 1} al Grup ${to + 1}`; });
     const bad = r.cost.coach > 0 ? sv.clubs.filter(x => x.limit).map(x => clubName(x.clubId)) : [];
     ui.rotBal = { compId: c.id, subId: sv.id, sig: v.sig, assign: r.assign };
     openDialog(`<form data-form="rotBalance"><h2>Reequilibra la ${sv.idx}a subdivisió</h2>
@@ -10470,7 +10620,7 @@ Object.assign(forms, {
     let sizes = '';
     withUndo(() => `Reequilibrada: ${sizes}.`, () => {
       const cc = compById(c.id), { sv } = rotFresh(cc, B.subId); if (!sv) return;
-      rotWrite(cc, sv, B.assign, new Set(sv.units.filter(u => u.pinned).map(u => u.id)));
+      rotWrite(cc, sv, B.assign, rotPieces(sv));
       sizes = rotViewOf(cc).subs.find(s => s.id === sv.id).sizes.join(' · ');
     });
     ui.rotBal = null;
@@ -10484,7 +10634,7 @@ Object.assign(forms, {
       const bad = []; for (const sv of rotViewOf(compById(c.id)).subs) for (const w of sv.warnings) if (w.t === 'coach') bad.push({ sv, w });
       if (!bad.length) return 'Entrenadores desades.';
       const b = bad[0];
-      return { msg: `${clubName(b.w.clubId)} surt en ${b.w.q} grups a la ${b.sv.idx}a subdivisió.`, type: 'bad', actions: [{ label: 'Ajunta-les', fn: () => actions.rotBalance({ dataset: { s: b.sv.id } }) }] };
+      return { msg: `${clubName(b.w.clubId)} surt en ${b.w.q} grups a la ${b.sv.idx}a subdivisió.`, type: 'bad', actions: [{ label: rotJoinLbl(b.sv, b.w.clubId), fn: () => actions.rotBalance({ dataset: { s: b.sv.id } }) }] };
     }, () => { compById(c.id).rot.coaches = co; });
   },
   rotApps: f => {
@@ -10622,9 +10772,8 @@ Object.assign(forms, {
         const redone = [];
         for (const sv of rotViewOf(cc).subs) {
           if (!changed.has(sv.id)) continue;
-          const pins = {}, prev = {}, pinned = new Set();
-          for (const u of sv.units) if (u.n > 0) { if (u.pinned) { pins[u.id] = u.g; pinned.add(u.id); } if (!u.fresh && !u.split) prev[u.id] = u.g; }
-          rotWrite(cc, sv, Engine.rotPartition(rotUnitsIn(sv), rotOpts(cc, sv, { pins, prev })).assign, pinned);
+          const ps = rotPieces(sv);
+          rotWrite(cc, sv, Engine.rotPartition(rotPieceIn(ps), rotOpts(cc, sv, rotPinsOf(ps, true))).assign, ps);
           redone.push(sv.id);
         }
         rotMaterialize(cc);

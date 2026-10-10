@@ -1081,3 +1081,86 @@ test('el full de rotacions imprès: si es corregeix el nivell, l’equip, el nom
   e.level = 'A';
   assert.equal(pr(), undefined);
 });
+
+// ─── moure-ho tot, quarta revisió: el nom del que hi competeix, la capçalera dels fulls impresos i per què un grup és més gran
+test('el nom de cada subdivisió diu el que hi competeix (compLabel): sense la categoria que ella ha portat tota a una altra, i amb les convidades; a l’horari també', () => {
+  const { c, by } = model(), sI = by('INFANTIL A i B, CADET A i B i JUVENIL').id, sAl = by('ALEVÍ A i B').id, sBA = by('BENJAMÍ A').id;
+  const juv = c.entries.find(e => e.category === 'Juvenil'), t = teamOf(c, 'C.G. LLEIDA 2', 'Benjamí', 'B');
+  X(c, juv, sAl, 0);
+  for (const e of c.entries.filter(x => x.teamId === t.id)) X(c, e, sBA, 2);
+  let v = E.rotView(c, settings, CTX);
+  const I = v.subs.find(s => s.id === sI), Al = v.subs.find(s => s.id === sAl), BA = v.subs.find(s => s.id === sBA);
+  assert.equal(I.label, 'INFANTIL A i B, CADET A i B i JUVENIL', 'la subdivisió és la seva (on tornarà)');
+  assert.deepEqual(plain([I.compLabel, Al.compLabel, BA.compLabel]), ['INFANTIL A i B i CADET A i B', 'ALEVÍ A i B (i C.G. LLEIDA · Juvenil A)', 'BENJAMÍ A (i C.G. LLEIDA 2 · Benjamí B)']);
+  // (les altres, igual que el seu nom)
+  assert.ok(v.subs.filter(s => ![sI, sAl, sBA].includes(s.id)).every(s => s.compLabel === s.label));
+  const rows = E.rotSchedule(v, c.rot).blocks.flatMap(b => b.rows).filter(r => r.kind === 'comp').map(r => r.text);
+  for (const [sv, l] of [[I, 'INFANTIL A i B i CADET A i B'], [Al, 'ALEVÍ A i B (i C.G. LLEIDA · Juvenil A)'], [BA, 'BENJAMÍ A (i C.G. LLEIDA 2 · Benjamí B)']])
+    assert.ok(rows.includes(`Competició ${sv.idx}a subdivisió ${l} - 3 rotacions - 3’ escalfament per aparell`), rows.join(' | '));
+  // el nom que ella hi ha posat es queda (amb les convidades); una categoria amb totes NP tampoc no hi competeix
+  c.rot.subs.find(s => s.id === sAl).name = 'ALEVINES';
+  for (const e of c.entries.filter(x => x.category === 'Cadet')) e.status = 'np';
+  v = E.rotView(c, settings, CTX);
+  assert.deepEqual(plain([v.subs.find(s => s.id === sAl).compLabel, v.subs.find(s => s.id === sI).compLabel]), ['ALEVINES (i C.G. LLEIDA · Juvenil A)', 'INFANTIL A i B']);
+  // (més de dues convidades: «i 1 més»)
+  for (const e of c.entries.filter(x => x.teamId === teamOf(c, 'FEDAC LLEIDA', 'Benjamí', 'B').id)) X(c, e, sBA, 0);
+  for (const e of c.entries.filter(x => x.teamId === teamOf(c, 'INEF LLEIDA', 'Benjamí', 'B').id)) X(c, e, sBA, 1);
+  assert.equal(E.rotView(c, settings, CTX).subs.find(s => s.id === sBA).compLabel, 'BENJAMÍ A (i C.G. LLEIDA 2 · Benjamí B, FEDAC LLEIDA · Benjamí B i 1 més)');
+});
+
+test('imprès: la capçalera dels fulls de rotacions (el nom, el lloc i la data) i la de l’horari (FEMENINA / MASCULINA i les observacions) també compten; imprès amb una versió d’abans, no', () => {
+  const c = fixture(); make(c);
+  const v = E.rotView(c, settings, CTX), pr = (st = settings) => E.rotView(c, st, CTX).issues.find(i => i.t === 'printed');
+  const hor = () => ({ at: null, rows: E.rotHorRows(E.rotSchedule(E.rotView(c, settings, CTX), c.rot)), head: E.rotHorHeadSig(c, E.rotView(c, settings, CTX)) });
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: null, head: E.rotHeadSig(c, settings), hor: hor() };
+  assert.equal(pr(), undefined);
+  c.date = '2026-04-25'; c.place = 'Mollerussa';
+  let p = pr();
+  assert.deepEqual(plain([p.rot, p.ord, p.txt, p.head, p.horHead, p.hor.length]), [false, false, false, ['p', 'd'], ['p', 'd'], 0]);
+  c.date = '2026-04-18'; c.place = 'Lleida';
+  assert.equal(pr(), undefined);
+  c.name = 'UNA ALTRA'; assert.deepEqual(plain([pr().head, pr().horHead]), [['n'], ['n']]); c.name = '3a FASE';
+  // les observacions, només a l'horari (i no si només hi ha espais o línies buides de més)
+  c.rot.notes = '  \n\n'; assert.equal(pr(), undefined);
+  c.rot.notes = 'Porteu el DNI.';
+  p = pr(); assert.deepEqual(plain([p.head, p.horHead]), [[], ['o']]);
+  c.rot.printed.hor = hor(); assert.equal(pr(), undefined);
+  c.rot.notes = '  Porteu el DNI.  \n'; assert.equal(pr(), undefined);
+  // sense lloc a la competició, el de la configuració (el que surt als fulls de rotacions; l'horari diu el de la competició)
+  c.place = ''; c.rot.printed.head = E.rotHeadSig(c, settings); c.rot.printed.hor = hor();
+  assert.deepEqual(plain(pr({ ...settings, place: 'Pavelló' }).head), ['p']);
+  assert.equal(pr({ ...settings, place: 'Pavelló' }).horHead.length, 0);
+  // si ja no hi competeix cap noi, el títol de l'horari («GIMNÀSTICA ARTÍSTICA FEMENINA I MASCULINA») canvia
+  for (const e of c.entries.filter(x => x.gender === 'M')) e.status = 'np';
+  assert.ok(pr().horHead.includes('b'));
+  for (const e of c.entries.filter(x => x.gender === 'M')) e.status = '';
+  // imprès amb una versió d'abans (sense capçalera): no es mira
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: null, hor: { at: null, rows: hor().rows } };
+  c.date = '2026-04-25'; c.rot.notes = 'Una altra cosa.';
+  assert.equal(pr(), undefined);
+});
+
+test('imprès: amb l’empremta del que diuen els fulls (paper), ho mira ctx.paper (l’app: el full tal com s’imprimiria); sense ctx.paper, sig/ord/txt', () => {
+  const c = fixture(); make(c);
+  const v = E.rotView(c, settings, CTX), seen = [];
+  c.rot.printed = { sig: 'zzz', ord: v.ord, txt: '', at: null, paper: { g: 'a', o: 'b', t: 'c', np: [], on: [] } };
+  const pr = paper => E.rotView(c, settings, paper ? { ...CTX, paper } : CTX).issues.find(i => i.t === 'printed');
+  const p = pr((comp, view, P) => { seen.push([comp === c, view.subs.length, P.g]); return { g: false, o: false, t: true }; });
+  assert.deepEqual(plain([p.rot, p.ord, p.txt]), [false, false, true]);
+  assert.deepEqual(plain(seen), [[true, v.subs.length, 'a']]);
+  assert.equal(pr(() => ({ g: false, o: false, t: false })), undefined, 'el sig d’abans ja no hi compta');
+  assert.deepEqual(plain((({ rot, ord, txt }) => [rot, ord, txt])(pr(() => ({ g: true, o: true, t: true })))), [true, false, false]);
+  assert.ok(pr().rot, 'sense ctx.paper, el sig');
+});
+
+test('per què un grup és més gran: si és tota una categoria i nivell però és un sol equip, l’avís porta la unitat (spreadKey.unit), com spreadUnit', () => {
+  const c = fixture(); make(c, RULES({ joins: [] }));
+  c.entries.find(e => e.id === 'e021').level = 'A';
+  const v = E.rotView(c, settings, CTX), sv = v.subs.find(s => s.label === 'CADET A i B'), w = sv.warnings.find(x => x.t.startsWith('spread'));
+  assert.ok(w && w.t === 'spreadKey' && w.unit && w.unit.team && w.unit.team.name === 'C.G. LLEIDA' && w.n === 5, JSON.stringify(sv.sizes));
+  // (i si el grup gran té més d'una unitat, cap)
+  for (const s2 of v.subs) for (const x of s2.warnings.filter(y => y.t === 'spreadKey')) {
+    const big = s2.groups[x.g], us = big.units.filter(u => u.entries.some(e => e.status !== 'np' && v.place.get(e).g === big.g));
+    assert.equal(x.unit, us.length === 1 ? us[0] : null);
+  }
+});

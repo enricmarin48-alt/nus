@@ -1560,6 +1560,10 @@ try {
           await P.tap('button[data-act=tutApp][data-a=barra]'); await P.waitForSelector('#qe');
           assert.equal(await P.evaluate(() => tut.sub), S7.first, 'la primera subdivisió on falten notes de barra');
           await P.selectOption('.gsel select', S7.id); await P.waitForFunction(id => tut.sub === id && !!document.querySelector('#qe'), S7.id);
+          // (el desplegable tancat diu la subdivisió en curt i sencera, en dues línies si cal: a 390 px no es talla)
+          const pick = await P.$eval('.gsel-txt b', b => ({ t: b.textContent, cut: b.scrollHeight > b.clientHeight + 1 || b.scrollWidth > b.clientWidth + 1 }));
+          assert.ok(pick.t === `${S7.idx}a · INFANTIL A i B, CADET A i B i JUVENIL` && !pick.cut, JSON.stringify(pick));
+          assert.ok((await P.$$eval('.gsel select option', l => l.map(o => o.textContent))).some(x => x.startsWith(`${S7.idx}a subdivisió · INFANTIL A i B, CADET A i B i JUVENIL`)));
           // el mateix ordre que el full (amb les NP, ratllades) i on comença cada grup
           assert.deepEqual(await P.$$eval('.qe-strip button', l => l.map(b => b.dataset.id)), S7.seq.map(x => x.id));
           assert.deepEqual(await P.$$eval('.qe-strip .qe-rb', l => l.map(b => b.textContent)), S7.heads);

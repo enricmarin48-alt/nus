@@ -398,7 +398,7 @@ try {
     await stopServer();
     const first = tutor.locator('#scoregrid input.sc').first();
     await first.click(); await tutor.keyboard.type('8,8'); await tutor.keyboard.press('Enter');
-    await tutor.waitForSelector('.banner:has-text("No tanquis aquesta pàgina")', { timeout: 10000 });
+    await tutor.waitForSelector('.banner:has-text("No tanquis la pàgina")', { timeout: 10000 });
     await admin.waitForSelector('text=Sense connexió amb el programa', { timeout: 10000 });
     // la taula també segueix treballant
     const inp = admin.locator('#scoregrid input.sc[data-e=e1][data-a=salt]');
@@ -819,11 +819,13 @@ try {
     await admin.waitForSelector('#scoregrid');
   });
 
-  await step('competició tancada: la tutora ja no pot entrar notes', async () => {
+  await step('competició tancada: la tutora ja no pot entrar notes (i el mòbil diu que la taula les ha bloquejat, no «Codi incorrecte»)', async () => {
     await admin.click('button[data-act=toggleLock]');
     await new Promise(r => setTimeout(r, 1000));
     await tutor.reload();
-    await tutor.waitForSelector('text=Mode tutora');
+    await tutor.waitForSelector('text=Notes bloquejades');
+    const txt = (await tutor.textContent('#main')).replace(/\s+/g, ' ');
+    assert.ok(txt.includes('La taula ha bloquejat les notes d’aquesta competició: ja no se’n poden entrar.') && !txt.includes('Codi incorrecte'), txt);
   });
   await admin.screenshot({ path: path.join(out, 'taula.png'), fullPage: true });
   await tutor.screenshot({ path: path.join(out, 'tutora.png'), fullPage: true });
@@ -1235,9 +1237,9 @@ try {
           await ph.unroute('**/api/tutor?**');
           // la taula tanca la competició una estona; el mòbil es torna a carregar mentrestant
           await T.click('button[data-act=toggleLock] >> nth=0');
-          await t.waitForSelector('input[name=pin]', { timeout: 30000 });
-          await t.reload(); await t.waitForSelector('input[name=pin]'); await sleep(800);
-          assert.equal(await t.inputValue('input[name=pin]'), '4321', 'no oblida el codi');
+          await t.waitForSelector('#main >> text=Notes bloquejades', { timeout: 30000 });
+          await t.reload(); await t.waitForSelector('#main >> text=Notes bloquejades'); await sleep(800);
+          assert.equal(await t.evaluate(() => tut.pin), '4321', 'no oblida el codi');
           await T.click('button[data-act=toggleLock] >> nth=0');
           await t.waitForSelector('#qe', { timeout: 20000 });
           // una sola nota guardada al mòbil
@@ -1245,7 +1247,7 @@ try {
           const eid = await t.evaluate(() => qe.entryId);
           await typeSave(t, ['8', ',', '5']);
           await t.waitForSelector('#tutbanner .banner', { timeout: 15000 });
-          assert.ok((await norm(t, '#tutbanner')).includes('1 nota guardada al mòbil: s’enviarà sola quan torni la Wi-Fi.'), await norm(t, '#tutbanner'));
+          assert.equal(await t.locator('#tutbanner .banner').innerText(), '⚠ Sense connexió · 1 nota al mòbil\nNo tanquis la pàgina');
           await t.tap('button[data-act=tutLogout]'); await t.waitForSelector('#confirm[open]');
           assert.ok((await norm(t, '#confirm')).includes('Si surts, es perdrà (digues-la a la taula)'), await norm(t, '#confirm'));
           await t.click('#confirm button:has-text("Cancel·la")');
@@ -1417,12 +1419,12 @@ try {
           await ph.route(`${OLD}/**`, r => r.abort('addressunreachable'));
           await typeSave(A, ['8']); await typeSave(A, ['8', ',', '5']);
           await A.waitForFunction(() => tutQ().length === 2 && !tut.online, null, { timeout: 15000 });
-          assert.ok((await norm6(A, '#tutbanner')).includes('2 notes guardades al mòbil: s’enviaran soles quan torni la Wi-Fi.'));
+          assert.ok((await norm6(A, '#tutbanner')).includes('⚠ Sense connexió · 2 notes al mòbil'));
           const k0 = await A.locator('.qe-keys button[data-k="5"]').boundingBox();
           // (al cap de dos minuts)
           await A.evaluate(() => { tut.okAt -= 130000; tutStatusBar(); });
           const bn = await norm6(A, '#tutbanner'), st = await norm6(A, '#tutstuck');
-          assert.ok(bn.includes('Fa 2 min que no hi ha connexió: llegeix l’avís de sota.') && !bn.includes('soles'), bn);
+          assert.ok(bn.includes('⚠ Fa 2 min que no hi ha connexió') && bn.includes('Llegeix l’avís de sota') && !bn.includes('al mòbil'), bn);
           for (const x of ['Si la taula ha canviat de Wi-Fi o té un codi QR nou, aquestes 2 notes no hi arribaran soles: digues-les a la taula.', '1 Nom1 S · Barra: 8,00', '2 Nom2 S · Barra: 8,50', 'Ja les he dites a la taula']) assert.ok(st.includes(x), st);
           assert.deepEqual(await A.locator('.qe-keys button[data-k="5"]').boundingBox(), k0, 'el teclat no es mou');
           // el QR nou: una altra adreça (al navegador, unes altres dades)
@@ -1605,6 +1607,63 @@ try {
           await P.tap('button[data-act=tutApp][data-a=barra]'); await P.waitForSelector('#qe');
           assert.deepEqual(await P.evaluate(() => [tut.group, qe.entryId]), [await grpOf(other.id), other.id]);
         } finally { await ctx.close(); await T.context().close(); await kill(p); }
+      });
+
+      // ─── setena revisió: el mòbil de les tutores diu el que passa (sense connexió, notes bloquejades)
+      await step('setena revisió: sense connexió, l’avís de dalt es llegeix sencer de 320 a 412 px («⚠ Sense connexió · 1 nota al mòbil» i «No tanquis la pàgina») i no mou el teclat', async () => {
+        const { p, T } = await server5('avis-dalt');
+        try {
+          for (const [w, hh] of [[320, 568], [360, 740], [390, 844], [412, 915]]) {
+            const ctx = await browser.newContext({ viewport: { width: w, height: hh }, isMobile: true, hasTouch: true });
+            try {
+              const t = await ctx.newPage(); watch(t, `r7 avís ${w}`);
+              await enter(t, 'terra');
+              const k5 = () => t.evaluate(() => Math.round(document.querySelector('.qe-keys button[data-k="5"]').getBoundingClientRect().y + scrollY));
+              const y0 = await k5();
+              await ctx.route('**/api/**', r => r.abort('internetdisconnected'));
+              await typeSave(t, ['8', ',', '5']);
+              await t.waitForSelector('#tutbanner .banner', { timeout: 15000 });
+              const b = await t.evaluate(() => {
+                const el = document.querySelector('#tutbanner .banner'), r = el.getBoundingClientRect();
+                return { lines: [...el.querySelectorAll('span')].map(x => x.textContent), cut: [el, ...el.querySelectorAll('span')].some(x => x.scrollWidth > x.clientWidth + 1),
+                  inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0, under: r.bottom <= document.querySelector('header.top').getBoundingClientRect().bottom };
+              });
+              assert.deepEqual(b, { lines: ['⚠ Sense connexió · 1 nota al mòbil', 'No tanquis la pàgina'], cut: false, inside: true, under: true }, `${w} px`);
+              assert.equal(await k5(), y0, `${w} px: el teclat no es mou`);
+              await ctx.unroute('**/api/**');
+              await t.waitForFunction(() => !tutQ().length && !document.querySelector('#tutbanner .banner'), null, { timeout: 20000 });
+            } finally { await ctx.close(); }
+          }
+        } finally { await T.context().close(); await kill(p); }
+      });
+
+      await step('setena revisió: la taula bloqueja les notes mentre la tutora puntua (i té una nota per enviar): el mòbil diu que la taula les ha bloquejat (no «Codi incorrecte»), i quan les desbloqueja hi torna sol, al mateix aparell, i la nota s’envia', async () => {
+        const { f, p, T } = await server5('bloquejada');
+        const ph = await phone('bloquejada', 390, 844);
+        const norm = async (P, sel) => (await P.textContent(sel)).replace(/\s+/g, ' ').trim();
+        try {
+          const t = ph.pages()[0] || await ph.newPage(); watch(t, 'r7 bloquejada');
+          await enter(t, 'barra');
+          // sense Wi-Fi un moment: la nota es queda al mòbil, i mentrestant la taula bloqueja les notes
+          await ph.route('**/api/**', r => r.abort('internetdisconnected'));
+          const eid = await t.evaluate(() => qe.entryId);
+          await typeSave(t, ['7', ',', '5']);
+          await t.waitForFunction(() => tutQ().length === 1 && !tut.online, null, { timeout: 15000 });
+          await T.click('button[data-act=toggleLock] >> nth=0'); await sleep(800);
+          await ph.unroute('**/api/**');
+          await t.waitForSelector('#main >> text=Notes bloquejades', { timeout: 20000 });
+          const txt = await norm(t, '#main');
+          for (const x of ['La taula ha bloquejat les notes d’aquesta competició: ja no se’n poden entrar.', 'Si la taula les torna a obrir, aquesta pàgina hi tornarà a entrar sola', '1 nota guardada al mòbil sense enviar. S’enviarà sola si la taula torna a obrir les notes; si no, digues-la a la taula', 'Entra amb un altre codi'])
+            assert.ok(txt.includes(x), txt);
+          assert.ok(!txt.includes('Codi incorrecte') && !txt.includes('El codi ja no val'), txt);
+          assert.equal(scoreOf(f, eid, 'barra').v, undefined, 'amb les notes bloquejades, la nota no hi va');
+          // la taula les desbloqueja: el mòbil hi torna sol (al teclat de la barra) i envia la nota
+          await T.click('button[data-act=toggleLock] >> nth=0');
+          await t.waitForSelector('#qe', { timeout: 20000 });
+          assert.ok((await t.textContent('.qe-app')).includes('Barra'));
+          await t.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          assert.equal(scoreOf(f, eid, 'barra').v, 7.5);
+        } finally { await ph.close(); await T.context().close(); await kill(p); }
       });
     }
 

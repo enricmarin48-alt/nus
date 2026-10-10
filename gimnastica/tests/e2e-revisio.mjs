@@ -1373,34 +1373,34 @@ try {
     ],
     meta: { created: new Date().toISOString(), updated: new Date().toISOString(), dbId: 'proves7' },
   };
-  const ctx7 = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES' });
-  await ctx7.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, JSON.stringify(seed7));
-  const p7 = await ctx7.newPage();
-  p7.on('pageerror', e => errors.push('pageerror (7a revisió): ' + e.message));
-  p7.on('console', m => { if (m.type() === 'error') errors.push('console (7a revisió): ' + m.text()); });
-  const d7 = () => p7.evaluate(() => JSON.parse(JSON.stringify(db)));
+  const ctx7i = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES' });
+  await ctx7i.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, JSON.stringify(seed7));
+  const p7i = await ctx7i.newPage();
+  p7i.on('pageerror', e => errors.push('pageerror (7a revisió): ' + e.message));
+  p7i.on('console', m => { if (m.type() === 'error') errors.push('console (7a revisió): ' + m.text()); });
+  const d7 = () => p7i.evaluate(() => JSON.parse(JSON.stringify(db)));
   const fx7 = n => path.join(here, 'fixtures', n);
-  const toast7 = async re => { await p7.waitForFunction(r => $$('.toast').some(t => new RegExp(r).test(t.textContent)), re.source); return p7.evaluate(r => $$('.toast').filter(t => new RegExp(r).test(t.textContent)).pop().textContent, re.source); };
-  const row7 = (txt) => p7.locator('#dlg tr', { hasText: txt });
+  const toast7 = async re => { await p7i.waitForFunction(r => $$('.toast').some(t => new RegExp(r).test(t.textContent)), re.source); return p7i.evaluate(r => $$('.toast').filter(t => new RegExp(r).test(t.textContent)).pop().textContent, re.source); };
+  const row7 = (txt) => p7i.locator('#dlg tr', { hasText: txt });
 
   await step('full d’una entitat amb una gimnasta que abans era d’una altra entitat i dues amb l’any corregit: «ja hi és (abans a …)», una sola fitxa i una sola inscripció de cadascuna', async () => {
-    await p7.goto(url + '#/competicio/f2/inscripcions');
-    await p7.click('button[data-act=inscOpen] >> visible=true');
-    await p7.setInputFiles('#inscfile', [fx7('inscripcio-canvis-entitat.xlsx')]);
-    await p7.waitForSelector('#dlg >> text=inscripcio-canvis-entitat.xlsx');
-    assert.equal(await p7.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1', '«C.G. LLEIDA» és «CG Lleida»');
+    await p7i.goto(url + '#/competicio/f2/inscripcions');
+    await p7i.click('button[data-act=inscOpen] >> visible=true');
+    await p7i.setInputFiles('#inscfile', [fx7('inscripcio-canvis-entitat.xlsx')]);
+    await p7i.waitForSelector('#dlg >> text=inscripcio-canvis-entitat.xlsx');
+    assert.equal(await p7i.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1', '«C.G. LLEIDA» és «CG Lleida»');
     assert.ok((await row7('Mora, Queralt').textContent()).includes('ja hi és (abans a Escola Pardinyes)'), await row7('Mora, Queralt').textContent());
     assert.ok((await row7('Roca, Júlia').textContent()).includes('(any 2013)'));
     assert.ok((await row7('Pons, Helena').textContent()).includes('(any 2015)'));
     assert.equal(await row7('Mora, Queralt').locator('select[data-chg=inscRowSame]').inputValue(), 'q1', 'per defecte és la mateixa');
-    assert.ok((await p7.locator('#dlg').textContent()).includes('3 gimnastes del full ja hi són amb una altra entitat o un altre any'));
+    assert.ok((await p7i.locator('#dlg').textContent()).includes('3 gimnastes del full ja hi són amb una altra entitat o un altre any'));
     // «és una altra»: seria una fitxa nova (i es pot tornar enrere)
     await row7('Roca, Júlia').locator('select[data-chg=inscRowSame]').selectOption('__other');
-    await p7.waitForFunction(() => /nova/.test([...document.querySelectorAll('#dlg tr')].find(t => t.textContent.includes('Roca, Júlia')).cells[0].textContent));
+    await p7i.waitForFunction(() => /nova/.test([...document.querySelectorAll('#dlg tr')].find(t => t.textContent.includes('Roca, Júlia')).cells[0].textContent));
     assert.ok((await row7('Roca, Júlia').textContent()).includes('n’hi ha una amb aquest nom: CG Lleida · any 2013'));
     await row7('Roca, Júlia').locator('select[data-chg=inscRowSame]').selectOption('j1');
-    await p7.waitForFunction(() => /ja hi és/.test([...document.querySelectorAll('#dlg tr')].find(t => t.textContent.includes('Roca, Júlia')).cells[0].textContent));
-    await p7.click('#dlg button[data-act=inscDo]');
+    await p7i.waitForFunction(() => /ja hi és/.test([...document.querySelectorAll('#dlg tr')].find(t => t.textContent.includes('Roca, Júlia')).cells[0].textContent));
+    await p7i.click('#dlg button[data-act=inscDo]');
     const t = await toast7(/Fulls d’inscripció importats/);
     assert.ok(t.includes('0 fitxes noves, 5 actualitzades') && t.includes('cap inscripció nova'), t);
     assert.ok(t.includes('Ha canviat d’entitat: Queralt Mora (abans a Escola Pardinyes)'), t);
@@ -1425,9 +1425,9 @@ try {
   });
 
   await step('canviar l’equip a la fitxa (o a la llista) també val per a la competició que ve amb els equips del full, i diu on no ha canviat i per què', async () => {
-    await p7.goto(url + '#/gimnastes');
-    await p7.waitForSelector('#gymtable');
-    await p7.locator('select[data-chg=gymTeamInline][data-id=d1]').first().selectOption('T1');
+    await p7i.goto(url + '#/gimnastes');
+    await p7i.waitForSelector('#gymtable');
+    await p7i.locator('select[data-chg=gymTeamInline][data-id=d1]').first().selectOption('T1');
     const t = await toast7(/Dana Mas → CG Lleida/);
     assert.ok(t.includes('També a: 2a Fase.'), t);
     assert.ok(t.includes('A 3a Fase continua com a individual: les notes hi estan bloquejades.'), t);
@@ -1438,18 +1438,18 @@ try {
   });
 
   await step('un equip ple (6 de 6): abans de desar es diu; «Només en aquesta competició» no el fa passar del màxim a la fitxa, «També a la fitxa» sí (i ho avisa)', async () => {
-    await p7.goto(url + '#/competicio/f2/inscripcions');
+    await p7i.goto(url + '#/competicio/f2/inscripcions');
     const add = async (name, choice) => {
-      await p7.click('button[data-act=newGymHere][data-g="Benjamí||F||A"]'); await p7.waitForSelector('#dlg[open] form[data-form=gym]');
-      await p7.fill('#dlg input[name=name]', name); await p7.fill('#dlg input[name=surname]', 'Substituta');
-      await p7.fill('#dlg input[name=club]', 'CG Lleida'); await p7.press('#dlg input[name=club]', 'Tab');
-      const opt = await p7.locator('#dlg select[name=team] option', { hasText: 'CG Lleida — 6/6 · ple' }).getAttribute('value');
-      await p7.selectOption('#dlg select[name=team]', opt);
-      await p7.click('#dlg button.primary');
-      await p7.waitForSelector('#confirm[open]');
-      const txt = await p7.locator('#confirm').textContent();
+      await p7i.click('button[data-act=newGymHere][data-g="Benjamí||F||A"]'); await p7i.waitForSelector('#dlg[open] form[data-form=gym]');
+      await p7i.fill('#dlg input[name=name]', name); await p7i.fill('#dlg input[name=surname]', 'Substituta');
+      await p7i.fill('#dlg input[name=club]', 'CG Lleida'); await p7i.press('#dlg input[name=club]', 'Tab');
+      const opt = await p7i.locator('#dlg select[name=team] option', { hasText: 'CG Lleida — 6/6 · ple' }).getAttribute('value');
+      await p7i.selectOption('#dlg select[name=team]', opt);
+      await p7i.click('#dlg button.primary');
+      await p7i.waitForSelector('#confirm[open]');
+      const txt = await p7i.locator('#confirm').textContent();
       assert.ok(txt.includes('ja té 6 gimnastes a la fitxa (el màxim és 6)') && txt.includes('Només en aquesta competició') && txt.includes('no classificarà'), txt);
-      await p7.click(`#confirm button[value=${choice}]`);
+      await p7i.click(`#confirm button[value=${choice}]`);
       return toast7(new RegExp(name + ' Substituta: desat'));
     };
     const t1 = await add('Txell', 'comp');
@@ -1464,30 +1464,30 @@ try {
     d = await d7();
     assert.equal(d.teams.find(x => x.id === 'T6').memberIds.length, 7);
     // a la llista de gimnastes: també es diu, i «Cancel·la» no canvia res
-    await p7.goto(url + '#/gimnastes'); await p7.waitForSelector('#gymtable');
-    await p7.locator('select[data-chg=gymTeamInline][data-id=a1]').first().selectOption('T1');
-    assert.equal(await p7.locator('#confirm[open]').count(), 0, 'un equip amb lloc no pregunta res');
+    await p7i.goto(url + '#/gimnastes'); await p7i.waitForSelector('#gymtable');
+    await p7i.locator('select[data-chg=gymTeamInline][data-id=a1]').first().selectOption('T1');
+    assert.equal(await p7i.locator('#confirm[open]').count(), 0, 'un equip amb lloc no pregunta res');
     await toast7(/Anna Serra → CG Lleida/);
     // (l'equip de la fitxa, ple: 5 + una fitxa que no és de ningú)
-    await p7.evaluate(() => { const t = db.teams.find(x => x.id === 'T1'); t.memberIds.push('zz'); commit(); render(); });
-    await p7.waitForSelector('#gymtable');
-    await p7.locator('select[data-chg=gymTeamInline][data-id=b1]').first().selectOption('T1');
-    await p7.waitForSelector('#confirm[open]');
-    assert.ok((await p7.locator('#confirm').textContent()).includes('ja té 6 gimnastes'));
-    await p7.click('#confirm button[value=""]');
-    await p7.waitForTimeout(150);
-    assert.equal(await p7.locator('select[data-chg=gymTeamInline][data-id=b1]').first().inputValue(), '__none');
+    await p7i.evaluate(() => { const t = db.teams.find(x => x.id === 'T1'); t.memberIds.push('zz'); commit(); render(); });
+    await p7i.waitForSelector('#gymtable');
+    await p7i.locator('select[data-chg=gymTeamInline][data-id=b1]').first().selectOption('T1');
+    await p7i.waitForSelector('#confirm[open]');
+    assert.ok((await p7i.locator('#confirm').textContent()).includes('ja té 6 gimnastes'));
+    await p7i.click('#confirm button[value=""]');
+    await p7i.waitForTimeout(150);
+    assert.equal(await p7i.locator('select[data-chg=gymTeamInline][data-id=b1]').first().inputValue(), '__none');
     assert.ok(!(await d7()).teams.find(x => x.id === 'T1').memberIds.includes('b1'));
-    await p7.evaluate(() => { const t = db.teams.find(x => x.id === 'T1'); t.memberIds = t.memberIds.filter(id => id !== 'zz'); commit(); render(); });
+    await p7i.evaluate(() => { const t = db.teams.find(x => x.id === 'T1'); t.memberIds = t.memberIds.filter(id => id !== 'zz'); commit(); render(); });
   });
 
   await step('«Fusiona amb…» dues entitats que són la mateixa: les fitxes repetides es fan una (amb les inscripcions); on totes dues tenen notes, es queden totes dues i es diu', async () => {
-    await p7.goto(url + '#/entitats');
-    await p7.selectOption('select[data-chg=clubMerge][data-id=c3]', 'c1');
-    await p7.waitForSelector('#confirm[open]');
-    const txt = await p7.locator('#confirm').textContent();
+    await p7i.goto(url + '#/entitats');
+    await p7i.selectOption('select[data-chg=clubMerge][data-id=c3]', 'c1');
+    await p7i.waitForSelector('#confirm[open]');
+    const txt = await p7i.locator('#confirm').textContent();
     assert.ok(txt.includes('2 gimnastes surten a totes dues entitats') && txt.includes('Anna Serra') && txt.includes('Berta Pla'), txt);
-    await p7.click('#confirm button[value=gyms]');
+    await p7i.click('#confirm button[value=gyms]');
     const t = await toast7(/fusionada amb «CG Lleida»/);
     assert.ok(t.includes('1 fitxa repetida ajuntada') && t.includes('Berta Pla no s’ha ajuntat: a 1a Fase totes dues fitxes tenen notes'), t);
     assert.ok(t.includes('L’equip «Club Gimnàstic Lleida 2» ara es diu «CG Lleida 2»'), t);
@@ -1502,48 +1502,48 @@ try {
   });
 
   await step('un full amb l’entitat escrita d’una altra manera («CLUB GIMNÀSTIC LLEIDA») i les gimnastes de «CG Lleida»: es tria «CG Lleida» i es diu', async () => {
-    await p7.goto(url + '#/gimnastes');
-    await p7.click('button[data-act=inscOpen] >> visible=true');
-    await p7.setInputFiles('#inscfile', [fx7('inscripcio-nom-diferent.xlsx')]);
-    await p7.waitForSelector('#dlg >> text=inscripcio-nom-diferent.xlsx');
-    assert.equal(await p7.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1');
-    assert.ok((await p7.locator('#dlg').textContent()).includes('Al full l’entitat és «CLUB GIMNÀSTIC LLEIDA», però gairebé totes les gimnastes ja són de CG Lleida'));
+    await p7i.goto(url + '#/gimnastes');
+    await p7i.click('button[data-act=inscOpen] >> visible=true');
+    await p7i.setInputFiles('#inscfile', [fx7('inscripcio-nom-diferent.xlsx')]);
+    await p7i.waitForSelector('#dlg >> text=inscripcio-nom-diferent.xlsx');
+    assert.equal(await p7i.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1');
+    assert.ok((await p7i.locator('#dlg').textContent()).includes('Al full l’entitat és «CLUB GIMNÀSTIC LLEIDA», però gairebé totes les gimnastes ja són de CG Lleida'));
     // (si es tria «Nova», les que ja hi són ho diuen; com que CG Lleida ja les ha inscrites a la 2a Fase amb el seu
     // full, per defecte són unes altres gimnastes, i a la fila es diu per què)
-    await p7.selectOption('#dlg select[data-chg=inscClub]', '__new');
-    await p7.waitForFunction(() => /n’hi ha una amb aquest nom: CG Lleida/.test($('#dlg').textContent));
-    assert.ok((await p7.locator('#dlg').textContent()).includes('3 gimnastes del full es diuen com gimnastes d’una altra entitat que el full de la seva entitat ja ha inscrit a 2a Fase'));
+    await p7i.selectOption('#dlg select[data-chg=inscClub]', '__new');
+    await p7i.waitForFunction(() => /n’hi ha una amb aquest nom: CG Lleida/.test($('#dlg').textContent));
+    assert.ok((await p7i.locator('#dlg').textContent()).includes('3 gimnastes del full es diuen com gimnastes d’una altra entitat que el full de la seva entitat ja ha inscrit a 2a Fase'));
     assert.ok((await row7('Pons, Helena').textContent()).includes('CG Lleida · any 2016, ja és al full de la seva entitat per a 2a Fase'), await row7('Pons, Helena').textContent());
     assert.equal(await row7('Pons, Helena').locator('select[data-chg=inscRowSame]').inputValue(), '__other');
-    await p7.click('#dlg button[data-act=closeDlg]');
+    await p7i.click('#dlg button[data-act=closeDlg]');
   });
 
   await step('entitats en majúscules dels fulls: les sigles es queden («INEF Lleida»), «al full:» diu el que diu el full i el nom d’una entitat nova es pot canviar abans d’importar', async () => {
-    assert.deepEqual(await p7.evaluate(() => ['INEF LLEIDA', 'CEIP PARDINYES', 'UE LLEIDA', 'AEE GIMNÀSTICA BALAGUER', 'ESCOLA SAFA', 'FEDAC LLEIDA', 'C.G. LLEIDA', 'CEIP JOAN XXIII', "AMPA DE L'ESCOLA", 'Inef Lleida'].map(entityCase)),
+    assert.deepEqual(await p7i.evaluate(() => ['INEF LLEIDA', 'CEIP PARDINYES', 'UE LLEIDA', 'AEE GIMNÀSTICA BALAGUER', 'ESCOLA SAFA', 'FEDAC LLEIDA', 'C.G. LLEIDA', 'CEIP JOAN XXIII', "AMPA DE L'ESCOLA", 'Inef Lleida'].map(entityCase)),
       ['INEF Lleida', 'CEIP Pardinyes', 'UE Lleida', 'AEE Gimnàstica Balaguer', 'Escola SAFA', 'FEDAC Lleida', 'C.G. Lleida', 'CEIP Joan XXIII', "AMPA de l'Escola", 'Inef Lleida']);
-    await p7.goto(url + '#/gimnastes');
-    await p7.click('button[data-act=inscOpen] >> visible=true');
-    await p7.setInputFiles('#inscfile', [fx7('inscripcio-inef.xlsx')]);
-    await p7.waitForSelector('#dlg >> text=inscripcio-inef.xlsx');
-    assert.ok((await p7.locator('#dlg label.f span').first().textContent()).includes('(al full: INEF LLEIDA)'));
-    assert.equal(await p7.locator('#dlg select[data-chg=inscClub] option:checked').textContent(), 'Nova: INEF Lleida');
-    await p7.fill('#dlg input[data-chg=inscClubName]', 'INEF de Lleida'); await p7.press('#dlg input[data-chg=inscClubName]', 'Tab');
-    await p7.waitForFunction(() => $('#dlg select[data-chg=inscClub] option:checked').textContent === 'Nova: INEF de Lleida');
-    assert.ok((await p7.locator('#dlg').textContent()).includes('INEF de Lleida (Aleví A, 3)'), 'l’equip ja es diu com l’entitat');
+    await p7i.goto(url + '#/gimnastes');
+    await p7i.click('button[data-act=inscOpen] >> visible=true');
+    await p7i.setInputFiles('#inscfile', [fx7('inscripcio-inef.xlsx')]);
+    await p7i.waitForSelector('#dlg >> text=inscripcio-inef.xlsx');
+    assert.ok((await p7i.locator('#dlg label.f span').first().textContent()).includes('(al full: INEF LLEIDA)'));
+    assert.equal(await p7i.locator('#dlg select[data-chg=inscClub] option:checked').textContent(), 'Nova: INEF Lleida');
+    await p7i.fill('#dlg input[data-chg=inscClubName]', 'INEF de Lleida'); await p7i.press('#dlg input[data-chg=inscClubName]', 'Tab');
+    await p7i.waitForFunction(() => $('#dlg select[data-chg=inscClub] option:checked').textContent === 'Nova: INEF de Lleida');
+    assert.ok((await p7i.locator('#dlg').textContent()).includes('INEF de Lleida (Aleví A, 3)'), 'l’equip ja es diu com l’entitat');
     // (si s'hi escriu el nom d'una que ja hi és, és aquella)
-    await p7.fill('#dlg input[data-chg=inscClubName]', 'cg lleida'); await p7.press('#dlg input[data-chg=inscClubName]', 'Tab');
-    await p7.waitForFunction(() => $('#dlg select[data-chg=inscClub]').value === 'c1');
-    await p7.click('#dlg button[data-act=closeDlg]');
+    await p7i.fill('#dlg input[data-chg=inscClubName]', 'cg lleida'); await p7i.press('#dlg input[data-chg=inscClubName]', 'Tab');
+    await p7i.waitForFunction(() => $('#dlg select[data-chg=inscClub]').value === 'c1');
+    await p7i.click('#dlg button[data-act=closeDlg]');
     assert.ok(!(await d7()).clubs.some(c => /INEF/.test(c.name)), 'Cancel·la no importa res');
   });
 
   await step('fulls dels clubs d’una competició que ja ha passat (feta en paper): les fitxes noves tenen els equips del full i «Jornada següent» els proposa tal qual', async () => {
-    await p7.evaluate(d => { db.competitions.push(normalizeComp({ id: 'fp', name: 'Fase en paper', date: d, place: 'Lleida', season: 'Curs 7', locked: false, autoTeams: true, teams: [], entries: [] }, S().compDefaults)); commit(); }, day(-5));
-    await p7.goto(url + '#/competicio/fp/inscripcions');
-    await p7.click('button[data-act=inscOpen] >> visible=true');
-    await p7.setInputFiles('#inscfile', [fx7('inscripcio-inef.xlsx')]);
-    await p7.waitForSelector('#dlg >> text=inscripcio-inef.xlsx');
-    await p7.click('#dlg button[data-act=inscDo]');
+    await p7i.evaluate(d => { db.competitions.push(normalizeComp({ id: 'fp', name: 'Fase en paper', date: d, place: 'Lleida', season: 'Curs 7', locked: false, autoTeams: true, teams: [], entries: [] }, S().compDefaults)); commit(); }, day(-5));
+    await p7i.goto(url + '#/competicio/fp/inscripcions');
+    await p7i.click('button[data-act=inscOpen] >> visible=true');
+    await p7i.setInputFiles('#inscfile', [fx7('inscripcio-inef.xlsx')]);
+    await p7i.waitForSelector('#dlg >> text=inscripcio-inef.xlsx');
+    await p7i.click('#dlg button[data-act=inscDo]');
     const t = await toast7(/Fulls d’inscripció importats/);
     assert.ok(t.includes('És una competició que ja ha passat: les fitxes ja tenen l’equip que diu el full, o «només individual», per a la jornada següent.'), t);
     let d = await d7();
@@ -1552,10 +1552,10 @@ try {
     assert.ok(team && team.name === 'INEF Lleida' && team.form === true && team.memberIds.length === 3, JSON.stringify(team));
     assert.ok(d.gymnasts.find(g => g.name === 'Paula').noTeam, 'la de la fulla individual, «només individual»');
     // «Jornada següent»
-    await p7.goto(url + '#/competicions');
-    await p7.click('button[data-act=dupComp][data-id=fp]'); await p7.waitForSelector('#dlg[open] form[data-form=comp]');
-    await p7.fill('#dlg input[name=name]', 'Fase següent'); await p7.fill('#dlg input[name=date]', day(15));
-    await p7.click('#dlg button.primary'); await p7.waitForFunction(() => !$('#dlg').open);
+    await p7i.goto(url + '#/competicions');
+    await p7i.click('button[data-act=dupComp][data-id=fp]'); await p7i.waitForSelector('#dlg[open] form[data-form=comp]');
+    await p7i.fill('#dlg input[name=name]', 'Fase següent'); await p7i.fill('#dlg input[name=date]', day(15));
+    await p7i.click('#dlg button.primary'); await p7i.waitForFunction(() => !$('#dlg').open);
     d = await d7();
     const nc = d.competitions.find(c => c.name === 'Fase següent'), nt = nc.teams.filter(x => x.clubId === club.id);
     assert.deepEqual(nt.map(x => [x.name, nc.entries.filter(e => e.teamId === x.id).length]), [['INEF Lleida', 3]], 'l’equip del full');
@@ -1563,20 +1563,20 @@ try {
   });
 
   await step('canviar el nom d’una entitat a Entitats proposa canviar també el dels seus equips que es diuen com ella', async () => {
-    await p7.goto(url + '#/entitats');
-    const id = await p7.evaluate(() => db.clubs.find(c => c.name === 'INEF Lleida').id);
+    await p7i.goto(url + '#/entitats');
+    const id = await p7i.evaluate(() => db.clubs.find(c => c.name === 'INEF Lleida').id);
     const teamNames = async () => { const d = await d7(); return [...new Set([d.teams, ...d.competitions.map(c => c.teams)].flat().filter(x => x.clubId === id).map(x => x.name))]; };
     // (només les majúscules: també es proposa; aquí es diu que no)
-    await p7.fill(`input[data-chg=clubName][data-id="${id}"]`, 'Inef Lleida'); await p7.press(`input[data-chg=clubName][data-id="${id}"]`, 'Tab');
-    await p7.waitForSelector('#confirm[open]');
-    assert.ok((await p7.locator('#confirm').textContent()).includes('«INEF Lleida» → «Inef Lleida»'));
-    await p7.click('#confirm button[value=no]');
-    await p7.waitForTimeout(150);
+    await p7i.fill(`input[data-chg=clubName][data-id="${id}"]`, 'Inef Lleida'); await p7i.press(`input[data-chg=clubName][data-id="${id}"]`, 'Tab');
+    await p7i.waitForSelector('#confirm[open]');
+    assert.ok((await p7i.locator('#confirm').textContent()).includes('«INEF Lleida» → «Inef Lleida»'));
+    await p7i.click('#confirm button[value=no]');
+    await p7i.waitForTimeout(150);
     assert.deepEqual(await teamNames(), ['INEF Lleida'], 'si es diu que no, els equips no canvien');
-    await p7.fill(`input[data-chg=clubName][data-id="${id}"]`, 'INEF Lleida Centre'); await p7.press(`input[data-chg=clubName][data-id="${id}"]`, 'Tab');
-    await p7.waitForSelector('#confirm[open]');
-    assert.ok((await p7.locator('#confirm').textContent()).includes('«INEF Lleida» → «INEF Lleida Centre»'));
-    await p7.click('#confirm button[value=ok]');
+    await p7i.fill(`input[data-chg=clubName][data-id="${id}"]`, 'INEF Lleida Centre'); await p7i.press(`input[data-chg=clubName][data-id="${id}"]`, 'Tab');
+    await p7i.waitForSelector('#confirm[open]');
+    assert.ok((await p7i.locator('#confirm').textContent()).includes('«INEF Lleida» → «INEF Lleida Centre»'));
+    await p7i.click('#confirm button[value=ok]');
     await toast7(/nom d’equip canviat/);
     assert.deepEqual(await teamNames(), ['INEF Lleida Centre'], 'a la llista d’equips i a totes les competicions');
   });
@@ -1769,6 +1769,177 @@ try {
     assert.ok(club && d.gymnasts.filter(g => g.clubId === club.id).length === 4, JSON.stringify(d.clubs));
     assert.equal(d.teams.find(x => x.clubId === club.id).name, 'INEF Lleida (Universitat)');
     await T.ctx.close();
+  });
+
+  // ─── setena revisió (pantalles i fulls): on va la nota a l'entrada ràpida de la taula, el total al mòbil, el grup al
+  // mòbil, l'equip a la llista de gimnastes, les categories al mòbil i els fulls impresos amb notes que falten
+  // (dades de la 3a fase del 18/04/2026: una de cada tres gimnastes encara sense notes, o totes amb notes)
+  const r7 = (partial = true) => {
+    const d = fixture(), c = d.competitions[0]; c.season = '2025-2026';
+    c.entries.forEach((e, k) => { if (partial && k % 3 === 2) return; const v = 8 + (k % 5) * 0.55;
+      e.scores = e.gender === 'M' ? { salt: [{ v }], terra: [{ v: 9.1 }], mini: [{ v: 8.5 }, { v: 9 }] } : { salt: [{ v }], barra: [{ v: 9 + (k % 3) * 0.25 }], terra: [{ v: 10.45 }] }; });
+    return d;
+  };
+  const open7 = async (opts, d, hash) => {
+    const cx = await browser.newContext(Object.assign({ locale: 'ca-ES' }, opts));
+    const pg = await cx.newPage();
+    pg.on('pageerror', e => errors.push('pageerror (7a revisió): ' + e.message));
+    await pg.goto(url);
+    await pg.evaluate(([r, hash]) => { db = migrate(JSON.parse(r)); ui.qe = false; commit(); go(hash); }, [JSON.stringify(d), hash]);
+    await pg.waitForTimeout(250);
+    return { cx, pg };
+  };
+  const phoneVp = w => ({ viewport: { width: w, height: 760 }, isMobile: true, hasTouch: true });
+  // (es veu sencer dins la pantalla, sota la barra de dalt)
+  const onScreen = (pg, sel) => pg.evaluate(sel => { const el = document.querySelector(sel); if (!el) return 'no hi és'; const r = el.getBoundingClientRect(), top = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top')) || 0;
+    return r.top >= top - 1 && r.bottom <= innerHeight + 1 && r.left >= 0 && r.right <= innerWidth ? true : `${Math.round(r.top)}…${Math.round(r.bottom)} (dalt ${top}, alt ${innerHeight})`; }, sel);
+
+  await step('setena revisió: «Entrada ràpida» a la taula (1366×768, 1280×800 i tauleta girada 1024×768): el teclat diu a quin aparell va la nota, i a sobre es veuen el grup i les pastilles dels aparells', async () => {
+    for (const [w, hh, touch] of [[1366, 768, false], [1280, 800, false], [1024, 768, true]]) {
+      const { cx, pg } = await open7({ viewport: { width: w, height: hh }, isMobile: touch, hasTouch: touch }, r7(), '#/competicio/c418/notes');
+      try {
+        await pg.click('button[data-act=toggleQe]'); await pg.waitForSelector('#qe'); await pg.waitForTimeout(300);
+        const a0 = await pg.evaluate(() => { const x = qeCtx(); return { name: x.a.name, n: x.list.filter(e => e.status !== 'np').length }; });
+        assert.match((await pg.textContent('#qe .qe-app')).replace(/\s+/g, ' ').trim(), new RegExp(`^${a0.name}\\s*\\d+/${a0.n}$`), `${w}: la barra de l’aparell`);
+        for (const sel of ['#main .pills.seg .pill.on', '#main .pills.hide-ph .pill.on', '#qe .qe-app', '#qe .qe-who', '#qesave']) assert.equal(await onScreen(pg, sel), true, `${w}×${hh}: ${sel}`);
+        // es canvia a la barra: la barra del teclat ho diu, i la nota hi va
+        await pg.click('#main .pills.seg button[data-act=pickApp][data-a=barra]'); await pg.waitForTimeout(200);
+        assert.ok((await pg.textContent('#qe .qe-app')).includes('Barra'));
+        assert.equal(await onScreen(pg, '#qesave'), true, `${w}: «Desa» després de canviar d’aparell`);
+        const id = await pg.evaluate(() => qe.entryId);
+        for (const k of ['9', ',', '5']) await pg.click(`#qe button[data-act=qeKey][data-k="${k}"]`);
+        await pg.click('#qesave'); await pg.waitForTimeout(200);
+        assert.deepEqual(await pg.evaluate(id => Object.entries(curComp().entries.find(e => e.id === id).scores).filter(([, l]) => l[0] && l[0].v === 9.5).map(([k]) => k), id), ['barra']);
+      } finally { await cx.close(); }
+    }
+    // al mòbil, la barra de l'aparell també hi és (a dalt del teclat, que es veu sencer fins a «Desa»)
+    const { cx, pg } = await open7(phoneVp(360), r7(), '#/competicio/c418/notes');
+    try {
+      await pg.click('button[data-act=toggleQe]'); await pg.waitForSelector('#qe'); await pg.waitForTimeout(300);
+      assert.ok((await pg.textContent('#qe .qe-app')).includes('Salt'));
+      for (const sel of ['#qe .qe-app', '#qesave']) assert.equal(await onScreen(pg, sel), true, `360: ${sel}`);
+    } finally { await cx.close(); }
+  });
+
+  await step('setena revisió: al mòbil (360, 390 i 412 px), a Classificacions i al Rànquing el total es veu sencer sense fer lliscar la taula (1–6 aparells, 3 i 4 jornades); amb 3 aparells o 3 jornades, la taula hi cap sencera', async () => {
+    const APPS = [['salt', 'Salt'], ['barra', 'Barra'], ['terra', 'Terra'], ['mini', 'Minitramp'], ['paral', 'Paral·leles'], ['anelles', 'Anelles']];
+    const totals = pg => pg.evaluate(() => $$('#main .card .tbl-wrap').filter(w => w.offsetParent).map(w => { const th = w.querySelector('thead th.total'), a = w.getBoundingClientRect(), b = th.getBoundingClientRect();
+      return { seen: b.left >= a.left - 1 && b.right <= a.right + 1, fits: w.scrollWidth <= w.clientWidth + 1 }; }));
+    for (const w of [360, 390, 412]) {
+      for (const k of [1, 3, 6]) {
+        const d = r7(false), c = d.competitions[0];
+        c.apparatus = APPS.slice(0, k).map(([id, name]) => ({ id, name, icon: id === 'anelles' ? 'altre' : id, modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' }));
+        c.entries.forEach((e, i) => { e.scores = {}; for (const [id] of APPS.slice(0, k)) e.scores[id] = [{ v: 10 + (i % 7) * 0.35 }]; });
+        const { cx, pg } = await open7(phoneVp(w), d, '#/competicio/c418/classificacions');
+        try {
+          for (const t of ['general', 'teams', 'apps']) {
+            await pg.click(`button[data-act=pickClsType][data-t=${t}]`); await pg.waitForTimeout(150);
+            const r = await totals(pg);
+            assert.ok(r.length && r.every(x => x.seen), `${w} px, ${k} aparells, ${t}: ${JSON.stringify(r)}`);
+            if (k <= 3 && t === 'general') assert.ok(r.every(x => x.fits), `${w} px, ${k} aparells: la taula hi cap`);
+          }
+          assert.equal(await pg.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0, 'la pàgina no llisca de costat');
+        } finally { await cx.close(); }
+      }
+      // rànquing: 3 i 4 jornades del mateix curs
+      for (const n of [3, 4]) {
+        const d = r7(false), c0 = d.competitions[0];
+        d.competitions = Array.from({ length: n }, (_, j) => Object.assign(JSON.parse(JSON.stringify(c0)), { id: 'j' + j, name: `${j + 1}a fase`, date: `2026-0${j + 1}-15`, season: '2025-2026' }));
+        const { cx, pg } = await open7(phoneVp(w), d, '#/ranquing');
+        try {
+          for (const t of ['ind', 'teams']) {
+            await pg.evaluate(t => { ui.rkSeason = '2025-2026'; ui.rkType = t; ui.rkGroup = 'Aleví||F||A'; render(); }, t); await pg.waitForTimeout(150);
+            const r = await totals(pg);
+            assert.ok(r.length && r.every(x => x.seen), `rànquing ${w} px, ${n} jornades, ${t}: ${JSON.stringify(r)}`);
+            if (n === 3) assert.ok(r.every(x => x.fits), `rànquing ${w} px, 3 jornades, ${t}: la taula hi cap`);
+          }
+        } finally { await cx.close(); }
+      }
+    }
+  });
+
+  await step('setena revisió: mòbil, el grup triat es llegeix sencer («Prebenjamí fem. A») amb quantes notes hi falten a sota, també quan arriba una nota (320–412 px)', async () => {
+    for (const w of [320, 360, 390, 412]) {
+      const { cx, pg } = await open7(phoneVp(w), r7(), '#/competicio/c418/notes');
+      try {
+        const g = await pg.evaluate(() => ({ key: ui.group, miss: Engine.missingScores(curComp(), groupsOf(curComp()).find(x => x.key === ui.group)).total }));
+        const pick = () => pg.evaluate(() => { const p = $('#main .gsel-pick'), b = p.querySelector('b'), s = p.querySelector('small'), cut = el => !!el && el.scrollWidth > el.clientWidth + 1;
+          const r = p.getBoundingClientRect(); return { label: b.textContent, sub: s ? s.textContent : '', cut: cut(b) || cut(s), inside: r.left >= 0 && r.right <= innerWidth }; });
+        const p0 = await pick();
+        assert.ok(g.miss > 0);
+        assert.deepEqual(p0, { label: 'Prebenjamí fem. A', sub: `${await pg.evaluate(k => groupsOf(curComp()).find(x => x.key === k).entries.length, g.key)} · falten ${g.miss}`, cut: false, inside: true }, `${w} px`);
+        // una nota nova: «falten» es posa al dia sense tornar a pintar
+        await pg.evaluate(() => { const i = $$('#scoregrid input.sc:not(:disabled)').find(x => !x.value); i.focus(); });
+        await pg.keyboard.type('8,5'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(200);
+        assert.equal((await pick()).sub.endsWith(`falten ${g.miss - 1}`), true, JSON.stringify(await pick()));
+        await pg.evaluate(() => go('#/competicio/c418/classificacions')); await pg.waitForTimeout(200);
+        const p1 = await pick();
+        assert.ok(!p1.cut && p1.inside && p1.label === 'Prebenjamí fem. A' && p1.sub === `falten ${g.miss - 1}`, JSON.stringify(p1));
+        // la llista que s'obre diu els noms sencers
+        assert.ok((await pg.locator('#main .gsel select option:checked').textContent()).startsWith('Prebenjamí femení · Nivell A'));
+      } finally { await cx.close(); }
+    }
+  });
+
+  await step('setena revisió: mòbil de 360 px, Configuració → Categories: el nom, els anys i ↑ ↓ ✕ de cada categoria es veuen sense fer lliscar la taula; i als aparells, «Compta (general i equips)» es llegeix sencer', async () => {
+    const { cx, pg } = await open7(phoneVp(360), r7(), '#/configuracio');
+    try {
+      const r = await pg.evaluate(() => { const t = $('#main table.cats'), w = t.closest('.tbl-wrap'), b = w.getBoundingClientRect();
+        const out = [...t.querySelectorAll('input, button')].filter(x => x.offsetParent).filter(x => { const r = x.getBoundingClientRect(); return r.left < b.left - 1 || r.right > b.right + 1; }).map(x => x.outerHTML.slice(0, 60));
+        return { scroll: w.scrollWidth - w.clientWidth, out, buttons: t.querySelectorAll('button[data-act=listDel]').length, labels: [...t.querySelectorAll('.c-from .ph-lbl')].filter(x => x.offsetParent).length };
+      });
+      assert.deepEqual([r.scroll, r.out], [0, []], JSON.stringify(r));
+      assert.ok(r.buttons >= 7 && r.labels >= 7, JSON.stringify(r));
+      const cut = await pg.evaluate(() => { const cv = document.createElement('canvas').getContext('2d');
+        return $$('table.apps select').filter(s => s.offsetParent).map(s => { const st = getComputedStyle(s); cv.font = `${st.fontWeight} ${st.fontSize} ${st.fontFamily}`; const t = s.options[s.selectedIndex].text;
+          return { t, need: Math.round(cv.measureText(t).width + parseFloat(st.paddingLeft) + parseFloat(st.paddingRight) + 18), has: s.clientWidth }; }).filter(x => x.need > x.has + 2); });
+      assert.deepEqual(cut, []);
+    } finally { await cx.close(); }
+  });
+
+  await step('setena revisió: llista de gimnastes a l’ordinador (1280, 1366 i 1920 px): el desplegable de l’equip es llegeix sencer («Automàtic (per entitat)», «… — 3/6»)', async () => {
+    for (const w of [1280, 1366, 1920]) {
+      const { cx, pg } = await open7({ viewport: { width: w, height: 900 } }, r7(), '#/gimnastes');
+      try {
+        const cut = await pg.evaluate(() => { const cv = document.createElement('canvas').getContext('2d');
+          return $$('#gymtable select.teamsel').filter(s => s.offsetParent).map(s => { const st = getComputedStyle(s); cv.font = `${st.fontWeight} ${st.fontSize} ${st.fontFamily}`; const t = s.options[s.selectedIndex].text;
+            return { t, need: Math.round(cv.measureText(t).width + parseFloat(st.paddingLeft) + parseFloat(st.paddingRight) + 18), has: s.clientWidth }; }).filter(x => x.need > x.has + 2); });
+        assert.deepEqual(cut, [], `${w} px`);
+        assert.ok(await pg.locator('#gymtable select.teamsel option:checked', { hasText: 'Automàtic (per entitat)' }).count());
+        assert.equal(await pg.evaluate(() => { const w = $('#gymtable .tbl-wrap'); return w.scrollWidth - w.clientWidth; }), 0, `${w} px: la taula no llisca`);
+      } finally { await cx.close(); }
+    }
+  });
+
+  await step('setena revisió: classificacions i podi impresos amb notes que falten: cada full diu «PROVISIONAL · falten N notes» (també a la capçalera que es repeteix) i al podi surten marcades les gimnastes i els equips a qui falten notes; si no en falta cap, res', async () => {
+    const { cx, pg } = await open7({ viewport: { width: 1366, height: 900 } }, r7(), '#/competicio/c418/classificacions');
+    try {
+      await pg.evaluate(() => { window.print = () => {}; });
+      const sheets = () => pg.evaluate(() => { const r = $$('#print .sheet').map(s => ({ text: s.innerText.replace(/\s+/g, ' '), rep: $$('tr.rep th', s).map(th => th.innerText.replace(/\s+/g, ' ')), marks: $$('.provm', s).length }));
+        document.body.classList.remove('printing'); $('#print').innerHTML = ''; return r; });
+      const key = 'Prebenjamí||F||A';
+      const want = await pg.evaluate(k => { const c = curComp(), g = groupsOf(c).find(x => x.key === k), m = Engine.missingScores(c, g);
+        const mem = Engine.teamRanking(c, g).rows.filter(r => !r.undersize).flatMap(r => r.members), miss = (l, apps) => l.reduce((n, e) => n + (e.status === 'np' ? 0 : apps.filter(a => !Engine.appComplete(e, a, c)).length), 0);
+        return { all: m.total, salt: m.perApp.salt, teams: miss(mem, Engine.teamApps(c, g.gender)), open: Engine.individualRanking(c, g).rows.filter(r => r.rank && r.rank <= 3 && !r.complete).length + Engine.teamRanking(c, g).rows.filter(r => r.rank && r.rank <= 3 && miss(r.members, Engine.teamApps(c, g.gender))).length }; }, key);
+      assert.ok(want.all > 0 && want.salt > 0 && want.teams > 0, JSON.stringify(want));
+      await pg.evaluate(k => doPrint(curComp(), ['podium', 'general', 'apps', 'teams'], [k]), key); await pg.waitForTimeout(100);
+      const s1 = await sheets();
+      const nota = n => `PROVISIONAL · falten ${n} ${n === 1 ? 'nota' : 'notes'}`;
+      assert.equal(s1.length, 6, 'podi, general, 3 aparells i equips');
+      assert.ok(s1[0].text.includes(nota(want.all)) && s1[0].marks === want.open && s1[0].marks > 0, JSON.stringify(s1[0]).slice(0, 300));
+      assert.ok(s1[1].rep.every(x => x.includes('Classificació individual') && x.includes(nota(want.all))), JSON.stringify(s1[1].rep));
+      assert.ok(s1[2].rep.every(x => x.includes('Salt') && x.includes(nota(want.salt))), JSON.stringify(s1[2].rep));
+      assert.ok(s1[5].rep.every(x => x.includes('per equips') && x.includes(nota(want.teams))), JSON.stringify(s1[5].rep));
+      // al podi de la pantalla, també marcades
+      await pg.click('button[data-act=pickClsType][data-t=podium]'); await pg.waitForTimeout(150);
+      assert.equal(await pg.locator('#main .card:has(h3:text-is("Prebenjamí femení · Nivell A")) .podium .badge.warn:text-is("falten notes")').count(), want.open);
+      // totes les notes: cap full diu res
+      await pg.evaluate(r => { db = migrate(JSON.parse(r)); commit(); render(); }, JSON.stringify(r7(false)));
+      await pg.evaluate(k => doPrint(curComp(), ['podium', 'general', 'apps', 'teams'], [k]), key); await pg.waitForTimeout(100);
+      const s2 = await sheets();
+      assert.equal(s2.length, 6);
+      assert.ok(s2.every(x => !/PROVISIONAL|falten/.test(x.text) && !x.marks), JSON.stringify(s2.map(x => x.text.slice(0, 120))));
+    } finally { await cx.close(); }
   });
 } finally {
   await browser.close();

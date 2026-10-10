@@ -1018,3 +1018,59 @@ func TestTutorHostsReported(t *testing.T) {
 		t.Fatalf("dues adreces que es fan servir alhora: %v", got)
 	}
 }
+
+// setena revisió: quan la taula bloqueja les notes, el mòbil de la tutora ho ha de poder dir (el codi és bo): /api/tutor
+// respon 403 amb code "locked" i /api/score 401 amb code "locked" (la nota es queda al mòbil). Quan la taula la desbloqueja,
+// tot torna a anar sol. Un codi que no és de cap competició, o d'una sense tutores, continua sent «Codi incorrecte»
+func TestTutorLockedCompetition(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	db := parse(t, sample)
+	obj(arr(db["competitions"])[0])["locked"] = true
+	b, _ := json.Marshal(db)
+	_ = os.WriteFile(path, b, 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	read := func(r *http.Response, err error) (int, string, string) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var j struct{ Error, Code string }
+		_ = json.NewDecoder(r.Body).Decode(&j)
+		return r.StatusCode, j.Code, j.Error
+	}
+	get := func(pin string) (int, string, string) { return read(http.Get(srv.URL + "/api/tutor?pin=" + pin)) }
+	post := func() (int, string, string) {
+		b, _ := json.Marshal(map[string]any{"pin": "1234", "compId": "k1", "entryId": "e1", "appId": "barra", "i": 0, "value": 8.25})
+		return read(http.Post(srv.URL+"/api/score", "application/json", bytes.NewReader(b)))
+	}
+	if st, code, msg := get("1234"); st != 403 || code != "locked" || msg != "La taula ha bloquejat les notes d’aquesta competició: ja no se’n poden entrar." {
+		t.Fatalf("bloquejada: %d %q %q", st, code, msg)
+	}
+	if st, code, msg := get("9999"); st != 403 || code != "" || !strings.HasPrefix(msg, "Codi incorrecte") {
+		t.Fatalf("un altre codi: %d %q %q", st, code, msg)
+	}
+	if st, code, msg := post(); st != 401 || code != "locked" || !strings.Contains(msg, "bloquejat") {
+		t.Fatalf("nota amb la competició bloquejada: %d %q %q", st, code, msg)
+	}
+	set := func(k string, v bool) { s.mu.Lock(); obj(arr(s.db["competitions"])[0])[k] = v; s.mu.Unlock() }
+	// sense tutores: el codi ja no val, encara que estigui bloquejada
+	set("tutorsOn", false)
+	if st, code, _ := get("1234"); st != 403 || code != "" {
+		t.Fatalf("sense tutores: %d %q", st, code)
+	}
+	set("tutorsOn", true)
+	// la taula la desbloqueja: es torna a poder entrar i la nota hi va
+	set("locked", false)
+	if st, _, msg := get("1234"); st != 200 {
+		t.Fatalf("desbloquejada: %d %q", st, msg)
+	}
+	if st, _, msg := post(); st != 200 {
+		t.Fatalf("nota amb la competició desbloquejada: %d %q", st, msg)
+	}
+}

@@ -93,20 +93,27 @@ internet.
    (per exemple 835 amb el màxim de 20) no es desa: proposa «Volies dir 8,35?». **NP** escrit a la
    casella marca la gimnasta com a no presentada. *Dorsal o nom…* hi va directament. Al mòbil o la
    tauleta, **Entrada ràpida**: una gimnasta cada vegada amb un teclat gran, i passa sola a la
-   següent sense nota. Tot es desa sol. Amb les rotacions fetes, si tries un aparell les gimnastes surten en
-   l'ordre del full de jutge (el de pas per aquell aparell, amb una fila a sobre de cada rotació): el full es copia
-   de dalt a baix amb Intro. Amb «Totes les notes», per dorsal. Un canvi d'equip el mateix dia (des de la graella o
-   *Inscripcions*) només val per a aquella competició; el botó «També a la fitxa» el fa fix.
+   següent sense nota. A dalt del teclat hi diu sempre l'aparell on va la nota (i quantes en porta),
+   també a l'ordinador; en un portàtil o una tauleta girada, el teclat surt al costat de la gimnasta
+   i a sobre es veuen els grups i els aparells. Tot es desa sol. Amb les rotacions fetes, si tries un aparell
+   les gimnastes surten en l'ordre del full de jutge (el de pas per aquell aparell, amb una fila a sobre de cada
+   rotació): el full es copia de dalt a baix amb Intro. Amb «Totes les notes», per dorsal. Un canvi d'equip el
+   mateix dia (des de la graella o *Inscripcions*) només val per a aquella competició; el botó «També a la fitxa»
+   el fa fix.
 5. **Classificacions**: surten soles (general individual, per aparells, per equips i **podi**
    per a les medalles, amb el desplegable de les gimnastes de cada equip). *Imprimeix / PDF* i
    *Exporta a Excel* treuen els fulls (classificacions, podi, acta de notes, llistat d'inscripcions i
    fulls de jutge en blanc; amb 2 salts, cada salt té la seva columna, «1r salt» i «2n salt», i la
    «Final»; amb les rotacions fetes, cada full de jutge té les gimnastes en l'ordre en què passen per
    aquell aparell, en un bloc per rotació: «2a subdivisió · rotació 1 · Grup 2»). Si encara falten notes, s'avisa abans
-   d'imprimir.
-6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips. Si un equip
-   canvia de gimnastes d'una jornada a l'altra, surt l'avís (qui entra i qui en surt) al rànquing i a la
-   classificació per equips de la competició, i l'equip continua sumant igual. Un equip és el mateix
+   d'imprimir, i cada full de
+   classificació diu a dalt **«PROVISIONAL · falten N notes»** (també a cada pàgina); al podi, les
+   gimnastes i els equips a qui encara falten notes hi surten marcats. Al mòbil, el total de cada
+   classificació es veu sempre, a la dreta (les columnes que no hi caben es miren fent lliscar la taula).
+6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips (al mòbil, el
+   total també es veu sempre). Si un equip canvia de gimnastes d'una jornada a l'altra, surt l'avís
+   (qui entra i qui en surt) al rànquing i a la classificació per equips de la competició, i l'equip
+   continua sumant igual. Un equip és el mateix
    encara que li canviïs el nom; un equip que s'esborra i després es torna a fer igual (mateix nom i
    entitat), també. Dos equips que han competit alguna vegada a la mateixa jornada, o que el dia d'una
    jornada existien tots dos (p. ex. un de reanomenat i un de nou amb el nom d'abans), no s'ajunten mai,
@@ -262,10 +269,12 @@ Amb el programa **NotesGim.exe** (un sol fitxer, no cal instal·lar res; porta l
 4. A l'ordinador les notes surten al moment amb fons groc (per revisar) i les classificacions
    s'actualitzen soles. Les podeu canviar quan vulgueu; una nota que la taula ja ha posat o revisat,
    la tutora ja no la pot canviar. Si un mòbil perd la connexió, les notes es guarden al mòbil i
-   s'envien soles quan torna (surt un avís de no tancar la pàgina).
+   s'envien soles quan torna (a dalt surt «⚠ Sense connexió · 1 nota al mòbil · No tanquis la pàgina»).
 
-Quan la competició es tanca, les tutores ja no poden entrar notes. Sense el programa servidor,
-l'app funciona igual que sempre (només a l'ordinador).
+Quan la competició es tanca («🔒 Bloqueja les notes»), les tutores ja no poden entrar notes: el mòbil
+diu que la taula les ha bloquejat i, si la taula les torna a obrir, hi torna a entrar sol (amb les
+notes que s'hi haguessin quedat). Sense el programa servidor, l'app funciona igual que sempre (només
+a l'ordinador).
 
 On es descarrega: a la pàgina *Releases* del repositori (etiqueta `notesgim-servidor`), que es
 torna a generar sola cada cop que hi ha canvis a `main`. També es pot compilar amb
@@ -299,7 +308,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
   una entitat amb gimnastes que es diuen com les d'una altra).
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
-  següent», la mida de pantalla de les tauletes i una temporada sencera (la mateixa gimnasta en una altra
+  següent», la mida de pantalla de les tauletes, el que es veu al portàtil i al mòbil (entrada ràpida,
+  totals, grup, categories) i als fulls amb notes que falten, i una temporada sencera (la mateixa gimnasta en una altra
   entitat o amb un altre any, dues gimnastes amb el mateix nom a dues entitats, fusionar entitats, sigles, un equip ple
   i una competició passada entrada després).
 - `tests/e2e-pwa.mjs` — l'app instal·lable com a GitHub Pages (https): sense internet, posar-se al

@@ -796,6 +796,21 @@ func tutorComps(db map[string]any, pin string) []map[string]any {
 	return out
 }
 
+// la taula ha bloquejat les notes d'una competició d'aquest codi (compID "": de qualsevol): el codi és bo, i les tutores
+// ho han de saber (no és un «codi incorrecte»); el mòbil hi torna a entrar sol quan la taula la desbloqueja
+func tutorLocked(db map[string]any, pin, compID string) bool {
+	if strings.TrimSpace(pin) == "" {
+		return false
+	}
+	for _, c := range arr(db["competitions"]) {
+		cm := obj(c)
+		if cm != nil && truthy(cm["tutorsOn"]) && truthy(cm["locked"]) && str(cm["tutorPin"]) == strings.TrimSpace(pin) && (compID == "" || str(cm["id"]) == compID) {
+			return true
+		}
+	}
+	return false
+}
+
 // el que veu una tutora: només les competicions del seu codi i el mínim per entrar notes
 func tutorData(db map[string]any, pin string) []any {
 	gyms := map[string]map[string]any{}
@@ -920,6 +935,10 @@ var errLocked = errors.New("Aquesta nota ja l’ha posada o revisada la taula. S
 // es guarda les notes per enviar-les quan torni a entrar
 var errAuth = errors.New("El codi ja no val: potser l’han canviat o han tancat la competició. Demana el codi a la taula.")
 
+// la taula ha bloquejat les notes de la competició (el codi és bo): a /api/tutor, resposta 403; a /api/score, 401, com quan
+// el codi ja no val (la nota es queda al mòbil i s'envia si la taula la desbloqueja). Totes dues amb code "locked"
+var errCompLocked = errors.New("La taula ha bloquejat les notes d’aquesta competició: ja no se’n poden entrar.")
+
 // la taula no accepta la nota (resposta 403): el mòbil diu quina nota i per què (amb el codi, en femení o en masculí)
 type refusal struct{ code, msg string }
 
@@ -949,6 +968,9 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 		}
 	}
 	if comp == nil {
+		if tutorLocked(db, r.Pin, r.CompID) {
+			return errCompLocked
+		}
 		return errAuth
 	}
 	entry := findByID(arr(comp["entries"]), r.EntryID)
@@ -1498,7 +1520,12 @@ func (s *store) routes(port int) http.Handler {
 		if len(data) > 0 {
 			hosts = s.sawHostLocked(r)
 		}
+		locked := len(data) == 0 && tutorLocked(s.db, pin, "")
 		s.mu.Unlock()
+		if locked {
+			writeJSON(w, 403, map[string]any{"error": errCompLocked.Error(), "code": "locked"})
+			return
+		}
 		if len(data) == 0 {
 			s.slowFail()
 			fail(w, 403, "Codi incorrecte, o no hi ha cap competició oberta a les tutores.")
@@ -1543,6 +1570,11 @@ func (s *store) routes(port int) http.Handler {
 			s.mu.Unlock()
 			s.slowFail()
 			fail(w, 401, err.Error())
+			return
+		}
+		if errors.Is(err, errCompLocked) {
+			s.mu.Unlock()
+			writeJSON(w, 401, map[string]any{"error": err.Error(), "code": "locked"})
 			return
 		}
 		defer s.mu.Unlock()

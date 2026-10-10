@@ -538,3 +538,95 @@ test('un bloc de categories que van juntes partit per nivells: cada part amb els
   // una sola categoria, com sempre: «Benjamí A» i «Benjamí B»
   assert.deepEqual(plain(E.rotPlan(fixture(), settings, RULES(), { clubName }).notes.find(x => x.t === 'split').parts), ['Benjamí A', 'Benjamí B']);
 });
+
+// ─── setena revisió: l'ordre en què passen per cada aparell (el del full de rotacions), el que s'ha imprès i les que canvien de subdivisió
+const CTX = { clubName, name: e => e.id };
+test('ordre de pas a cada aparell: rotació 1 el grup que hi comença, després els altres; cada gimnasta un sol cop i cada grup com al full', () => {
+  const c = fixture(); make(c);
+  const v = E.rotView(c, settings, CTX);
+  for (const sv of v.subs) for (const a of sv.apps.concat(sv.final)) {
+    const seq = E.rotAppSeq(sv, a.id, settings, CTX), all = seq.flatMap(b => b.entries.map(e => e.id));
+    // tothom de la subdivisió, un sol cop
+    assert.deepEqual(plain([...all].sort()), plain(sv.groups.flatMap(G => G.entries.map(e => e.id)).sort()), `${sv.idx}a · ${a.id}`);
+    if (sv.final.includes(a)) { assert.deepEqual(plain(seq.map(b => [b.r, b.G.g])), plain(sv.groups.map(G => [null, G.g]))); continue; }
+    const s = sv.stations.indexOf(a);
+    // el Grup g comença a l'aparell g i a cada rotació passa al següent
+    assert.deepEqual(plain(seq.map(b => b.G.g)), [...Array(sv.P).keys()].map(r => (s - r + sv.P) % sv.P).filter(g => g < sv.k), `${sv.idx}a · ${a.id}`);
+    for (const b of seq) {
+      // cada grup: per categoria i nivell, entitat, primer els equips (per nom) i després les individuals; i per dorsal
+      const us = E.rotGroupOrder(b.G, settings, CTX);
+      assert.deepEqual(plain(b.entries.map(e => e.id)), plain(us.flatMap(x => x.entries.map(e => e.id))));
+      for (let i = 1; i < us.length; i++) {
+        const x = us[i - 1].u, y = us[i].u, k = E.rotKeyCmp(settings)(x.key, y.key);
+        assert.ok(k < 0 || (k === 0 && (clubName(x.clubId) < clubName(y.clubId) || (x.clubId === y.clubId && (!!x.team >= !!y.team)))), `${x.id} abans de ${y.id}`);
+      }
+      for (const x of us) assert.deepEqual(plain(x.entries.map(e => e.bib)), plain([...x.entries.map(e => e.bib)].sort((p, q) => p - q)));
+    }
+  }
+  // Benjamí A (2a), barra: rotació 1 = Grup 2, i dins del grup, el primer equip de C.G. Lleida sencer abans del segon
+  const sv = v.subs.find(x => x.keys.length === 1 && x.keys[0] === K('Benjamí', 'A')), seq = E.rotAppSeq(sv, 'barra', settings, CTX);
+  assert.equal(seq[0].G.g, 1);
+  const runs = seq.flatMap(b => b.entries).map(e => e.teamId).filter((t, i, l) => i === 0 || l[i - 1] !== t);
+  assert.equal(runs.length, new Set(runs).size, 'cada equip passa sencer, sense barrejar-se amb un altre');
+  assert.ok(runs.length >= 4);
+  // un dorsal canviat dins d'un equip canvia l'ordre del full i del mòbil
+  const u = E.rotGroupOrder(seq[0].G, settings, CTX).find(x => x.entries.length > 1), [e1, e2] = u.entries;
+  [e1.bib, e2.bib] = [e2.bib, e1.bib];
+  assert.deepEqual(plain(E.rotGroupOrder(seq[0].G, settings, CTX).find(x => x.u === u.u).entries.slice(0, 2).map(e => e.id)), [e2.id, e1.id]);
+});
+
+test('el que s’ha imprès: els grups, l’ordre dels fulls i les hores de l’horari (una NP no fa tornar a imprimir les rotacions, però sí l’horari si en canvia les hores)', () => {
+  const c = fixture(); make(c);
+  let v = E.rotView(c, settings, CTX);
+  const pr = () => E.rotView(c, settings, CTX).issues.find(i => i.t === 'printed');
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: '2026-04-18T06:00:00.000Z', hor: { at: '2026-04-18T06:05:00.000Z', rows: E.rotHorRows(E.rotSchedule(v, c.rot)) } };
+  assert.equal(pr(), undefined);
+  // dues NP al grup més llarg de l'Aleví: les rotacions no han canviat, però l'horari sí (de la subdivisió de l'Aleví endavant)
+  const sv = v.subs.find(x => x.keys.includes(K('Aleví', 'B'))), G = sv.groups.reduce((a, x) => (x.n > a.n ? x : a));
+  G.entries.slice(0, 2).forEach(e => { e.status = 'np'; });
+  let p = pr();
+  assert.ok(p && !p.rot && !p.ord && p.hor.length, JSON.stringify(p && p.hor));
+  const comp = p.hor.find(d => d.k === 'comp');
+  assert.equal(comp.i, sv.idx);
+  assert.ok(comp.now.t < comp.was.t, 'la subdivisió s’acaba abans');
+  assert.ok(p.hor.every(d => d.i >= sv.idx), 'les d’abans no canvien');
+  G.entries.slice(0, 2).forEach(e => { e.status = ''; });
+  assert.equal(pr(), undefined);
+  // un dorsal canviat dins d'un equip (p. ex. després de renumerar): ha canviat l'ordre dels fulls, no els grups
+  const u = E.rotGroupOrder(v.subs[0].groups[0], settings, CTX).find(x => x.entries.length > 1), [e1, e2] = u.entries;
+  [e1.bib, e2.bib] = [e2.bib, e1.bib];
+  p = pr();
+  assert.ok(p && !p.rot && p.ord && !p.hor.length);
+  [e1.bib, e2.bib] = [e2.bib, e1.bib];
+  // imprès amb una versió d'abans (sense ord ni hor): només els grups
+  c.rot.printed = { sig: v.sig, at: '2026-04-18T06:00:00.000Z' };
+  [e1.bib, e2.bib] = [e2.bib, e1.bib]; G.entries[0].status = 'np';
+  assert.equal(pr(), undefined);
+  // una exhibició nova, després d'imprimir l'horari: surt com a fila nova
+  v = E.rotView(c, settings, CTX);
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: null, hor: { at: null, rows: E.rotHorRows(E.rotSchedule(v, c.rot)) } };
+  c.rot.subs[0].extras = [{ id: 'x1', text: 'Exhibició', min: 10, when: 'abans' }];
+  p = pr();
+  assert.ok(p.hor.some(d => d.k === 'extra' && d.x === 'Exhibició' && !d.was && d.now), JSON.stringify(p.hor.slice(0, 3)));
+  // un altre lloc per a l'escalfament general: les mateixes hores, però el full diu una altra cosa
+  c.rot.subs[0].extras = [];
+  c.rot.time.place = 'pavelló 2';
+  p = pr();
+  assert.ok(p.hor.length && p.hor.every(d => d.k === 'warm' && d.was && d.now && d.was.f === d.now.f && d.was.x !== d.now.x), JSON.stringify(p.hor[0]));
+});
+
+test('una gimnasta que canvia de subdivisió (se li corregeix el nivell) no és «nova»: es diu d’on a on ha passat', () => {
+  const c = fixture(); make(c);
+  const v0 = E.rotView(c, settings, CTX), e = c.entries.find(x => x.category === 'Benjamí' && x.level === 'A' && x.teamId);
+  const from = v0.place.get(e).subId;
+  e.level = 'B'; e.teamId = null;
+  const v = E.rotView(c, settings, CTX), d = v.issues.find(i => i.t === 'derived');
+  assert.equal(d.n, 1);
+  assert.deepEqual(plain(d.moved.map(m => [m.e.id, m.from, m.to])), [[e.id, from, v.place.get(e).subId]]);
+  assert.notEqual(from, v.place.get(e).subId);
+  // una inscripció nova de debò no hi surt
+  c.entries.push({ ...e, id: 'enova', gymnastId: 'gnova', level: 'A', bib: 999 });
+  const d2 = E.rotView(c, settings, CTX).issues.find(i => i.t === 'derived');
+  assert.equal(d2.n, 2);
+  assert.deepEqual(plain(d2.moved.map(m => m.e.id)), [e.id]);
+});

@@ -1008,6 +1008,156 @@ try {
     assert.ok(t.includes('A les rotacions d’Interclubs de Primavera continua al Grup'), t);
     await page.evaluate(() => go('#/competicio/c418/rotacions'));
   });
+
+  // ─── setena revisió
+  const okConfirms7 = async () => { for (let i = 0; i < 3; i++) { await page.waitForTimeout(150); if (await page.evaluate(() => $('#confirm').open)) await page.click('#confirm button[value=ok]'); } };
+  const printRot = async (what = null) => {
+    await page.evaluate(() => { window.print = () => { window.__p = $('#print').innerHTML; }; window.__p = null; });
+    await page.evaluate(w => actions.rotPrintDlg({ dataset: w ? { what: w } : {} }), what); await page.waitForSelector('#dlg[open] form[data-form=rotPrint]');
+    await page.click('#dlg button.primary'); await okConfirms7();
+    await page.waitForFunction(() => window.__p !== null);
+    await page.evaluate(() => { document.body.classList.remove('printing'); $('#print').innerHTML = ''; });
+  };
+  const notes7 = () => page.$$eval('#main .note', ns => ns.map(n => n.textContent.replace(/\s+/g, ' ').trim()));
+
+  await step('setena revisió: «Fes les rotacions» només deixa l’avís del resultat (no el «Fent les rotacions…»), i el resum diu «154 gimnastes (+2 NP)»', async () => {
+    const d = fixture(); d.competitions[0].entries.push({ ...d.competitions[0].entries[0], id: 'np1', status: 'np', bib: 201 }, { ...d.competitions[0].entries[40], id: 'np2', status: 'np', bib: 202 });
+    await fresh(d);
+    await page.evaluate(() => { window.__t7 = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__t7.push(n); }).observe($('#toasts'), { childList: true }); });
+    await make(); await page.waitForTimeout(200);
+    const shown = await page.$$eval('#toasts .toast span', l => l.map(x => x.textContent));
+    assert.equal(shown.filter(x => x.startsWith('Fent')).length, 0, JSON.stringify(shown));
+    assert.ok(await page.evaluate(() => window.__t7.some(n => n.textContent.includes('Fent les rotacions'))), 'mentre es calcula, sí que surt');
+    assert.ok((await page.locator('#main p.small.muted', { hasText: 'subdivisions ·' }).textContent()).includes('154 gimnastes (+2 NP)'));
+    // «Torna-les a fer de zero»: tampoc es queda el «Fent els grups…»
+    await clearToasts();
+    await page.evaluate(() => { actions.rotRedoAll(); }); await page.click('#confirm button[value=ok]');
+    await toastHas('Grups refets'); await page.waitForTimeout(100);
+    assert.equal((await page.$$eval('#toasts .toast span', l => l.map(x => x.textContent))).filter(x => x.startsWith('Fent')).length, 0);
+  });
+
+  await step('setena revisió: després d’imprimir l’horari, dues NP que l’escurcen ho diuen (hores d’abans → d’ara) a les dues pestanyes; tornar-lo a imprimir ho treu', async () => {
+    await fresh(); await make();
+    await printRot();
+    const longest = await page.evaluate(() => { const v = rotViewOf(curComp()), sv = v.subs.find(s => s.label === 'ALEVÍ A i B'), G = sv.groups.reduce((a, x) => (x.n > a.n ? x : a));
+      const sch = Engine.rotSchedule(v, curComp().rot), row = sch.blocks.flatMap(b => b.rows).find(r => r.kind === 'comp' && r.subId === sv.id);
+      return { ids: G.entries.slice(0, 2).map(e => e.id), idx: sv.idx, from: Engine.rotHM(row.from), to: Engine.rotHM(row.to) }; });
+    await page.evaluate(ids => { for (const e of curComp().entries) if (ids.includes(e.id)) e.status = 'np'; commit(); render(); }, longest.ids);
+    let n = (await notes7()).find(x => x.includes('L’horari ha canviat des que el vas imprimir'));
+    assert.ok(n, (await notes7()).join(' || '));
+    assert.ok(n.includes(`${longest.idx}a subdivisió ${longest.from} – ${longest.to} → ${longest.from} – `) && n.includes('Torna’l a imprimir'), n);
+    assert.ok(!n.includes('després d’imprimir-les'), 'les rotacions no han canviat');
+    assert.equal(await page.locator('.tabs a[href$="/rotacions"] .badge').count(), 1, 'la marca de la pestanya');
+    await page.click('button[data-act=rotSeg][data-v=horari]');
+    assert.ok((await notes7()).some(x => x.includes('L’horari ha canviat des que el vas imprimir') && x.includes(`${longest.idx}a subdivisió`)));
+    await page.click('button[data-act=rotSeg][data-v=grups]');
+    // el botó de l'avís: només l'horari
+    await page.click('.note.warn:has-text("L’horari ha canviat") button[data-act=rotPrintDlg]'); await page.waitForSelector('#dlg[open] form[data-form=rotPrint]');
+    assert.deepEqual(await page.$$eval('#dlg input[name=w]', l => l.map(x => [x.value, x.checked])), [['rot', false], ['horari', true]]);
+    await page.evaluate(() => { window.print = () => { window.__p = $('#print').innerHTML; }; window.__p = null; });
+    await page.click('#dlg button.primary'); await okConfirms7(); await page.waitForFunction(() => window.__p !== null);
+    await page.evaluate(() => { document.body.classList.remove('printing'); $('#print').innerHTML = ''; });
+    assert.equal((await notes7()).filter(x => x.includes('L’horari ha canviat')).length, 0);
+    // si després es mou un equip: les rotacions han canviat (i l'horari, si en canvia les hores)
+    const sel = card('BENJAMÍ B').locator('select[data-chg=rotMove]').first();
+    await sel.selectOption((await sel.inputValue()) === '0' ? '1' : '0');
+    await page.waitForSelector('.note:has-text("després d’imprimir-les")');
+    // dades desades: el que es va imprimir, amb les hores de l'horari
+    const pr = await page.evaluate(() => { const r = migrate(JSON.parse(JSON.stringify(db))).competitions[0].rot.printed; return { sig: !!r.sig, ord: !!r.ord, rows: r.hor.rows.length }; });
+    assert.ok(pr.sig && pr.ord && pr.rows > 10, JSON.stringify(pr));
+  });
+
+  await step('setena revisió: «Renumera dorsals» amb rotacions: en l’ordre de pas (subdivisió, grup, l’ordre del full i cognoms); si ja s’havien imprès, avisa que el full ha canviat', async () => {
+    await fresh(); await make(); await printRot();
+    await page.evaluate(() => go('#/competicio/c418/inscripcions')); await page.waitForSelector('button[data-act=renumber]');
+    await page.click('button[data-act=renumber]');
+    assert.ok((await page.locator('#confirm').textContent()).includes('en l’ordre en què competeixen'));
+    await page.click('#confirm button[value=ok]');
+    const t = await (await toastHas('Dorsals renumerats')).textContent();
+    assert.ok(t.includes('torna’ls a imprimir'), t);
+    const r = await page.evaluate(() => { const c = curComp(), v = rotViewOf(c), out = [];
+      for (const sv of v.subs) for (const G of sv.groups) for (const x of Engine.rotGroupOrder(G, S(), rotCtx())) out.push(x.entries.map(e => ({ bib: e.bib, s: (gymById(e.gymnastId) || {}).surname })));
+      return out; });
+    const bibs = r.flat().map(x => x.bib);
+    assert.deepEqual(bibs, bibs.map((_, i) => i + 1), 'els dorsals segueixen l’ordre de pas');
+    for (const u of r) assert.deepEqual(u.map(x => x.s), [...u.map(x => x.s)].sort((a, b) => a.localeCompare(b, 'ca')), 'dins de cada equip, per cognoms');
+    await page.evaluate(() => go('#/competicio/c418/rotacions')); await page.waitForSelector('.card.rot-sub');
+    assert.ok((await notes7()).some(x => x.includes('ha canviat l’ordre de les gimnastes d’algun grup') && x.includes('Torna-les a imprimir')), (await notes7()).join(' || '));
+    // tornar-les a imprimir ho treu; tornar a renumerar ja no canvia res
+    await printRot();
+    await page.evaluate(() => go('#/competicio/c418/inscripcions')); await page.waitForSelector('button[data-act=renumber]');
+    await clearToasts();
+    await page.click('button[data-act=renumber]'); await page.click('#confirm button[value=ok]');
+    assert.equal(await (await toastHas('Dorsals renumerats')).textContent().then(x => x.includes('imprimir')), false);
+    await page.evaluate(() => go('#/competicio/c418/rotacions')); await page.waitForSelector('.card.rot-sub');
+    assert.equal((await notes7()).filter(x => x.includes('imprimir')).length, 0);
+  });
+
+  await step('setena revisió: «Renumera dorsals» sense rotacions: per entitat, equip (les individuals al final) i cognoms, mai pel nom', async () => {
+    await fresh();
+    await page.evaluate(() => go('#/competicio/c418/inscripcions')); await page.waitForSelector('button[data-act=renumber]');
+    await page.click('button[data-act=renumber]');
+    assert.ok((await page.locator('#confirm').textContent()).includes('entitat, equip i cognoms'));
+    await page.click('#confirm button[value=ok]'); await toastHas('Dorsals renumerats');
+    const r = await page.evaluate(() => { const c = curComp(); return groupsOf(c).map(g => [...g.entries].sort((a, b) => a.bib - b.bib).map(e => { const t = c.teams.find(x => x.id === e.teamId);
+      return { club: clubName(e.clubId), team: t ? t.name : '~', s: gymById(e.gymnastId).surname + ', ' + gymById(e.gymnastId).name }; })); });
+    const key = x => [x.club, x.team === '~' ? '\uffff' : x.team];
+    for (const l of r) for (let i = 1; i < l.length; i++) {
+      const a = l[i - 1], b = l[i], ka = key(a), kb = key(b), c1 = ka[0].localeCompare(kb[0], 'ca', { sensitivity: 'base', numeric: true });
+      assert.ok(c1 < 0 || (c1 === 0 && (ka[1] < kb[1] || (ka[1] === kb[1] && a.s.localeCompare(b.s, 'ca', { sensitivity: 'base' }) <= 0))), `${a.club} ${a.team} ${a.s} → ${b.club} ${b.team} ${b.s}`);
+    }
+    // Benjamí A de C.G. Lleida: primer l'equip 1 sencer i després el 2 (abans, barrejats pel nom)
+    const ba = r.find(l => l.some(x => x.team === 'C.G. Lleida 2' && x.club === 'C.G. Lleida')).filter(x => x.club === 'C.G. Lleida').map(x => x.team);
+    assert.deepEqual(ba, [...ba].sort());
+  });
+
+  await step('setena revisió: fulls de jutge amb rotacions: l’«Ordre» és el de pas per l’aparell, un bloc per rotació («2a subdivisió · rotació 1 · Grup 2»)', async () => {
+    await fresh(); await make();
+    const exp = await page.evaluate(() => { const c = curComp(), g = groupsOf(c).find(x => x.category === 'Benjamí' && x.level === 'A' && x.gender === 'F'), v = rotViewOf(c), sv = v.subs.find(s => s.label === 'BENJAMÍ A');
+      return { key: g.key, heads: Engine.rotAppSeq(sv, 'barra', S(), rotCtx()).map(b => `${sv.idx}a subdivisió · rotació ${b.r + 1} · Grup ${b.G.g + 1}`),
+        bibs: Engine.rotAppSeq(sv, 'barra', S(), rotCtx()).flatMap(b => b.entries.map(e => String(e.bib))) }; });
+    await page.evaluate(() => { window.print = () => { window.__p = $('#print').innerHTML; }; window.__p = null; });
+    await page.evaluate(k => doPrint(curComp(), ['judge'], [k]), exp.key);
+    await page.waitForFunction(() => window.__p !== null);
+    const sheets = await page.$$eval('#print section.sheet', l => l.map(s => ({ title: s.querySelector('tr.rep th').textContent, heads: [...s.querySelectorAll('tr.jb')].map(x => x.textContent),
+      rows: [...s.querySelectorAll('tr.judge')].map(tr => [tr.cells[0].textContent, tr.cells[1].textContent]) })));
+    await page.evaluate(() => { document.body.classList.remove('printing'); $('#print').innerHTML = ''; });
+    const barra = sheets.find(x => x.title.includes('Barra'));
+    assert.deepEqual(barra.heads, exp.heads);
+    assert.deepEqual(barra.rows.map(x => x[1]), exp.bibs, 'l’ordre de pas per la barra');
+    assert.deepEqual(barra.rows.map(x => x[0]), exp.bibs.map((_, i) => String(i + 1)));
+    // sense rotacions, com sempre: per dorsal i sense blocs
+    await page.evaluate(() => { delete curComp().rot; commit(); window.__p = null; });
+    await page.evaluate(k => doPrint(curComp(), ['judge'], [k]), exp.key);
+    await page.waitForFunction(() => window.__p !== null);
+    const s2 = await page.$$eval('#print section.sheet', l => l.map(s => ({ heads: s.querySelectorAll('tr.jb').length, bibs: [...s.querySelectorAll('tr.judge')].map(tr => +tr.cells[1].textContent) })));
+    await page.evaluate(() => { document.body.classList.remove('printing'); $('#print').innerHTML = ''; });
+    assert.equal(s2[0].heads, 0);
+    assert.deepEqual(s2[0].bibs, [...s2[0].bibs].sort((a, b) => a - b));
+  });
+
+  await step('setena revisió: corregir el nivell d’una gimnasta la passa a una altra subdivisió: es diu d’on a on (amb l’hora), no que és «nova»', async () => {
+    await fresh(); await make(); await printRot();
+    const g = await page.evaluate(() => { const c = curComp(), v = rotViewOf(c), sv = v.subs.find(s => s.label === 'BENJAMÍ A'), e = sv.groups[1].entries[0];
+      const w = new Map(); for (const b of Engine.rotSchedule(v, c.rot).blocks) for (const r of b.rows) if (r.kind === 'comp') w.set(r.subId, Engine.rotHM(r.from));
+      const sb = v.subs.find(s => s.label === 'BENJAMÍ B'); return { id: e.id, name: entryName(e), a: sv.idx, ha: w.get(sv.id), b: sb.idx, hb: w.get(sb.id) }; });
+    await page.evaluate(() => go('#/competicio/c418/inscripcions')); await page.waitForSelector(`a[data-act=editEntry]`);
+    await page.click(`a[data-act=editEntry][data-id="${g.id}"]`); await page.waitForSelector('#dlg[open] form[data-form=entry]');
+    await page.selectOption('#dlg select[name=level]', 'B'); await page.click('#dlg button.primary');
+    const moved = `${g.name} ha passat de la ${g.a}a subdivisió (${g.ha}) a la ${g.b}a (${g.hb})`;
+    const t = await (await toastHas('ha passat de la')).textContent();
+    assert.ok(t.includes(moved), t + ' / ' + moved);
+    await page.evaluate(() => go('#/competicio/c418/rotacions')); await page.waitForSelector('.card.rot-sub');
+    const n = await notes7();
+    assert.ok(n.some(x => x.includes(moved) && x.includes('l’he posada') && x.includes('deixa-la així')), n.join(' || '));
+    assert.ok(!n.some(x => x.includes('gimnasta nova')), 'no és nova');
+    // en imprimir, tampoc
+    await page.evaluate(() => { window.print = () => {}; actions.rotPrintDlg({ dataset: {} }); }); await page.waitForSelector('#dlg[open] form[data-form=rotPrint]');
+    await page.click('#dlg button.primary'); await page.waitForSelector('#confirm[open]');
+    const q = await page.locator('#confirm').textContent();
+    assert.ok(q.includes('1 gimnasta que ha canviat de subdivisió, i encara no l’has revisada'), q);
+    await page.click('#confirm button[value=no]');
+  });
 } finally {
   await browser.close();
 }

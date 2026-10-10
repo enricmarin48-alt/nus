@@ -837,14 +837,60 @@ func tutorData(db map[string]any, pin string) []any {
 			entries = append(entries, map[string]any{
 				"id": em["id"], "bib": em["bib"], "name": name, "club": clubs[str(em["clubId"])],
 				"gender": genderOf(em), "category": em["category"], "level": em["level"], "status": em["status"], "scores": scores,
+				"clubId": em["clubId"], "teamId": em["teamId"],
 			})
 		}
-		out = append(out, map[string]any{
+		comp := map[string]any{
 			"id": cm["id"], "name": cm["name"], "date": cm["date"], "scoring": cm["scoring"], "minScore": cm["minScore"],
 			"maxScore": cm["maxScore"], "apparatus": cm["apparatus"], "entries": entries,
-		})
+		}
+		if r := tutorRotation(db, cm, clubs); r != nil {
+			comp["rotation"] = r
+		}
+		out = append(out, comp)
 	}
 	return out
+}
+
+// amb les rotacions fetes, el que cal perquè el mòbil sàpiga en quin ordre passen les gimnastes pel seu aparell (el
+// calcula la mateixa app, com a la taula): les rotacions, els equips, els noms de les entitats i l'ordre de les
+// categories i dels nivells
+func tutorRotation(db map[string]any, cm map[string]any, clubs map[string]string) map[string]any {
+	rot := obj(cm["rot"])
+	if rot == nil || str(rot["made"]) == "" {
+		return nil
+	}
+	used := map[string]any{}
+	teams := []any{}
+	for _, t := range arr(cm["teams"]) {
+		tm := obj(t)
+		if tm == nil {
+			continue
+		}
+		teams = append(teams, map[string]any{"id": tm["id"], "name": tm["name"], "clubId": tm["clubId"], "category": tm["category"], "gender": genderOf(tm), "level": tm["level"]})
+		if id := str(tm["clubId"]); id != "" {
+			used[id] = clubs[id]
+		}
+	}
+	for _, e := range arr(cm["entries"]) {
+		if id := str(obj(e)["clubId"]); id != "" {
+			used[id] = clubs[id]
+		}
+	}
+	st := obj(db["settings"])
+	cats := []any{}
+	for _, c := range arr(st["categories"]) {
+		if cmap := obj(c); cmap != nil {
+			cats = append(cats, cmap["name"])
+		} else if s, ok := c.(string); ok {
+			cats = append(cats, s)
+		}
+	}
+	levels := arr(st["levels"])
+	if levels == nil {
+		levels = []any{}
+	}
+	return map[string]any{"rot": rot, "teams": teams, "clubs": used, "categories": cats, "levels": levels}
 }
 
 type scoreReq struct {

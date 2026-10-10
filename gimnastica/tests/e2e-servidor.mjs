@@ -9,6 +9,7 @@ import os from 'node:os';
 import http from 'node:http';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { fixture as rotFixture } from './fixture-rotacions.mjs';
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -1528,6 +1529,66 @@ try {
           await P.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
           assert.deepEqual([loads, await P.evaluate(() => [tut.pin, location.hash, JSON.parse(localStorage.getItem('notesgim.tutor')).pin])], [0, ['9999', '', '9999']]);
           assert.equal(scoreOf(f, eid, 'barra').v, 7);
+        } finally { await ctx.close(); await T.context().close(); await kill(p); }
+      });
+
+      await step('setena revisió: amb les rotacions fetes, la tutora tria l’aparell i la subdivisió, i el teclat gran segueix l’ordre del full de rotacions (rotació per rotació, la categoria canvia sola, les NP se salten); «Per categoria» és com abans', async () => {
+        const f = path.join(dirOf('rotacions'), 'notesgim-dades.json');
+        const d = rotFixture(); Object.assign(d.competitions[0], { tutorsOn: true, tutorPin: '4321' });
+        Object.assign(d.settings, { dataGen: 2 }); d.meta = { created: new Date(Date.now() - 864e5).toISOString(), updated: new Date(Date.now() - 60000).toISOString(), dbId: 'r7rot' };
+        writeFileSync(f, JSON.stringify(d));
+        const p = await run(f);
+        const T = await open(await windowCtx(), '#/competicio/c418/rotacions');
+        const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+        try {
+          await T.click('button[data-act=rotMake]'); await T.waitForSelector('.toast:has-text("Fetes")');
+          // a la subdivisió d'Infantil, Cadet i Juvenil, una NP al primer grup que passa per la barra
+          const S7 = await T.evaluate(() => { const c = curComp(), v = rotViewOf(c), sv = v.subs.find(s => s.keys.length > 2);
+            const seq = Engine.rotAppSeq(sv, 'barra', S(), rotCtx()); seq[0].entries[2].status = 'np'; commit();
+            const first = v.subs.find(s => s.N && s.apps.some(a => a.id === 'barra'));
+            return { id: sv.id, idx: sv.idx, first: first.id, heads: seq.map(b => `Rotació ${b.r + 1} · Grup ${b.G.g + 1}`), seq: seq.flatMap(b => b.entries.map(e => ({ id: e.id, np: e.status === 'np', cat: `${e.category} ${e.level}` }))) }; });
+          await sleep(1500);
+          for (let i = 0; i < 60 && !(read(f).competitions[0].rot || {}).made; i++) await sleep(250);
+          const P = await ctx.newPage(); watch(P, 'r7 rotacions');
+          await P.goto(`http://${lan.address}:${PORT}/#codi=4321`); await P.waitForSelector('text=Quin aparell puntues?');
+          assert.ok((await norm6(P, '.tut-by')).includes('En l’ordre de les rotacions'));
+          assert.equal(await P.locator('.gsel select').count(), 0, 'primer l’aparell');
+          await P.tap('button[data-act=tutApp][data-a=barra]'); await P.waitForSelector('#qe');
+          assert.equal(await P.evaluate(() => tut.sub), S7.first, 'la primera subdivisió on falten notes de barra');
+          await P.selectOption('.gsel select', S7.id); await P.waitForFunction(id => tut.sub === id && !!document.querySelector('#qe'), S7.id);
+          // el mateix ordre que el full (amb les NP, ratllades) i on comença cada grup
+          assert.deepEqual(await P.$$eval('.qe-strip button', l => l.map(b => b.dataset.id)), S7.seq.map(x => x.id));
+          assert.deepEqual(await P.$$eval('.qe-strip .qe-rb', l => l.map(b => b.textContent)), S7.heads);
+          const cats = new Set();
+          for (const x of S7.seq.filter(y => !y.np)) {
+            assert.equal(await P.evaluate(() => qe.entryId), x.id, 'el mòbil mostra la que passa');
+            const sub = await norm6(P, '.qe-who span'); assert.ok(sub.endsWith(x.cat), sub); cats.add(x.cat);
+            await typeSave(P, ['8', ',', '5']);
+          }
+          assert.ok(cats.size >= 3, 'la categoria canvia sola: ' + [...cats].join(', '));
+          assert.ok((await norm6(P, '.qe-next')).includes('Totes les notes de Barra d’aquesta subdivisió estan entrades.'));
+          await P.waitForFunction(() => !tutQ().length, null, { timeout: 15000 }); await sleep(800);
+          const fc = read(f).competitions[0], v85 = fc.entries.filter(e => ((((e.scores || {}).barra || [])[0]) || {}).v === 8.5).map(e => e.id).sort();
+          assert.deepEqual(v85, S7.seq.filter(y => !y.np).map(y => y.id).sort(), 'cap nota a una altra gimnasta');
+          // «Passa a la … subdivisió»: la següent on falten notes de barra
+          await P.tap('.qe-next button[data-act=tutSub]'); await P.waitForFunction(id => tut.sub && tut.sub !== id, S7.id);
+          // la llista: en el mateix ordre, amb la rotació i el grup a sobre de cada grup
+          await P.selectOption('.gsel select', S7.id); await P.waitForFunction(id => tut.sub === id, S7.id);
+          await P.tap('button[data-act=tutToggleList]'); await P.waitForSelector('#scoregrid');
+          assert.deepEqual(await P.$$eval('#scoregrid tbody tr[data-row]', l => l.map(r => r.dataset.row)), S7.seq.map(x => x.id));
+          assert.deepEqual(await P.$$eval('#scoregrid tr.tut-rb', l => l.map(r => r.textContent.trim())), S7.heads);
+          await P.tap('button[data-act=tutToggleList]'); await P.waitForSelector('#qe');
+          // «Per categoria»: com sempre (el grup i per dorsal); i es torna a l'ordre de les rotacions
+          await P.tap('button[data-act=tutBy]'); await P.waitForFunction(() => tut.byCat && !!document.querySelector('#qe'));
+          const ids = await P.$$eval('.qe-strip button', l => l.map(b => b.dataset.id));
+          const g = await P.evaluate(() => Engine.groupsOf(tutComp(), S()).find(x => x.key === tut.group).entries.slice().sort((a, b) => a.bib - b.bib).map(e => e.id));
+          assert.deepEqual(ids, g);
+          assert.equal(await P.locator('.qe-strip .qe-rb').count(), 0);
+          await P.tap('button[data-act=tutBy]'); await P.waitForFunction(id => !tut.byCat && tut.sub === id, S7.id);
+          // la taula esborra les rotacions: per categoria, i l'aparell es torna a triar (l'ordre ja no és el mateix)
+          await T.evaluate(() => { delete curComp().rot; commit(); });
+          await P.waitForSelector('text=Quin aparell puntues?', { timeout: 15000 });
+          assert.equal(await P.locator('.tut-by').count(), 0);
         } finally { await ctx.close(); await T.context().close(); await kill(p); }
       });
     }

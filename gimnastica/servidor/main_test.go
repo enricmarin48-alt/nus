@@ -97,6 +97,44 @@ func TestTutorDataOnlyWithPin(t *testing.T) {
 	if str(obj(entries[0])["name"]) != "Anna Puig" || str(obj(entries[0])["club"]) != "CG Lleida" {
 		t.Fatalf("noms mal resolts: %v", entries[0])
 	}
+	// sense rotacions fetes, el mòbil no en rep res (puntua per categoria, com sempre)
+	if _, ok := obj(d[0])["rotation"]; ok {
+		t.Fatal("sense rotacions fetes no s'han d'enviar")
+	}
+}
+
+// amb les rotacions fetes, el mòbil rep el que cal per saber l'ordre en què passen les gimnastes pel seu aparell
+func TestTutorDataSendsRotations(t *testing.T) {
+	db := parse(t, sample)
+	obj(db["settings"])["categories"] = []any{map[string]any{"name": "Benjamí", "from": 2017}, map[string]any{"name": "Aleví"}}
+	obj(db["settings"])["levels"] = []any{"A", "B"}
+	comp := obj(arr(db["competitions"])[0])
+	comp["teams"] = []any{map[string]any{"id": "t1", "name": "CG Lleida", "clubId": "c1", "category": "Aleví", "gender": "F", "level": "A", "sourceTeamId": "x"}}
+	obj(arr(comp["entries"])[0])["teamId"] = "t1"
+	comp["rot"] = map[string]any{"made": "", "subs": []any{}}
+	if _, ok := obj(tutorData(db, "1234")[0])["rotation"]; ok {
+		t.Fatal("unes rotacions encara no fetes no s'envien")
+	}
+	comp["rot"] = map[string]any{"made": "2026-04-18T07:00:00.000Z", "subs": []any{map[string]any{"id": "s1", "g": "F", "keys": []any{"Aleví||F||A"}, "k": 3}},
+		"at": map[string]any{"e1": map[string]any{"s": "s1", "g": 1}}}
+	c := obj(tutorData(db, "1234")[0])
+	r := obj(c["rotation"])
+	if r == nil || str(obj(r["rot"])["made"]) == "" || len(arr(obj(r["rot"])["subs"])) != 1 {
+		t.Fatalf("falten les rotacions: %v", c["rotation"])
+	}
+	if str(obj(r["clubs"])["c1"]) != "CG Lleida" || len(arr(r["teams"])) != 1 || str(obj(arr(r["teams"])[0])["name"]) != "CG Lleida" {
+		t.Fatalf("falten les entitats o els equips: %v", r)
+	}
+	if _, ok := obj(arr(r["teams"])[0])["sourceTeamId"]; ok {
+		t.Fatal("dels equips, només el que cal")
+	}
+	if fmt.Sprint(r["categories"]) != "[Benjamí Aleví]" || fmt.Sprint(r["levels"]) != "[A B]" {
+		t.Fatalf("ordre de les categories i dels nivells: %v %v", r["categories"], r["levels"])
+	}
+	e := obj(arr(c["entries"])[0])
+	if str(e["teamId"]) != "t1" || str(e["clubId"]) != "c1" {
+		t.Fatalf("cada inscripció ha de dir el seu equip i la seva entitat: %v", e)
+	}
 }
 
 func TestMergeKeepsTableScores(t *testing.T) {

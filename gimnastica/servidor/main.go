@@ -71,7 +71,9 @@ type store struct {
 	waiters   []chan struct{}
 	ops       map[string]bool // les notes de tutora (op) que ja s'han posat: si el mòbil no rep la resposta i la torna a enviar, no es torna a posar
 	opList    []string
-	opsFile   string // on es guarden (al costat de les dades): així se'n recorda encara que es torni a obrir el programa
+	opsFile   string              // on es guarden (al costat de les dades): així se'n recorda encara que es torni a obrir el programa
+	opsNew    []string            // les que encara no hi són: s'hi escriuen quan el fitxer de dades (amb la nota) ja s'ha desat
+	hosts     map[string][2]int64 // adreces (Host) amb què les tutores han arribat al programa: la primera i l'última vegada (si l'ordinador canvia de Wi-Fi)
 
 	// només una finestra de la taula pot canviar les dades alhora (vegeu claimLocked)
 	active   string         // l'id de la finestra activa (el tria la finestra; "" és una finestra que no en diu cap)
@@ -198,7 +200,9 @@ func (s *store) claimLocked(win string, ifFree bool, done <-chan struct{}) bool 
 	return true
 }
 
-// recorda que s'ha posat la nota d'una tutora amb aquest id (les 5000 últimes)
+// recorda que s'ha posat la nota d'una tutora amb aquest id (les 5000 últimes). Al fitxer de les notes posades s'hi
+// escriu només quan la nota ja és al fitxer de dades (flushOpsLocked, quan api/score l'ha desat): si el programa s'atura
+// mentre desa, el mòbil la torna a enviar i es posa (si s'hi escrivia abans, el programa diria que ja la té i es perdria)
 func (s *store) sawOpLocked(op string) {
 	if op == "" {
 		return
@@ -210,15 +214,28 @@ func (s *store) sawOpLocked(op string) {
 		s.ops[op] = true
 		s.opList = append(s.opList, op)
 		if s.opsFile != "" {
-			if f, err := os.OpenFile(s.opsFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
-				_, _ = f.WriteString(op + "\n")
-				f.Close()
-			}
+			s.opsNew = append(s.opsNew, op)
 		}
 	}
 	for len(s.opList) > 5000 {
 		delete(s.ops, s.opList[0])
 		s.opList = s.opList[1:]
+	}
+}
+
+// el fitxer de dades s'acaba de desar: les notes posades fins ara ja hi són, i es recorden també al fitxer de les notes
+// posades (si no s'hi poden escriure, o no s'havien pogut desar, es tornen a provar la vegada següent)
+func (s *store) flushOpsLocked() {
+	if len(s.opsNew) == 0 || s.opsFile == "" {
+		return
+	}
+	f, err := os.OpenFile(s.opsFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	_, err = f.WriteString(strings.Join(s.opsNew, "\n") + "\n")
+	if f.Close() == nil && err == nil {
+		s.opsNew = nil
 	}
 }
 
@@ -240,6 +257,40 @@ func (s *store) loadOps() {
 	if len(lines) > 6000 {
 		_ = os.WriteFile(file, []byte(strings.Join(s.opList, "\n")+"\n"), 0o644)
 	}
+}
+
+// una tutora ha arribat al programa amb aquesta adreça (r.Host). Torna les adreces amb què s'hi arribava ABANS que amb
+// aquesta (les últimes hores): l'ordinador de la taula ha canviat de Wi-Fi (una adreça i un codi QR nous), i les notes que
+// s'havien quedat al mòbil amb la pàgina de l'adreça d'abans només són en aquella pàgina: el mòbil ho diu. (Dues adreces que
+// es fan servir alhora —l'ordinador és a dues xarxes— no en són cap d'abans)
+func (s *store) sawHostLocked(r *http.Request) []string {
+	host := r.Host
+	if host == "" || len(host) > 100 || isLocal(r) {
+		return nil
+	}
+	now := nowMs()
+	if s.hosts == nil {
+		s.hosts = map[string][2]int64{}
+	}
+	cur, ok := s.hosts[host]
+	if !ok {
+		cur[0] = now
+	}
+	cur[1] = now
+	s.hosts[host] = cur
+	var out []string
+	for h, at := range s.hosts {
+		if now-at[1] > 12*3600*1000 {
+			delete(s.hosts, h)
+		} else if h != host && at[1] < cur[0] {
+			out = append(out, h)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return s.hosts[out[i]][1] > s.hosts[out[j]][1] })
+	if len(out) > 3 {
+		out = out[:3]
+	}
+	return out
 }
 
 func newStore(path string) (*store, error) {
@@ -764,18 +815,36 @@ type scoreReq struct {
 	I       int      `json:"i"`
 	Value   *float64 `json:"value"`
 	Who     string   `json:"who"`
-	Op      string   `json:"op"` // id de la nota al mòbil (la mateixa si la torna a enviar)
+	Op      string   `json:"op"`   // id de la nota al mòbil (la mateixa si la torna a enviar)
+	Dev     string   `json:"dev"`  // id del mòbil (el mateix per a totes les pestanyes)
+	Made    float64  `json:"made"` // quan s'ha escrit la nota, amb el rellotge del mòbil (ms; només es compara amb les del mateix mòbil)
 }
 
 // aquesta nota de la tutora ja s'havia posat (el mòbil no va rebre la resposta i la torna a enviar): no es torna a posar
 var errDup = errors.New("ja hi és")
 
+// a la casella ja hi ha una nota més nova del mateix mòbil (una correcció): aquesta, que s'havia quedat pel camí (una
+// pestanya adormida, la Wi-Fi que l'entrega tard), ja no hi va. Es respon que sí: el mòbil ja no l'ha d'enviar
+var errOlder = errors.New("n'hi ha una de més nova")
+
 // la taula ja ha posat (o revisat) aquesta nota: la tutora no la pot canviar (resposta 409)
-var errLocked = errors.New("Aquesta nota ja l'ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.")
+var errLocked = errors.New("Aquesta nota ja l’ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.")
 
 // el codi ja no val (l'han canviat, han tancat la competició o han tret les tutores): resposta 401, i la tutora
 // es guarda les notes per enviar-les quan torni a entrar
-var errAuth = errors.New("El codi ja no val: potser l'han canviat o han tancat la competició. Demana el codi a la taula.")
+var errAuth = errors.New("El codi ja no val: potser l’han canviat o han tancat la competició. Demana el codi a la taula.")
+
+// la taula no accepta la nota (resposta 403): el mòbil diu quina nota i per què (amb el codi, en femení o en masculí)
+type refusal struct{ code, msg string }
+
+func (r refusal) Error() string { return r.msg }
+
+var (
+	errGone   = refusal{"gone", "Ja no és a la competició: la taula n’ha tret la inscripció."}
+	errNP     = refusal{"np", "La taula hi ha posat NP (no s’ha presentat)."}
+	errNoApp  = refusal{"app", "Aquest aparell no es fa en aquest grup."}
+	errAttNum = refusal{"att", "Intent incorrecte."}
+)
 
 // nota màxima de la competició (per defecte 20)
 func maxScoreOf(comp map[string]any) float64 {
@@ -798,21 +867,21 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 	}
 	entry := findByID(arr(comp["entries"]), r.EntryID)
 	if entry == nil {
-		return errors.New("aquesta gimnasta ja no és a la competició")
+		return errGone
 	}
 	if str(entry["status"]) == "np" {
-		return errors.New("aquesta gimnasta consta com a no presentada")
+		return errNP
 	}
 	app := findByID(arr(comp["apparatus"]), r.AppID)
 	if app == nil || appMode(app, genderOf(entry)) == "off" {
-		return errors.New("aquest aparell no es fa en aquest grup")
+		return errNoApp
 	}
 	attempts := int(num(app["attempts"]))
 	if attempts < 1 {
 		attempts = 1
 	}
 	if r.I < 0 || r.I >= attempts {
-		return errors.New("intent incorrecte")
+		return errAttNum
 	}
 	att := map[string]any{"by": "tutor", "at": float64(at)}
 	if who := strings.TrimSpace(r.Who); who != "" {
@@ -824,10 +893,14 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 	if r.Op != "" {
 		att["op"] = r.Op
 	}
+	dev := r.Dev
+	if len(dev) > 64 || math.IsNaN(r.Made) || math.IsInf(r.Made, 0) || r.Made <= 0 {
+		dev = ""
+	}
 	if r.Value != nil {
 		v := *r.Value
 		if mx := maxScoreOf(comp); math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > mx {
-			return fmt.Errorf("Aquesta nota no pot ser: ha de ser entre 0 i %s.", strings.Replace(strconv.FormatFloat(mx, 'f', -1, 64), ".", ",", 1))
+			return refusal{"value", fmt.Sprintf("Aquesta nota no pot ser: ha de ser entre 0 i %s.", strings.Replace(strconv.FormatFloat(mx, 'f', -1, 64), ".", ",", 1))}
 		}
 		att["v"] = math.Round(v*1000) / 1000
 	}
@@ -839,6 +912,31 @@ func applyScore(db map[string]any, r scoreReq, at int64) error {
 	list := arr(scores[r.AppID])
 	if r.Op != "" && r.I < len(list) && str(obj(list[r.I])["op"]) == r.Op {
 		return errDup
+	}
+	// de cada mòbil que ha posat una nota en aquesta casella, l'hora (del mòbil) de la més nova: una d'aquest mòbil escrita
+	// abans ja no hi va. (Les hores de dos mòbils no es comparen mai: cada rellotge va a la seva)
+	seen := map[string]any{}
+	if r.I < len(list) {
+		for k, v := range obj(obj(list[r.I])["seen"]) {
+			seen[k] = v
+		}
+	}
+	if dev != "" {
+		if num(seen[dev]) > r.Made {
+			return errOlder
+		}
+		for k := range seen {
+			if len(seen) < 16 {
+				break
+			}
+			if k != dev {
+				delete(seen, k)
+			}
+		}
+		seen[dev] = r.Made
+	}
+	if len(seen) > 0 {
+		att["seen"] = seen
 	}
 	if r.I < len(list) && guarded(obj(list[r.I])) {
 		return errLocked
@@ -1277,6 +1375,10 @@ func (s *store) routes(port int) http.Handler {
 		}
 		s.mu.Lock()
 		data, version := tutorData(s.db, pin), s.version
+		var hosts []string
+		if len(data) > 0 {
+			hosts = s.sawHostLocked(r)
+		}
 		s.mu.Unlock()
 		if len(data) == 0 {
 			s.slowFail()
@@ -1284,7 +1386,7 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		s.lastTutor.Store(time.Now().UnixMilli())
-		writeJSON(w, 200, map[string]any{"version": version, "comps": data})
+		writeJSON(w, 200, map[string]any{"version": version, "comps": data, "hosts": hosts})
 	})
 
 	mux.HandleFunc("/api/score", func(w http.ResponseWriter, r *http.Request) {
@@ -1294,7 +1396,7 @@ func (s *store) routes(port int) http.Handler {
 		}
 		var req scoreReq
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
-			fail(w, 400, "dades incorrectes")
+			fail(w, 400, "Dades incorrectes.")
 			return
 		}
 		if len(req.Op) > 64 {
@@ -1310,11 +1412,12 @@ func (s *store) routes(port int) http.Handler {
 			return
 		}
 		err := applyScore(s.db, req, time.Now().UnixMilli())
-		if errors.Is(err, errDup) {
+		if errors.Is(err, errDup) || errors.Is(err, errOlder) {
+			// (ja hi és, o n'hi ha una de més nova del mateix mòbil: no es posa res. Es recorda quan les dades ja s'han desat)
 			s.sawOpLocked(req.Op)
 			v := s.version
 			s.mu.Unlock()
-			writeJSON(w, 200, map[string]any{"ok": true, "version": v})
+			writeJSON(w, 200, map[string]any{"ok": true, "version": v, "older": errors.Is(err, errOlder)})
 			return
 		}
 		if errors.Is(err, errAuth) {
@@ -1325,20 +1428,27 @@ func (s *store) routes(port int) http.Handler {
 		}
 		defer s.mu.Unlock()
 		if err != nil {
-			code := 403
+			code, why := 403, ""
+			var rf refusal
 			if errors.Is(err, errLocked) {
-				code = 409
+				code, why = 409, "locked"
+			} else if errors.As(err, &rf) {
+				why = rf.code
 			}
-			fail(w, code, err.Error())
+			writeJSON(w, code, map[string]any{"error": err.Error(), "code": why})
 			return
 		}
 		s.lastTutor.Store(time.Now().UnixMilli())
+		s.sawHostLocked(r)
 		s.sawOpLocked(req.Op)
 		s.bumpLocked()
 		// si ara no es pot escriure al fitxer, la nota ja és al programa i a la finestra de la taula (que
-		// en veu l'avís): es tornarà a provar de desar sola, i la tutora no l'ha de tornar a enviar
+		// en veu l'avís): es tornarà a provar de desar sola, i la tutora no l'ha de tornar a enviar. L'id de la nota es
+		// recorda al fitxer de les notes posades només quan ja és al de dades: fins llavors, només aquí (vegeu sawOpLocked)
 		if err := s.saveLocked(); err != nil {
 			log.Printf("ERROR desant: %v", err)
+		} else {
+			s.flushOpsLocked()
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "version": s.version})
 	})

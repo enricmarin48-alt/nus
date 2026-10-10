@@ -265,6 +265,9 @@
   .qe-strip button.np{opacity:.45;text-decoration:line-through}
   .qe-strip button.lock{background:#eef1f5}
   .qe-strip button.cur{outline:3px solid var(--pri2);outline-offset:1px}
+  .qe-card.qe-out{background:var(--warn-soft);border-color:var(--warn)}
+  .qe-card.qe-out .qe-saved{color:var(--warn);font-weight:700}
+  .qe-next.qe-outtxt{color:var(--ink);background:var(--warn-soft);border:1px solid var(--warn);border-radius:10px;padding:6px 10px;text-align:left}
   .banner{border-radius:10px;padding:10px 12px;margin-bottom:10px;font-weight:700;font-size:14px}
   .banner.bad{background:#fde3c8;color:#6b3300}
   .banner.ok{background:var(--ok-soft);color:var(--ok)}
@@ -3925,11 +3928,20 @@ function qeCurrent(ctx) {
   const key = ctx.c.id + '|' + (ctx.g && ctx.g.key) + '|' + (ctx.a && ctx.a.id);
   if (qe.jump) { const j = ctx.list.find(x => x.id === qe.jump); qe.jump = null; if (j) { qe.entryId = j.id; qe.key = key; qe.buf = ''; qe.i = Math.max(0, range(ctx.n).findIndex(k => !qeHas(ctx, j, k))); } }
   let e = ctx.list.find(x => x.id === qe.entryId);
+  // (tutora) la gimnasta que es puntuava ja no és en aquest grup: la taula li ha canviat la categoria o el nivell, o n'ha tret
+  // la inscripció. No es passa sola a una altra (la nota que s'està escrivint aniria a qui no és): es continua veient, amb
+  // el que s'hi ha escrit i un avís (qe.out), fins que la tutora tria: desar-la (és per a ella), «Salta» o un altre dorsal
+  if (!e && ctx.tutor && qe.entryId && qe.key === key) {
+    e = ctx.c.entries.find(x => x.id === qe.entryId) || (qe.snap && qe.snap.id === qe.entryId ? qe.snap : null);
+    if (e) { qe.out = e === qe.snap ? 'gone' : 'moved'; if (qe.i >= ctx.n) qe.i = 0; return e; }
+  }
+  qe.out = '';
   if (!e || qe.key !== key) {
     const m = qeNextMissing(ctx, -1);
     e = m ? m.e : ctx.list[0]; qe.i = m ? m.i : 0; qe.buf = ''; qe.key = key; qe.entryId = e && e.id;
   }
   if (qe.i >= ctx.n) qe.i = 0;
+  if (ctx.tutor && e) qe.snap = { id: e.id, bib: e.bib, name: e.name, club: e.club, gender: e.gender, status: e.status, scores: {} };
   return e;
 }
 function qeHtml(ctx) {
@@ -3945,14 +3957,20 @@ function qeHtml(ctx) {
   const atts = n > 1 ? `<div class="seg" style="--n:${n}">${range(n).map(i => { const v = Engine.toM(ctx.get(e, i).v);
     return `<button type="button" class="pill ${i === qe.i ? 'on' : ''}" data-act="qeAtt" data-i="${i}">${ordinal(i + 1)} ${word} · ${v === null ? '—' : fmt(v)}</button>`; }).join('')}</div>` : '';
   const tableLocked = !ctx.tutor && ctx.c.locked;
-  const saved = np ? 'No presentada (NP)' : (locked && !tableLocked) ? `🔒 Ja la té la taula: <b>${fmt(m)}</b>`
+  // (tutora: la gimnasta ha sortit del grup —vegeu qeCurrent—, i on és ara)
+  const out = ctx.tutor ? qe.out : '', boy = e.gender === 'M';
+  const outG = out === 'moved' ? Engine.groupsOf(ctx.c, S()).find(x => x.entries.some(y => y.id === e.id)) : null;
+  const saved = out === 'gone' ? `⚠ Ja no és a la competició` : out ? `⚠ Ha canviat de grup${outG ? ': ara és a ' + h(groupLabel(outG)) : ''}`
+    : np ? `No ${boy ? 'presentat' : 'presentada'} (NP)` : (locked && !tableLocked) ? `🔒 Ja la té la taula: <b>${fmt(m)}</b>`
     : (m !== null ? `Nota desada: <b>${fmt(m)}</b>${at.by === 'tutor' && !ctx.tutor ? ` <span class="badge warn">de la tutora${at.who ? ' ' + h(at.who) : ''}</span>` : ''}` : 'Encara sense nota') + (tableLocked ? ' · 🔒 notes bloquejades' : '');
-  const blocked = np || locked || (!ctx.tutor && ctx.c.locked);
+  const blocked = np || locked || (!ctx.tutor && ctx.c.locked) || out === 'gone';
+  const outTxt = out === 'gone' ? `<b>${boy ? 'Aquest gimnasta' : 'Aquesta gimnasta'} ja no és a la competició</b> (la taula ${boy ? 'l’ha tret' : 'l’ha treta'}): aquesta nota no es pot desar. Toca «Salta» o un altre dorsal.`
+    : out ? `<b>${boy ? 'Aquest gimnasta' : 'Aquesta gimnasta'} ha canviat de grup a la taula.</b> El que has escrit es manté: si és ${boy ? 'ell' : 'ella'} qui puntues, desa la nota (és per a ${boy ? 'ell' : 'ella'}); si no, toca «Salta» o un altre dorsal.` : '';
   const key = k => `<button type="button" data-act="qeKey" data-k="${k}" aria-label="${k === 'del' ? 'Esborra' : k}">${k === 'del' ? '⌫' : k}</button>`;
   return `<div class="qe" id="qe">
     ${ctx.tutor ? `<button type="button" class="qe-app" style="--appc:${APP_COLORS[a.icon] || APP_COLORS.altre}" data-act="qeTop" aria-label="Aparell: ${h(a.name)}">${icon(a)} <span class="qe-name">${h(a.name)}</span><span class="qe-net" id="qenet">${tutNetText()}</span><small>${done}/${active.length}</small></button>` : ''}
-    <div class="qe-card" style="border-top:5px solid ${APP_COLORS[a.icon] || APP_COLORS.altre}"><div class="qe-bib">${h(e.bib)}</div>
-      <div class="qe-who"><b>${h(ctx.name(e))}</b><span>${h(ctx.club(e) || '')}${ctx.g ? ' · ' + h(groupLabel(ctx.g)) : ''}</span></div>
+    <div class="qe-card${out ? ' qe-out' : ''}" style="border-top:5px solid ${APP_COLORS[a.icon] || APP_COLORS.altre}"><div class="qe-bib">${h(e.bib)}</div>
+      <div class="qe-who"><b>${h(ctx.name(e))}</b><span>${h(ctx.club(e) || '')}${out ? (outG ? ' · ' + h(groupLabel(outG)) : '') : ctx.g ? ' · ' + h(groupLabel(ctx.g)) : ''}</span></div>
       <div class="qe-saved" style="grid-column:2">${saved}</div>${atts}</div>
     <div class="qe-display" id="qedisp" aria-live="polite"></div>
     <div class="qe-hint" id="qehint"></div>
@@ -3960,8 +3978,8 @@ function qeHtml(ctx) {
     <div class="qe-bar"><button type="button" class="btn" data-act="qeMove" data-d="-1" aria-label="Gimnasta anterior">◀</button>
       ${ctx.tutor ? `<button type="button" class="btn" data-act="qeMove" data-d="1">Salta</button>` : `<button type="button" class="btn" data-act="qeNP" ${ctx.c.locked ? 'disabled' : ''} title="No presentada">${np ? 'Treu NP' : 'NP'}</button>`}
       <button type="button" class="btn primary" id="qesave" data-act="qeSave" data-blocked="${blocked ? 1 : ''}"></button></div>
-    <div class="qe-next">${tableLocked ? `Notes bloquejades${ctx.g && Engine.missingScores(ctx.c, ctx.g).total ? `: en aquest grup falten ${plural(Engine.missingScores(ctx.c, ctx.g).total, 'nota', 'notes')}` : ''}.` : next ? `Següent sense nota: <b>${h(next.e.bib)}</b> · ${h(ctx.name(next.e))}${n > 1 ? ` (${ordinal(next.i + 1)} ${word})` : ''}`
-      : (m === null && !np && !locked) ? `És l’última que falta ${deN(h(a.name))} en aquest grup.` : `✓ Totes les notes ${deN(h(a.name))} d’aquest grup estan entrades.`}</div>
+    <div class="qe-next${out ? ' qe-outtxt' : ''}">${outTxt || (tableLocked ? `Notes bloquejades${ctx.g && Engine.missingScores(ctx.c, ctx.g).total ? `: en aquest grup falten ${plural(Engine.missingScores(ctx.c, ctx.g).total, 'nota', 'notes')}` : ''}.` : next ? `Següent sense nota: <b>${h(next.e.bib)}</b> · ${h(ctx.name(next.e))}${n > 1 ? ` (${ordinal(next.i + 1)} ${word})` : ''}`
+      : (m === null && !np && !locked) ? `És l’última que falta ${deN(h(a.name))} en aquest grup.` : `✓ Totes les notes ${deN(h(a.name))} d’aquest grup estan entrades.`)}</div>
     <div class="qe-strip" role="list">${list.map(x => { const ok = range(n).some(i => qeHas(ctx, x, i)), lk = range(n).every(i => ctx.locked(x, i));
       return `<button type="button" role="listitem" class="${x === e ? 'cur' : ''} ${x.status === 'np' ? 'np' : ok ? 'done' : ''} ${lk && ctx.tutor ? 'lock' : ''}" data-act="qeGo" data-id="${h(x.id)}" title="${h(ctx.name(x))}">${h(x.bib)}</button>`; }).join('')}</div>
   </div>`;
@@ -4004,11 +4022,13 @@ const qeActions = {
   qeGo: el => { const ctx = qeCtx(); const e = ctx && ctx.list.find(x => x.id === el.dataset.id); if (e) qeMoveTo(ctx, e); },
   qeMove: el => {
     const ctx = qeCtx(); if (!ctx || !ctx.list.length) return;
-    const e = qeCurrent(ctx), d = +el.dataset.d;
-    if (ctx.n > 1 && d > 0 && qe.i + 1 < ctx.n) { qe.i++; qe.buf = ''; render(); return; }
-    if (ctx.n > 1 && d < 0 && qe.i > 0) { qe.i--; qe.buf = ''; render(); return; }
-    const L = ctx.list, j = (L.indexOf(e) + d + L.length) % L.length;
-    qeMoveTo(ctx, L[j], d < 0 ? ctx.n - 1 : 0);
+    const e = qeCurrent(ctx), d = +el.dataset.d, out = ctx.tutor && qe.out;
+    if (!out && ctx.n > 1 && d > 0 && qe.i + 1 < ctx.n) { qe.i++; qe.buf = ''; render(); return; }
+    if (!out && ctx.n > 1 && d < 0 && qe.i > 0) { qe.i--; qe.buf = ''; render(); return; }
+    // (la gimnasta ja no és al grup —vegeu qeCurrent—: «Salta» va a la primera que encara no té nota)
+    const L = ctx.list, idx = L.indexOf(e);
+    if (idx < 0) { const m = d > 0 && qeNextMissing(ctx, -1); if (m) qeMoveTo(ctx, m.e, m.i); else qeMoveTo(ctx, d > 0 ? L[0] : L[L.length - 1], d < 0 ? ctx.n - 1 : 0); return; }
+    qeMoveTo(ctx, L[(idx + d + L.length) % L.length], d < 0 ? ctx.n - 1 : 0);
   },
   qeTop: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
   qeSave: () => {
@@ -4018,9 +4038,10 @@ const qeActions = {
     const val = Engine.parseScore(qe.buf);
     if (Number.isNaN(val) || val > ctx.max) { qeRefresh(); return; }
     // mentrestant la taula l'ha posada, revisada, o ha bloquejat les notes: es diu per què no es desa
-    if (e.status === 'np' || ctx.locked(e, qe.i)) {
+    const gone = ctx.tutor && qe.out === 'gone', boy = e.gender === 'M';
+    if (gone || e.status === 'np' || ctx.locked(e, qe.i)) {
       render();
-      toast(e.status === 'np' ? `${ctx.name(e)} consta com a no presentada.` : !ctx.tutor ? 'Les notes d’aquesta competició estan bloquejades.' : 'Aquesta nota ja l’ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.', 'bad');
+      toast(gone ? `${ctx.name(e)} ja no és a la competició (la taula ${boy ? 'l’ha tret' : 'l’ha treta'}): aquesta nota no es pot desar.` : e.status === 'np' ? `${ctx.name(e)} consta com a no ${boy ? 'presentat' : 'presentada'}.` : !ctx.tutor ? 'Les notes d’aquesta competició estan bloquejades.' : 'Aquesta nota ja l’ha posada o revisada la taula. Si cal canviar-la, digues-ho a la taula.', 'bad');
       return;
     }
     const i = qe.i, prev = JSON.parse(JSON.stringify(ctx.get(e, i) || {})), a = ctx.a, comp = ctx.c, eid = e.id;
@@ -4031,7 +4052,7 @@ const qeActions = {
     if (nx) { qe.entryId = nx.e.id; qe.i = nx.i; }
     render();
     const offline = ctx.tutor && !tut.online;
-    toast(`${offline ? 'Guardada al mòbil (sense connexió: s’enviarà sola)' : 'Desada'} ${fmt(Engine.toM(val))} · ${a.name}${ctx.n > 1 ? ' ' + ordinal(i + 1) : ''} · ${e.bib} ${ctx.name(e)}`, offline ? 'bad' : 'ok', { actions: [{ label: 'Desfés', fn: () => {
+    toast(`${offline ? (tutLongOff() ? 'Guardada al mòbil (sense connexió: llegeix l’avís de sota)' : 'Guardada al mòbil (sense connexió: s’enviarà sola)') : 'Desada'} ${fmt(Engine.toM(val))} · ${a.name}${ctx.n > 1 ? ' ' + ordinal(i + 1) : ''} · ${e.bib} ${ctx.name(e)}`, offline ? 'bad' : 'ok', { actions: [{ label: 'Desfés', fn: () => {
       // sempre a l'aparell i la competició on s'ha desat, i només si ningú no l'ha tornada a canviar
       const v0 = prev.v === undefined || prev.v === null ? null : +prev.v;
       if (ctx.tutor) {
@@ -5203,7 +5224,7 @@ function catEditor() {
    Si es perd la connexió, les notes queden a la cua del mòbil i s'envien soles quan torna. */
 const TUT_KEY = 'notesgim.tutor', TUT_TAB = 'notesgim.tutor.pestanya', TUT_TURN = 'notesgim.tutor.enviant';
 const tut = { pin: '', who: '', comps: [], compId: null, group: null, app: null, version: null, error: '', online: true, sending: false, list: false,
-  screen: '', slow: 1, st: {}, noStore: false, mine: new Map(), gone: new Set() };
+  screen: '', slow: 1, st: {}, noStore: false, mine: new Map(), gone: new Set(), okAt: Date.now(), dead: new Set(), hosts: [], groupIds: [] };
 // Les notes per enviar són una sola cua del mòbil (localStorage), la de totes les pestanyes: si la tutora té la pàgina
 // oberta dues vegades (ha escanejat el QR dos cops), la pestanya que està oberta envia també el que l'altra hi ha deixat
 // (encara que ja s'hagi tancat). Cada nota té el seu id des que s'escriu: el programa no en posa mai dues vegades la
@@ -5211,10 +5232,15 @@ const tut = { pin: '', who: '', comps: [], compId: null, group: null, app: null,
 // una nota —en lloc de la de la mateixa casella— o se'n treu una pel seu id): cap pestanya no hi desa mai a sobre la seva
 // còpia. Les que en surten (enviades, refusades, substituïdes o tretes) es recorden (done), i cap pestanya no les hi torna
 // a posar. El codi i el nom també són del mòbil, però només es desen en entrar, en sortir i quan el codi QR en porta un de
-// nou (una pestanya vella no torna a posar el codi d'abans). La competició, el grup, l'aparell i la llista són de cada
-// pestanya (sessionStorage): una pestanya no posa el seu aparell ni el seu grup a l'altra (en tornar-la a obrir, les notes
-// anirien a un altre aparell i a una altra gimnasta). Una pestanya nova fa servir el grup de l'última vegada, però
-// l'aparell s'ha de tornar a triar.
+// nou (una pestanya vella no torna a posar el codi d'abans). El codi, la competició, el grup, l'aparell i la llista són
+// també de cada pestanya (sessionStorage): una pestanya no posa el seu aparell ni el seu grup a l'altra (en tornar-la a
+// obrir, les notes anirien a un altre aparell i a una altra gimnasta), i el que mira només val amb el codi amb què ho mira
+// (si una altra pestanya entra amb el codi d'una altra competició, aquesta, en tornar-la a carregar, es queda amb el seu;
+// si mai canvia de codi, l'aparell es torna a triar). Una pestanya nova fa servir el codi i el grup de l'última vegada,
+// però l'aparell s'ha de tornar a triar.
+// Cada nota porta el codi amb què s'ha escrit (així qualsevol pestanya la pot enviar, també si en fa servir un altre), l'id
+// del mòbil i l'hora en què s'ha escrit: el programa no posa mai una nota d'aquest mòbil a sobre d'una de més nova de la
+// mateixa casella (una pestanya adormida, o la Wi-Fi que entrega tard una petició que el mòbil ja havia donat per perduda).
 const tutCellKey = q => `${q.compId}|${q.entryId}|${q.appId}|${q.i}`;
 // (una nota desada per una versió d'abans, que encara no en tenia: totes les pestanyes li calculen el mateix id)
 function tutOpId(q) {
@@ -5229,6 +5255,8 @@ function tutClean(s) {
   const done = new Set(s.done);
   s.queue = (Array.isArray(s.queue) ? s.queue : []).filter(q => q && typeof q === 'object' && q.compId && q.entryId && q.appId)
     .map(q => (q.id ? q : { ...q, id: tutOpId(q) })).filter(q => !done.has(q.id) && !tut.gone.has(q.id));
+  // (les notes que la taula no ha acceptat: es diuen a sota fins que la tutora diu que ja ho sap)
+  s.refused = (Array.isArray(s.refused) ? s.refused : []).filter(x => x && typeof x === 'object' && typeof x.id === 'string').slice(-50);
   return s;
 }
 // el que hi ha desat al mòbil, ara (si el navegador no el deixa llegir o desar, el que aquesta pestanya hi hauria desat:
@@ -5271,14 +5299,18 @@ function tutQ() {
   });
   return lost.length ? tutStore(st => { for (const op of lost) tutPut(st, op, true); }).queue : s.queue;
 }
-// (si la pàgina és oberta dues vegades, cada vegada envia una sola pestanya: així les notes arriben en l'ordre en què s'han
-// escrit, i una correcció no pot arribar abans que la nota que corregeix)
+// (si la pàgina és oberta dues vegades, normalment envia una sola pestanya cada vegada, i les notes arriben en l'ordre en
+// què s'han escrit. Si mai n'envien dues alhora, o una pestanya adormida envia tard una nota que ja s'ha corregit, el programa
+// no la torna a posar —té el mateix id— ni la posa a sobre de la correcció —és més vella i del mateix mòbil—)
 const TUT_ME = uid();
-function tutTurn() {
+// (off: la pestanya que envia diu que no hi ha connexió —fins que una nota arriba—; les altres, que esperen, també ho diuen.
+// Sense connexió, la que envia ho torna a provar cada 4 s i es torna a quedar el torn: si en 6 s no ho ha fet, s'ha adormit
+// —el mòbil s'ha bloquejat, o és en segon pla— i l'agafa una altra)
+function tutTurn(off = !tut.online) {
   try {
     const t = JSON.parse(localStorage.getItem(TUT_TURN) || 'null'), now = Date.now();
-    if (t && t.tab !== TUT_ME && Math.abs(now - t.at) < 20000) return false;
-    localStorage.setItem(TUT_TURN, JSON.stringify({ tab: TUT_ME, at: now }));
+    if (t && t.tab !== TUT_ME && Math.abs(now - t.at) < (t.off ? 6000 : 20000)) { tut.otherOff = !!t.off; return false; }
+    localStorage.setItem(TUT_TURN, JSON.stringify({ tab: TUT_ME, at: now, off }));
   } catch (_) {}
   return true;
 }
@@ -5287,11 +5319,20 @@ addEventListener('pagehide', tutTurnEnd);
 function tutLoad() {
   const s = tutRead();
   Object.assign(tut, { pin: s.pin || '', who: s.who || '', compId: s.compId || null, group: s.group || null, app: null, list: !!s.list });
-  try { const t = JSON.parse(sessionStorage.getItem(TUT_TAB) || 'null'); if (t) Object.assign(tut, { compId: t.compId || null, group: t.group || null, app: t.app || null, list: !!t.list }); } catch (_) {}
+  // (el que mirava aquesta pestanya, amb el codi amb què ho mirava: el del mòbil pot ser el d'una altra competició, que una
+  // altra pestanya hi ha posat. Si no se'n sap el codi —una versió d'abans—, l'aparell es torna a triar)
+  try { const t = JSON.parse(sessionStorage.getItem(TUT_TAB) || 'null'); if (t && t.pin && typeof t.pin === 'string') Object.assign(tut, { pin: t.pin, compId: t.compId || null, group: t.group || null, app: t.app || null, list: !!t.list }); } catch (_) {}
 }
-// el que mira aquesta pestanya (es desa a cada pintada: no toca res del que és del mòbil)
+// el que mira aquesta pestanya i amb quin codi (es desa a cada pintada: no toca res del que és del mòbil)
 function tutSave() {
-  try { sessionStorage.setItem(TUT_TAB, JSON.stringify({ compId: tut.compId, group: tut.group, app: tut.app, list: tut.list })); } catch (_) {}
+  try { sessionStorage.setItem(TUT_TAB, JSON.stringify({ pin: tut.pin, compId: tut.compId, group: tut.group, app: tut.app, list: tut.list })); } catch (_) {}
+}
+// aquesta pestanya passa a fer servir un altre codi: el que hi mirava ja no val (es torna a entrar i l'aparell es torna a triar)
+function tutSetPin(pin) {
+  if (pin === tut.pin) return;
+  Object.assign(tut, { pin, app: null, comps: [], error: '' });
+  qe.buf = '';
+  tutSave();
 }
 // la tutora tria una competició, un grup o la llista: també és el que farà servir una pestanya nova
 function tutPick() {
@@ -5307,24 +5348,37 @@ function tutEnter() {
   setTimeout(tutKick, 0);
 }
 // hi ha notes per enviar (potser d'una altra pestanya, o d'una que s'ha tancat) i aquesta no les està enviant
-function tutKick() { if (ui.view === 'tutor' && !tut.sending && tut.pin && tut.comps.length && tutReach().length) tutSend(); }
-// una altra pestanya ha canviat la cua, o ha entrat amb un altre codi (aquesta, si encara no hi havia pogut entrar, el prova)
+function tutKick() { if (ui.view === 'tutor' && !tut.sending && tut.pin && tutReach().length) tutSend(); }
+// una altra pestanya ha canviat la cua, o ha entrat amb un altre codi (aquesta, si encara no hi havia pogut entrar, el prova:
+// l'aparell es torna a triar). La pestanya que hi ha posat una nota l'envia de seguida: aquesta hi mira una mica després
+// (quan ja sap que l'altra l'està enviant), no alhora
 addEventListener('storage', e => {
   if (e.key !== TUT_KEY || ui.view !== 'tutor') return;
   const s = tutRead();
-  if (!tut.comps.length && s.pin && s.pin !== tut.pin) { tut.pin = s.pin; tut.who = s.who || ''; }
-  tutStatusBar(); tutKick();
+  if (!tut.comps.length && s.pin && s.pin !== tut.pin) { tutSetPin(s.pin); tut.who = s.who || ''; }
+  tutStatusBar();
+  clearTimeout(tut.kickT); tut.kickT = setTimeout(tutKick, 400 + Math.floor(Math.random() * 600));
 });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && ui.view === 'tutor') { tutStatusBar(); tutKick(); } });
+// el codi QR de la taula porta el codi a l'adreça (#codi=1234): s'entra sense escriure res (i és el que queda desat al mòbil).
+// També si s'escaneja amb la pàgina ja oberta a la mateixa pestanya (només canvia el #: la pàgina no es torna a carregar)
+function tutCodeFromHash() {
+  const m = /(?:^#|[#&])codi=(\d{3,8})/.exec(location.hash);
+  if (!m) return false;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  tutSetPin(m[1]);
+  if ((tutRead().pin || '') !== m[1]) tutStore(s => { s.pin = m[1]; });
+  return true;
+}
+addEventListener('hashchange', () => {
+  if (ui.view !== 'tutor' || !tutCodeFromHash()) return;
+  render();
+  tutFetch().then(() => { render(); tutKick(); }, () => { tut.online = false; render(); });
+});
 async function tutorStart() {
   document.body.classList.add('tutor-mode');
   tutLoad();
-  // el codi QR de la taula porta el codi a l'adreça (#codi=1234): s'entra sense escriure res (i és el que queda desat)
-  const m = /(?:^#|[#&])codi=(\d{3,8})/.exec(location.hash);
-  if (m) {
-    if (tut.pin !== m[1]) { tut.pin = m[1]; tut.app = null; tutStore(s => { s.pin = m[1]; }); }
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
-  }
+  tutCodeFromHash();
   ui.view = 'tutor';
   if (!tut.pin) render();
   else {
@@ -5333,6 +5387,10 @@ async function tutorStart() {
     // (si el programa no el vol, el codi es guarda igualment: si la competició només està tancada una estona, quan la
     // taula la torna a obrir s'hi entra sola)
     try { await tutFetch(); } catch (_) { tut.online = false; }
+    // (el codi d'aquesta pestanya ja no val i al mòbil n'hi ha un altre —el del QR nou, que s'ha obert en una altra pestanya—:
+    // s'hi entra, i l'aparell es torna a triar)
+    const s = tutRead();
+    if (tut.error && s.pin && s.pin !== tut.pin) { tutSetPin(s.pin); tut.who = s.who || tut.who; try { await tutFetch(); } catch (_) { tut.online = false; } }
     clearTimeout(slow);
     render();
   }
@@ -5350,14 +5408,15 @@ async function tutFetch(since) {
     if (!j) return false;
     if (!Array.isArray(j.comps)) throw new Error('no és NotesGim');   // (una altra cosa ha respost: com sense connexió)
     const wasOut = !tut.comps.length;
-    tut.error = ''; tut.comps = j.comps || []; tut.version = j.version; tut.online = true;
+    tut.error = ''; tut.comps = j.comps || []; tut.version = j.version; tut.online = true; tut.okAt = Date.now();
+    tut.hosts = Array.isArray(j.hosts) ? j.hosts.filter(x => typeof x === 'string' && x !== location.host) : [];
     for (const op of tutQ()) tutApplyLocal(op);   // el que encara no s'ha enviat, es continua veient
     if (wasOut && tut.comps.length) tutEnter();
     return true;
   } catch (e) {
     if (e && e.name === 'AbortError') tut.slow = Math.min(4, tut.slow * 2); else if (e && e.status) tut.slow = 1;
     if (pin !== tut.pin) return false;
-    if (e.status === 403 && e.body && e.body.error) { tut.error = e.message; tut.comps = []; return true; }
+    if (e.status === 403 && e.body && e.body.error) { tut.error = e.message; tut.comps = []; tut.okAt = Date.now(); return true; }
     throw e;
   }
 }
@@ -5375,7 +5434,7 @@ async function tutWaitLoop() {
     }
     try {
       const changed = await tutFetch(tut.version);
-      if (!tut.online) tut.online = true;
+      tut.online = true; tut.okAt = Date.now();
       if (changed) tutRefresh();
       tutStatusBar();
     } catch (_) { tut.online = false; tutStatusBar(); await new Promise(r => setTimeout(r, 3000)); }
@@ -5392,11 +5451,17 @@ function tutApplyLocal(op) {
   l[op.i] = op.value === null ? { by: 'tutor', at: op.at, mine: true } : { v: op.value, by: 'tutor', at: op.at, mine: true };
 }
 // una nota de la tutora: a la cua del mòbil (amb el seu id, des d'ara) i s'envia a la taula
+// (amb el codi amb què s'escriu, l'id del mòbil i l'hora en què s'escriu: sempre més tard que la de l'anterior d'aquest
+// mòbil, encara que el rellotge s'hagi endarrerit. g: si és noi o noia, per dir-ho bé si la taula no l'accepta)
 function tutQueue(c, e, a, i, value) {
-  const op = { id: uid(), compId: c.id, entryId: e.id, appId: a.id, i, value, at: Date.now(),
+  const op = { id: uid(), compId: c.id, entryId: e.id, appId: a.id, i, value, at: Date.now(), pin: tut.pin, g: e.gender === 'M' ? 'M' : 'F', cn: c.name || '',
     label: `${e.bib ?? ''} ${e.name || ''} · ${a.name}${(a.attempts || 1) > 1 ? ' ' + ordinal(i + 1) : ''}` };
   tut.mine.set(op.id, op);
-  tutStore(s => tutPut(s, op));
+  tutStore(s => {
+    if (!s.dev || typeof s.dev !== 'string') s.dev = 'm' + uid() + uid();
+    op.dev = s.dev; op.at = Math.max(op.at, (+s.last || 0) + 1); s.last = op.at;
+    tutPut(s, op);
+  });
   tutApplyLocal(op); tutMark(op, 'wait'); tutStatusBar();
   tutSend();
 }
@@ -5409,45 +5474,98 @@ async function tutSend() {
     for (;;) {
       const op = tutReach()[0];
       if (!op) break;
-      if (!tutTurn()) { await new Promise(r => setTimeout(r, 1000)); continue; }   // (n'està enviant una altra pestanya)
+      if (!tutTurn()) {
+        // (n'està enviant una altra pestanya: aquesta diu el mateix que ella, si hi ha connexió o no)
+        if (tut.online === tut.otherOff) { tut.online = !tut.otherOff; tutStatusBar(); }
+        await new Promise(r => setTimeout(r, 1000)); continue;
+      }
       let wait = 0;
+      const pin = tutPinFor(op);
       try {
-        // (si la resposta es perd pel camí i es torna a enviar, el programa no la torna a posar: porta el mateix id)
-        const r = await api('api/score', { method: 'POST', body: JSON.stringify({ pin: tut.pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value, op: op.id }) }, 15000);
+        // (si la resposta es perd pel camí i es torna a enviar, el programa no la torna a posar: porta el mateix id; i si
+        // arriba tard, després d'una correcció, tampoc: és més vella que la que ja hi ha d'aquest mòbil)
+        const r = await api('api/score', { method: 'POST', body: JSON.stringify({ pin, who: tut.who, compId: op.compId, entryId: op.entryId, appId: op.appId, i: op.i, value: op.value, op: op.id,
+          dev: op.dev || '', made: op.dev ? op.at : 0 }) }, 15000);
         // (una resposta que no és del programa — la pàgina d'entrada d'una Wi-Fi, un altre aparell — no compta)
         if (!r || r.ok !== true) throw new Error('no és NotesGim');
-        tut.online = true;
+        tut.online = true; tut.okAt = Date.now();
         tutDrop([op.id]); tutMark(op, 'ok');
       } catch (e) {
         const ours = !!(e.body && e.body.error);   // la resposta és del programa (porta el missatge d'error)
         if (e.status === 401 && ours) {
+          tut.online = true; tut.okAt = Date.now();
           // el codi ja no val (l'han canviat o han tancat la competició): les notes es queden al mòbil
-          tut.error = e.message; tut.comps = []; render();
-          break;
+          if (pin === tut.pin) { tut.error = e.message; tut.comps = []; render(); break; }
+          // (una nota escrita amb un altre codi —en una altra pestanya— que ja no val: es queda al mòbil i es diu a sota)
+          tut.dead.add(op.id); tutStatusBar();
+          continue;
         }
         if (ours && [400, 403, 409].includes(e.status)) {
-          // la taula no l'accepta (ja l'ha posada o revisada, no presentada…): fora de la cua i es torna a carregar (sense
-          // treure el focus de la casella on ara s'escriu)
-          tutDrop([op.id]); tutMark(op, e.status === 409 ? 'lock' : 'err');
-          toast(e.message, 'bad');
+          tut.online = true; tut.okAt = Date.now();
+          // la taula no l'accepta (ja l'ha posada o revisada, no presentada…): fora de la cua, es diu quina i es torna a
+          // carregar (sense treure el focus de la casella on ara s'escriu)
+          tutRefused(op, e);
           tutTurnEnd();
           try { await tutFetch(); tutRefresh(); } catch (_) {}
           continue;
         }
-        tut.online = false; tutStatusBar(); wait = 4000;
-      } finally { tutTurnEnd(); }
+        // (sense connexió: aquesta pestanya ho continua provant, i les altres no ho proven alhora —el torn es queda aquí,
+        // fins que la pestanya es tanca o s'adorm—)
+        tut.online = false; tutStatusBar(); wait = 4000; tutTurn(true);
+      } finally { if (!wait) tutTurnEnd(); }
       if (wait) await new Promise(r => setTimeout(r, wait));
     }
-  } finally { tut.sending = false; tutStatusBar(); }
+  } finally { tut.sending = false; tutTurnEnd(); tutStatusBar(); }
+}
+// la taula no ha acceptat la nota op (resposta e del programa): surt de la cua i queda a la llista de les no acceptades (a
+// sota del teclat o de la llista), amb quina és i per què, fins que la tutora diu que ja ho sap. Si ja no hi era (l'ha
+// enviada una altra pestanya, o la tutora l'ha corregida mentrestant), no hi ha res a dir
+function tutRefused(op, e) {
+  const still = tutQ().some(q => q.id === op.id);
+  tutDrop([op.id]);
+  if (!still) return;
+  tutMark(op, e.status === 409 ? 'lock' : 'err');
+  const why = tutWhy(op, e);
+  tutStore(s => { if (!s.refused.some(x => x.id === op.id)) s.refused.push({ id: op.id, label: op.label || '', cn: op.cn || '', compId: op.compId, value: op.value, why, at: Date.now() }); });
+  toast(op.value === null ? `No s’ha pogut esborrar la nota de ${op.label}: ${why}.` : `No s’ha enviat ${tutVal(op.value)} · ${op.label}: ${why}.`, 'bad');
+  tutStatusBar();
+}
+const tutVal = v => (v === null || v === undefined ? 'esborrar' : fmt(Engine.toM(v)));
+// per què la taula no l'ha acceptada (en femení o en masculí, segons la gimnasta o el gimnasta)
+function tutWhy(op, e) {
+  const m = op.g === 'M', code = e.body && e.body.code;
+  if (code === 'np') return `consta com a no ${m ? 'presentat' : 'presentada'} (NP)`;
+  if (code === 'gone') return `ja no és a la competició (la taula ${m ? 'l’ha tret' : 'l’ha treta'})`;
+  if (code === 'locked' || e.status === 409) return 'la taula ja l’ha posada o revisada';
+  if (code === 'app') return 'aquest aparell no es fa en el seu grup';
+  const t = String(e.message || '').replace(/\.\s*$/, '');
+  return t.charAt(0).toLowerCase() + t.slice(1);
 }
 function tutMark(op, st) {
+  // (si a la casella hi ha una nota més nova per enviar —la tutora l'ha corregida—, la resposta d'aquesta no és la de la
+  // nota que s'hi veu: continua «…» fins que arribi la de la nova)
+  if (st !== 'wait' && tutQ().some(q => q.id !== op.id && tutCellKey(q) === tutCellKey(op))) st = 'wait';
   const el = $$('[data-st]').find(x => x.dataset.st === `${op.entryId}:${op.appId}:${op.i}`);
   if (el) { el.textContent = st === 'ok' ? '✓' : st === 'err' ? '✕' : st === 'lock' ? '🔒' : '…'; el.className = 'st ' + (st === 'lock' ? 'err' : st); }
 }
-// notes de la cua del mòbil que es poden enviar ara (les de les competicions on s'ha entrat) i les que no
-const tutReach = () => tutQ().filter(q => tut.comps.some(c => c.id === q.compId));
-const tutStuck = () => tutQ().filter(q => !tut.comps.some(c => c.id === q.compId));
-const tutOpList = l => l.map(q => `${h(q.label || '')}: <b>${q.value === null ? 'esborrar' : fmt(Engine.toM(q.value))}</b>`).join('<br>');
+// notes de la cua del mòbil que es poden enviar ara (les de les competicions on s'ha entrat, i les escrites amb un altre codi
+// —en una altra pestanya— mentre no se sàpiga que ja no val) i les que no
+const tutCan = q => tut.comps.some(c => c.id === q.compId) || (!!q.pin && q.pin !== tut.pin && !tut.dead.has(q.id));
+const tutPinFor = q => (tut.comps.some(c => c.id === q.compId) ? tut.pin : q.pin || tut.pin);
+const tutReach = () => tutQ().filter(tutCan);
+const tutStuck = () => tutQ().filter(q => !tutCan(q));
+// (d'una altra competició, amb el seu nom)
+const tutOpList = l => l.map(q => `${q.cn && q.compId !== (tut.compId || '') ? h(q.cn) + ' · ' : ''}${h(q.label || '')}: <b>${tutVal(q.value)}</b>`).join('<br>');
+// fa estona (TUT_LONG) que no es pot parlar amb el programa: potser l'ordinador de la taula ha canviat de Wi-Fi (té una altra
+// adreça i un codi QR nou) i les notes guardades no hi arribaran mai des d'aquesta pàgina
+const TUT_LONG = 120000;
+const tutLongOff = () => !tut.online && Date.now() - tut.okAt > TUT_LONG;
+const tutMins = () => Math.max(2, Math.floor((Date.now() - tut.okAt) / 60000));
+function tutLongHtml(l) {
+  const n = l.length;
+  return `<div class="note bad"><b>Fa ${tutMins()} minuts que no hi ha connexió amb l’ordinador de la taula.</b> Si la taula ha canviat de Wi-Fi o té un codi QR nou, ${tutOne(n, 'aquesta nota no hi arribarà sola: digues-la', `aquestes ${n} notes no hi arribaran soles: digues-les`)} a la taula. Mentrestant, es continua provant d’enviar-${tutOne(n, 'la', 'les')}.<br>${tutOpList(l)}
+    <div class="dlg-actions"><button type="button" class="btn sm" data-act="tutDropStuck" data-all="1">${tutOne(n, 'Ja l’he dita a la taula', 'Ja les he dites a la taula')}</button></div></div>`;
+}
 // «1 nota … s’enviarà sola», «2 notes … s’enviaran soles»; «digues-la», «digues-les»…
 const tutOne = (n, one, many) => (n === 1 ? one : many);
 // estat de la connexió en curt, per a la barra de l'aparell del teclat gran
@@ -5456,7 +5574,7 @@ const tutNetText = n => !tut.online ? `⚠ Sense connexió${n ? ` · ${n} al mò
 function tutWaitHtml() {
   const q = tutQ(), n = q.length;
   return `${!tut.online ? `<div class="note warn">Encara no hi ha connexió amb l’ordinador de la taula (comprova que el mòbil és a la mateixa Wi-Fi). Es torna a provar sol: no tanquis aquesta pàgina.</div>` : ''}
-    ${n ? `<div class="note warn"><b>${plural(n, 'nota guardada', 'notes guardades')} al mòbil</b>: ${tutOne(n, 's’enviarà sola', 's’enviaran soles')} quan hi hagi connexió.<br>${tutOpList(q)}</div>` : ''}`;
+    ${n && tutLongOff() ? tutLongHtml(q) : n ? `<div class="note warn"><b>${plural(n, 'nota guardada', 'notes guardades')} al mòbil</b>: ${tutOne(n, 's’enviarà sola', 's’enviaran soles')} quan hi hagi connexió.<br>${tutOpList(q)}</div>` : ''}`;
 }
 // a la pantalla del codi: les notes del mòbil que encara no s'han pogut enviar
 function tutQueuedHtml() {
@@ -5469,17 +5587,27 @@ function tutStatusBar() {
   // («Connectant…» i la pantalla del codi diuen les notes que hi ha ara al mòbil: potser una altra pestanya ja les ha enviat)
   if (wt) { const x = tutWaitHtml(); if (wt._html !== x) { wt._html = x; wt.innerHTML = x; } }
   if (lq) { const x = tutQueuedHtml(); if (lq._html !== x) { lq._html = x; lq.innerHTML = x; } }
-  const q = tutQ(), reach = q.filter(x => tut.comps.some(c => c.id === x.compId)), stuck = q.filter(x => !reach.includes(x)), n = reach.length;
+  const q = tutQ(), reach = q.filter(tutCan), stuck = q.filter(x => !reach.includes(x)), n = reach.length, long = n > 0 && tutLongOff();
   if (qn) qn.textContent = tutNetText(n);
   const one = stuck.length === 1;
   const stuckNote = stuck.length ? `<div class="note warn"><b>${plural(stuck.length, 'nota d’una altra competició no s’ha', 'notes d’una altra competició no s’han')} pogut enviar</b> (està tancada o el codi ha canviat): ${one ? 'digues-la' : 'digues-les'} a la taula.<br>${tutOpList(stuck)}
     <div class="dlg-actions"><button class="btn sm" data-act="tutDropStuck">${one ? 'Ja l’he dita a la taula' : 'Ja les he dites a la taula'}</button></div></div>` : '';
+  // (les que la taula no ha acceptat, perquè la tutora ho sàpiga i, si cal, ho digui a la taula)
+  const ref = tutRead().refused, rn = ref.length;
+  const refNote = rn ? `<div class="note bad"><b>La taula no ha acceptat ${tutOne(rn, 'aquesta nota', `aquestes ${rn} notes`)}</b> (no s’${tutOne(rn, 'ha', 'han')} desat). Si cal, digues-${tutOne(rn, 'la', 'les')} a la taula:<br>${ref.map(x => `${x.cn && x.compId !== (tut.compId || '') ? h(x.cn) + ' · ' : ''}${h(x.label)}: <b>${tutVal(x.value)}</b> — ${h(x.why)}`).join('<br>')}
+    <div class="dlg-actions"><button type="button" class="btn sm" data-act="tutRefusedOk">D’acord, ja ho sé</button></div></div>` : '';
+  // (l'ordinador de la taula ha canviat d'adreça: les notes que hi hagués a la pàgina de l'adreça d'abans només són allà)
+  const seen = tutRead().hostsOk, hosts = tut.hosts.filter(x => !(Array.isArray(seen) && seen.includes(x)));
+  const hostNote = hosts.length && tut.online ? `<div class="note warn"><b>L’ordinador de la taula ha canviat d’adreça</b> (abans: ${h(hosts[0])}). Si en aquest mòbil tenies la pàgina oberta amb l’adreça d’abans i hi havia notes sense enviar, només són en aquella pàgina (aquí no es veuen): torna-hi i digues-les a la taula.
+    <div class="dlg-actions"><button type="button" class="btn sm" data-act="tutHostsOk">D’acord</button></div></div>` : '';
+  const notes = (long ? tutLongHtml(reach) : '') + stuckNote + refNote + hostNote;
   if (el) el.innerHTML = !tut.online ? '<span class="badge bad">Sense connexió</span>'
     : n ? `<span class="badge warn">Enviant ${plural(n, 'nota', 'notes')}…</span>` : '<span class="badge ok">Connectada · tot enviat</span>';
-  if (bn) bn.innerHTML = !tut.online ? `<div class="banner bad">Sense connexió amb l’ordinador de la taula.${n ? ` ${plural(n, 'nota guardada', 'notes guardades')} al mòbil: ${tutOne(n, 's’enviarà sola', 's’enviaran soles')} quan torni la Wi-Fi.` : ''} No tanquis aquesta pàgina.</div>`
+  if (bn) bn.innerHTML = !tut.online ? `<div class="banner bad">${long ? `⚠ Fa ${tutMins()} min que no hi ha connexió: llegeix l’avís de sota.` : `Sense connexió amb l’ordinador de la taula.${n ? ` ${plural(n, 'nota guardada', 'notes guardades')} al mòbil: ${tutOne(n, 's’enviarà sola', 's’enviaran soles')} quan torni la Wi-Fi.` : ''} No tanquis aquesta pàgina.`}</div>`
     : n > 2 ? `<div class="banner bad">Enviant ${plural(n, 'nota', 'notes')}… No tanquis aquesta pàgina.</div>` : '';
-  if (bn && stuckNote !== (bn.dataset.stuck || '')) {
-    bn.dataset.stuck = stuckNote;
+  if (bn && notes !== (bn.dataset.stuck || '')) {
+    if (hostNote && !(bn.dataset.stuck || '').includes('tutHostsOk') && !tut.hostToast) { tut.hostToast = true; toast('L’ordinador de la taula ha canviat d’adreça: llegeix l’avís de sota.', 'bad'); }
+    bn.dataset.stuck = notes;
     let sn = $('#tutstuck');
     // (a sota del teclat gran o de la llista, mai a sobre: els faria baixar just quan s'hi toca)
     if (!sn) {
@@ -5487,7 +5615,7 @@ function tutStatusBar() {
       const at = $('#qe') || ($('#scoregrid') && $('#scoregrid').closest('.tbl-wrap'));
       if (at) at.after(sn); else (bn.closest('section') || bn.parentNode).append(sn);
     }
-    sn.innerHTML = stuckNote;
+    sn.innerHTML = notes;
   }
 }
 // dades noves del servidor: s'actualitza el que no s'està escrivint
@@ -5553,10 +5681,22 @@ views.tutor = () => {
         ${tut.error ? `<div class="note bad" style="margin-top:10px">${h(tut.error)}</div>` : ''}
         <div id="tutqueued">${tutQueuedHtml()}</div>
         <div class="dlg-actions"><button class="btn primary">Entra</button></div></form></div></section>`;
-  if (tut.compId !== c.id) tut.compId = c.id;
+  // (la competició que mirava aquesta pestanya ja no hi és —s'ha tancat, o el codi és el d'una altra—: el grup i l'aparell
+  // eren d'aquella, i es tornen a triar)
+  if (tut.compId !== c.id) { if (tut.compId) { tut.app = null; tut.group = null; } tut.compId = c.id; tut.groupIds = []; }
   const groups = Engine.groupsOf(c, S()).filter(g => g.entries.length);
-  if (!groups.find(g => g.key === tut.group)) tut.group = groups[0] && groups[0].key;
+  if (!groups.find(g => g.key === tut.group)) {
+    // el grup ja no hi és perquè la taula n'ha corregit el nivell o la categoria: es continua amb el grup on ara hi ha la
+    // gimnasta que es puntuava (amb el que s'hi estava escrivint), o la majoria de les del grup. Si no n'hi ha cap, és un
+    // altre grup: l'aparell es torna a triar
+    const was = tut.group, onQe = !!qe.entryId && qe.key === `${c.id}|${was}|${tut.app}`, ids = new Set(tut.groupIds);
+    let g2 = onQe ? groups.find(x => x.entries.some(e => e.id === qe.entryId)) : null;
+    if (!g2 && ids.size) { let best = 0; for (const x of groups) { const k = x.entries.filter(e => ids.has(e.id)).length; if (k > best) { best = k; g2 = x; } } }
+    if (g2) { tut.group = g2.key; if (onQe) qe.key = `${c.id}|${g2.key}|${tut.app}`; }
+    else { tut.group = groups[0] && groups[0].key; if (was) tut.app = null; }
+  }
   const g = groups.find(x => x.key === tut.group);
+  tut.groupIds = g ? g.entries.map(e => e.id) : [];
   const apps = g ? Engine.enabledApps(c, g.gender) : [];
   const a = apps.find(x => x.id === tut.app);
   tutSave();
@@ -6179,7 +6319,8 @@ const actions = {
     else await idbDel('abansServidor');
     offlineStatus();
   },
-  tutComp: el => { tut.compId = el.dataset.id; tutPick(); render(); },
+  // (una altra competició: l'aparell es torna a triar)
+  tutComp: el => { if (el.dataset.id !== tut.compId) { tut.compId = el.dataset.id; tut.app = null; qe.buf = ''; } tutPick(); render(); },
   tutGroup: el => { if (el.dataset.g) { tut.group = el.dataset.g; qe.buf = ''; tutPick(); render(); qeIntoView(); } },
   tutApp: el => { tut.app = el.dataset.a; qe.buf = ''; tutSave(); render(); qeIntoView(); },
   tutChangeApp: async () => {
@@ -6190,18 +6331,23 @@ const actions = {
   tutToggleList: () => { tut.list = !tut.list; tutPick(); render(); },
   // (les notes per enviar del mòbil es perden: es diuen a la taula. El codi es treu del mòbil)
   tutLogout: async () => {
-    const q = tutQ(), n = q.length;
+    // (les escrites amb un altre codi en una altra pestanya les continua enviant aquella)
+    const q = tutQ().filter(o => !o.pin || o.pin === tut.pin || tut.comps.some(c => c.id === o.compId)), n = q.length;
     if (n && !(await confirmBox(`Encara hi ha ${plural(n, 'nota', 'notes')} per enviar a la taula. Si surts, ${tutOne(n, 'es perdrà (digues-la a la taula)', 'es perdran (digues-les a la taula)')}:<br>${tutOpList(q)}<br>Vols sortir igualment?`, { ok: 'Surt igualment', danger: true }))) return;
     if (n) tutDrop(q.map(o => o.id));
     tut.pin = ''; tut.comps = []; tut.app = null; tut.error = '';
     tutStore(s => { s.pin = ''; }); tutSave(); render();
   },
   // les notes que ja no es poden enviar (competició tancada): la tutora les ha dit a la taula i es treuen del mòbil
-  tutDropStuck: async () => {
-    const drop = tut.comps.length ? tutStuck() : tutQ(), n = drop.length;
+  // (data-all: fa estona que no hi ha connexió i potser no arribaran mai, i la tutora les ha dites a la taula: totes)
+  tutDropStuck: async el => {
+    const drop = (el && el.dataset.all) || !tut.comps.length ? tutQ() : tutStuck(), n = drop.length;
     if (!n || !(await confirmBox(`Treure del mòbil ${tutOne(n, 'aquesta nota', `aquestes ${n} notes`)}? Fes-ho només si ja ${tutOne(n, 'l’has dita', 'les has dites')} a la taula.<br>${tutOpList(drop)}`, { ok: tutOne(n, 'Treu-la', 'Treu-les'), danger: true }))) return;
     tutDrop(drop.map(q => q.id)); render(); tutStatusBar();
   },
+  // la tutora ja sap quines notes no ha acceptat la taula (i, si calia, ja ho ha dit)
+  tutRefusedOk: () => { tutStore(s => { s.refused = []; }); tutStatusBar(); },
+  tutHostsOk: () => { tutStore(s => { s.hostsOk = [...new Set([...(Array.isArray(s.hostsOk) ? s.hostsOk : []), ...tut.hosts])].slice(-10); }); tutStatusBar(); },
   newPin: () => { const c = curComp(); c.tutorPin = String(1000 + Math.floor(Math.random() * 9000)); commit(); render(); },
   printTutorSheet: () => { const c = curComp(); if (c && server.urls[0]) printSheets(tutorSheet(c)); },
   reviewTutor: () => {
@@ -6729,7 +6875,7 @@ function openCompTeamForm(c, t, g) {
 const forms = {
   tutLogin: async f => {
     const fd = new FormData(f);
-    tut.pin = String(fd.get('pin') || '').trim(); tut.who = String(fd.get('who') || '').trim();
+    tutSetPin(String(fd.get('pin') || '').trim()); tut.who = String(fd.get('who') || '').trim();
     // (el codi i el nom es desen al mòbil quan s'hi entra: vegeu tutEnter)
     try { await tutFetch(); } catch (_) { tut.error = 'No es pot connectar amb l’ordinador de la taula. Comprova que estàs a la mateixa Wi-Fi.'; tut.comps = []; }
     render(); tutStatusBar(); tutKick();

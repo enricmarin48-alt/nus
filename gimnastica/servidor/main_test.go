@@ -767,9 +767,216 @@ func TestTutorOpsSurviveRestart(t *testing.T) {
 	}
 	s.mu.Lock()
 	s.sawOpLocked("op-abc")
+	err = s.saveLocked()
+	s.flushOpsLocked()
 	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 	s2, err := newStore(path)
 	if err != nil || !s2.ops["op-abc"] {
 		t.Fatalf("la nota ja posada s'havia de recordar: %v %v", err, s2.ops)
+	}
+}
+
+// sisena revisió: l'id d'una nota de tutora es recorda al fitxer de les notes posades només quan la nota ja és al fitxer de
+// dades. Si el programa s'atura mentre desa (o no pot desar), el mòbil la torna a enviar en tornar-lo a obrir i es posa
+func TestTutorOpRecordedOnlyAfterSave(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	if err := os.WriteFile(path, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	post := func(url, op string, v float64) int {
+		b, _ := json.Marshal(map[string]any{"pin": "1234", "compId": "k1", "entryId": "e2", "appId": "salt", "i": 0, "value": v, "op": op})
+		r, err := http.Post(url+"/api/score", "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	opsFile := strings.TrimSuffix(path, ".json") + "-notes-posades.txt"
+	inOps := func(op string) bool { b, _ := os.ReadFile(opsFile); return bytes.Contains(b, []byte(op+"\n")) }
+	if err := os.Mkdir(path+".tmp", 0o755); err != nil { // no s'hi podrà escriure
+		t.Fatal(err)
+	}
+	if code := post(srv.URL, "op-x", 7.5); code != 200 {
+		t.Fatalf("la nota és al programa (i a la taula): %d", code)
+	}
+	if inOps("op-x") {
+		t.Fatal("l'id s'ha recordat al fitxer abans que la nota fos al fitxer de dades")
+	}
+	if !s.ops["op-x"] || post(srv.URL, "op-x", 7.5) != 200 {
+		t.Fatal("mentre el programa és obert, un reenviament no la torna a posar")
+	}
+	// el programa es torna a obrir sense que s'hagi pogut desar: el reenviament es posa
+	s2, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s2.ops["op-x"] {
+		t.Fatal("el programa nou no la pot donar per posada")
+	}
+	srv2 := httptest.NewServer(s2.routes(0))
+	defer srv2.Close()
+	_ = os.Remove(path + ".tmp")
+	if code := post(srv2.URL, "op-x", 7.5); code != 200 {
+		t.Fatalf("reenviament: %d", code)
+	}
+	got, _ := os.ReadFile(path)
+	if !bytes.Contains(got, []byte(`"op": "op-x"`)) || !inOps("op-x") {
+		t.Fatalf("la nota s'havia de posar i recordar: %s", got)
+	}
+	// al primer programa, la nota següent que es desa hi posa també la d'abans (ja és al fitxer de dades)
+	if code := post(srv.URL, "op-y", 8); code != 200 || len(s.opsNew) != 0 {
+		t.Fatalf("la següent: %d %v", code, s.opsNew)
+	}
+}
+
+// sisena revisió: una nota que s'ha quedat pel camí (una pestanya adormida, o la Wi-Fi que entrega tard una petició que el
+// mòbil ja havia donat per perduda) no es posa a sobre d'una de més nova del mateix mòbil a la mateixa casella; les hores
+// de dos mòbils no es comparen mai
+func TestTutorOlderNoteFromSamePhoneIsIgnored(t *testing.T) {
+	db := parse(t, sample)
+	put := func(op, dev string, made, v float64) error {
+		return applyScore(db, scoreReq{Pin: "1234", CompID: "k1", EntryID: "e2", AppID: "salt", Value: &v, Op: op, Dev: dev, Made: made}, 1)
+	}
+	salt := func() float64 {
+		e2 := obj(arr(obj(arr(db["competitions"])[0])["entries"])[1])
+		return num(obj(arr(obj(e2["scores"])["salt"])[0])["v"])
+	}
+	if err := put("a", "mobil-1", 1000, 7.5); err != nil || salt() != 7.5 {
+		t.Fatal(err, salt())
+	}
+	if err := put("b", "mobil-1", 2000, 9); err != nil || salt() != 9 {
+		t.Fatal(err, salt())
+	}
+	// la de 7,5 arriba tard (un altre id, mai vist): no es posa i es respon que sí
+	if err := put("a", "mobil-1", 1000, 7.5); !errors.Is(err, errOlder) || salt() != 9 {
+		t.Fatalf("la vella ha trepitjat la correcció: %v %v", err, salt())
+	}
+	// un altre mòbil (amb el rellotge endarrerit) sí que la pot canviar
+	if err := put("c", "mobil-2", 10, 8); err != nil || salt() != 8 {
+		t.Fatal(err, salt())
+	}
+	// i la vella del primer mòbil tampoc no trepitja aquesta (el primer ja hi havia posat una de més nova)
+	if err := put("a2", "mobil-1", 1500, 6); !errors.Is(err, errOlder) || salt() != 8 {
+		t.Fatalf("una nota vella del primer mòbil: %v %v", err, salt())
+	}
+	// una de nova del primer mòbil, sí
+	if err := put("d", "mobil-1", 3000, 9.5); err != nil || salt() != 9.5 {
+		t.Fatal(err, salt())
+	}
+	// sense id de mòbil (una versió d'abans): com fins ara
+	if err := put("e", "", 0, 7); err != nil || salt() != 7 {
+		t.Fatal(err, salt())
+	}
+	// per HTTP: «ok» sense posar-la
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	_ = os.WriteFile(path, []byte(sample), 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	post := func(op string, made, v float64) (int, map[string]any) {
+		b, _ := json.Marshal(map[string]any{"pin": "1234", "compId": "k1", "entryId": "e2", "appId": "salt", "i": 0, "value": v, "op": op, "dev": "mobil-1", "made": made})
+		r, err := http.Post(srv.URL+"/api/score", "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var j map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&j)
+		return r.StatusCode, j
+	}
+	if code, _ := post("h-new", 2000, 9); code != 200 {
+		t.Fatal(code)
+	}
+	if code, j := post("h-old", 1000, 7.5); code != 200 || j["ok"] != true || j["older"] != true {
+		t.Fatalf("la vella: %d %v", code, j)
+	}
+	got, _ := os.ReadFile(path)
+	if bytes.Contains(got, []byte("h-old")) || !bytes.Contains(got, []byte("h-new")) {
+		t.Fatalf("al fitxer hi ha d'haver la correcció: %s", got)
+	}
+}
+
+// sisena revisió: quan la taula no accepta una nota, el programa diu per què amb un codi (el mòbil ho diu amb la gimnasta o
+// el gimnasta i la nota), i el text, en majúscula i sense dir «gimnasta» (pot ser un noi)
+func TestTutorRefusalsHaveCodes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "notesgim-dades.json")
+	db := parse(t, sample)
+	c := obj(arr(db["competitions"])[0])
+	obj(arr(c["entries"])[1])["status"] = "np"
+	b, _ := json.Marshal(db)
+	_ = os.WriteFile(path, b, 0o644)
+	s, err := newStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(s.routes(0))
+	defer srv.Close()
+	post := func(entry, app string) (int, string, string) {
+		b, _ := json.Marshal(map[string]any{"pin": "1234", "compId": "k1", "entryId": entry, "appId": app, "i": 0, "value": 8})
+		r, err := http.Post(srv.URL+"/api/score", "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var j struct{ Error, Code string }
+		_ = json.NewDecoder(r.Body).Decode(&j)
+		return r.StatusCode, j.Code, j.Error
+	}
+	for _, c := range []struct {
+		entry, app, code string
+		status           int
+	}{
+		{"e2", "salt", "np", 403}, {"nobody", "salt", "gone", 403}, {"e1", "salt", "locked", 409}, {"e1", "mini", "app", 403},
+	} {
+		st, code, msg := post(c.entry, c.app)
+		if st != c.status || code != c.code || msg == "" || strings.ContainsAny(msg[:1], "abcdefghijklmnopqrstuvwxyz") || strings.Contains(msg, "'") || strings.Contains(msg, "gimnasta") {
+			t.Fatalf("%s/%s: %d %q %q", c.entry, c.app, st, code, msg)
+		}
+	}
+}
+
+// sisena revisió: el programa diu a les tutores amb quines altres adreces s'hi ha arribat (l'ordinador ha canviat de Wi-Fi:
+// les notes de la pàgina de l'adreça d'abans només són en aquella pàgina)
+func TestTutorHostsReported(t *testing.T) {
+	clock := int64(1_000_000)
+	defer func(f func() int64) { nowMs = f }(nowMs)
+	nowMs = func() int64 { clock += 1000; return clock }
+	s := &store{}
+	req := func(host, remote string) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "http://"+host+"/api/tutor", nil)
+		r.Host, r.RemoteAddr = host, remote
+		return r
+	}
+	if got := s.sawHostLocked(req("192.168.1.20:8765", "192.168.1.40:5000")); len(got) != 0 {
+		t.Fatalf("la primera adreça: %v", got)
+	}
+	if got := s.sawHostLocked(req("127.0.0.1:8765", "127.0.0.1:5000")); len(got) != 0 {
+		t.Fatalf("la de la taula no compta: %v", got)
+	}
+	if got := s.sawHostLocked(req("10.0.0.5:8765", "10.0.0.7:5000")); len(got) != 1 || got[0] != "192.168.1.20:8765" {
+		t.Fatalf("l'adreça d'abans: %v", got)
+	}
+	// la pàgina de l'adreça d'abans hi torna a arribar (l'ordinador torna a la Wi-Fi d'abans): per a ella, la nova no és «d'abans»
+	if got := s.sawHostLocked(req("192.168.1.20:8765", "192.168.1.40:5000")); len(got) != 0 {
+		t.Fatalf("l'adreça nova no és d'abans: %v", got)
+	}
+	if got := s.sawHostLocked(req("10.0.0.5:8765", "10.0.0.7:5000")); len(got) != 0 {
+		t.Fatalf("dues adreces que es fan servir alhora: %v", got)
 	}
 }

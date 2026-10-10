@@ -321,6 +321,12 @@
     .pills.hide-ph{display:none}
     .seg{display:grid;grid-template-columns:repeat(var(--n,4),1fr);gap:4px}
     .seg .pill{justify-content:center;padding:8px 4px;font-size:13px;border-radius:10px}
+    /* (les pastilles dels aparells, amb el compte «22/31»: cadascuna tan ampla com el que hi diu i, totes, dins la pantalla,
+       també a 320 px; si el compte no hi cap al costat del nom, baixa a sota —amb 5 o 6 aparells, sempre—: la pàgina no
+       s'eixampla mai) */
+    .seg:has(.pill .n){grid-template-columns:repeat(var(--n,4),auto)}
+    .seg:has(> .pill:nth-child(5)) .pill .n{flex-basis:100%}
+    .seg .pill:has(.n){min-width:0;flex-wrap:wrap;row-gap:0;column-gap:4px}
     .toolbar .grow{min-width:0;flex:1 1 100%}
     .toolbar .search.grow{flex:1 1 160px}
     .toolbar .right{margin-left:0}
@@ -334,10 +340,24 @@
     .tbl-wrap .tbl:has(th.total) td.total{background:#fff;z-index:1}
     .tbl-wrap .tbl:has(th.total) thead th.total{z-index:2}
     .tbl-wrap .tbl:has(th.total) tr.member td:last-child{position:sticky;right:0;background:#fff;z-index:1;box-shadow:inset 1px 0 0 var(--line)}
-    .tbl-wrap .tbl:has(th.total) tr.gold td.total{background:var(--gold)}.tbl-wrap .tbl:has(th.total) tr.silver td.total{background:var(--silver)}
-    .tbl-wrap .tbl:has(th.total) tr.bronze td.total{background:var(--bronze)}
     .tbl-wrap .tbl:has(th.total) th.num,.tbl-wrap .tbl:has(th.total) td.num{padding-left:4px;padding-right:4px}
+    .tbl-wrap .tbl:has(th.total) thead th{font-size:11px;letter-spacing:0}
     .tbl-wrap .tbl:has(th.total) thead th:nth-child(2){min-width:88px}
+    .tbl-wrap .tbl:has(th.total) button.tg{margin-left:4px;padding:1px 5px}
+    /* (el lloc també es queda a l'esquerra; i la columna que, en fer lliscar la taula, queda a mitges sota el total o sota el
+       lloc es tapa sencera, del color de la ratlla: mai es llegeix «24» on hi diu 24,45. L'amplada de la tapa la posa tblCuts) */
+    .tbl-wrap .tbl:has(th.total) :is(th,td):first-child{position:sticky;left:0;z-index:1;background:#fff}
+    .tbl-wrap .tbl:has(th.total) thead th:first-child{background:#f7f9fc;z-index:2}
+    .tbl-wrap .tbl:has(th.total) tr.gold td:is(.total,:first-child){background:var(--gold)}
+    .tbl-wrap .tbl:has(th.total) tr.silver td:is(.total,:first-child){background:var(--silver)}
+    .tbl-wrap .tbl:has(th.total) tr.bronze td:is(.total,:first-child){background:var(--bronze)}
+    .tbl-wrap .tbl:has(th.total) :is(th.total,td.total,tr.member td:last-child)::before,.tbl-wrap .tbl:has(th.total) :is(th,td):first-child::after{content:'';position:absolute;top:0;bottom:0;background:inherit;pointer-events:none}
+    .tbl-wrap .tbl:has(th.total) :is(th.total,td.total,tr.member td:last-child)::before{right:100%;width:var(--cutr,0px);box-shadow:-5px 0 6px -4px rgba(10,20,40,.22)}
+    .tbl-wrap .tbl:has(th.total) :is(th,td):first-child::after{left:100%;width:var(--cutl,0px)}
+    .tbl-wrap .tbl.sx:has(th.total) :is(th,td):first-child{box-shadow:5px 0 6px -4px rgba(10,20,40,.22)}
+    /* (la ratlla de color de les gimnastes de l'equip, sense vora: per sota d'una vora no tapada es veuria un tros de xifra) */
+    .tbl-wrap .tbl:has(th.total) tr.member td:first-child{border-left:0;box-shadow:inset 3px 0 0 var(--pri-soft)}
+    .tbl-wrap .tbl.sx:has(th.total) tr.member td:first-child{box-shadow:inset 3px 0 0 var(--pri-soft),5px 0 6px -4px rgba(10,20,40,.22)}
     #scoregrid{font-size:15px}
     #scoregrid td.who{max-width:52vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     #scoregrid .sub-ph{overflow:hidden;text-overflow:ellipsis}
@@ -391,13 +411,19 @@
     .qe-bar .btn{min-height:54px}
     .tutor-mode .page-head{margin-bottom:6px}
   }
+  /* (mòbil dret: amb 4 aparells, les pastilles en dues fileres de 2; amb 5 o 6, de 3. I a 320 px, el compte sempre a sota
+     del nom: totes les pastilles igual) */
+  @media screen and (max-width:440px){
+    .seg:has(.pill .n):has(> .pill:nth-child(4)){grid-template-columns:repeat(2,auto)}
+    .seg:has(.pill .n):has(> .pill:nth-child(5)){grid-template-columns:repeat(3,auto)}
+  }
+  @media screen and (max-width:340px){ .seg .pill .n{flex-basis:100%} }
   /* (mòbil: a la configuració dels aparells, el que fa cada aparell per a noies i per a nois, cadascun a la seva ratlla:
      «Compta (general i equips)» hi cap sencer) */
   @media screen and (max-width:520px){ table.cardify.apps tr{grid-template-areas:"name name" "f f" "m m" "att rule" "act act"} }
   /* (mòbil estret, de 360 px: les columnes de les classificacions, més justes, perquè tres aparells o tres jornades hi
      càpiguen sense haver de fer lliscar la taula) */
   @media screen and (max-width:380px){
-    .tbl-wrap .tbl:has(th.total) thead th{font-size:11px;letter-spacing:0}
     .tbl-wrap .tbl:has(th.total) th.num,.tbl-wrap .tbl:has(th.total) td.num{padding-left:3px;padding-right:3px}
   }
   /* els avisos: al mòbil a dalt, i amb el teclat gran sempre a dalt (mai a sobre de «Desa») */
@@ -448,15 +474,28 @@
   .qe-net:not(:empty) + small{margin-left:8px}
   html:has(#qe){scroll-padding-top:0}
   .qe{scroll-margin-top:calc(var(--top,0px) + 6px)}
-  /* mòbil girat: el teclat al costat de la gimnasta */
+  /* mòbil girat: el teclat al costat de la gimnasta (i la barra de l'aparell, a sobre de la gimnasta) */
   @media screen and (max-height:500px) and (min-aspect-ratio:3/2) and (max-width:950px){
     .qe{max-width:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 14px;align-items:start;
-      grid-template-areas:"app app" "card keys" "disp keys" "hint keys" "next bar" "strip strip"}
+      grid-template-areas:"app keys" "card keys" "disp keys" "hint keys" "next bar" "strip strip"}
     .qe-app{grid-area:app;position:static}.qe-card{grid-area:card}.qe-display{grid-area:disp}.qe-hint{grid-area:hint}
     .qe-keys{grid-area:keys;margin:0}.qe-bar{grid-area:bar;margin-top:6px}.qe-next{grid-area:next}.qe-strip{grid-area:strip}
     .qe-keys button{min-height:42px;font-size:22px}
     .qe-bar .btn{min-height:46px}
     .qe-display{font-size:32px;min-height:48px}
+  }
+  /* mòbil de pantalla baixa (360×560, l'iPhone SE amb les barres del Safari, o girat): la barra de l'aparell, més prima i
+     enganxada a la fitxa de la gimnasta, perquè en obrir el teclat «Desa» continuï a la vista sense haver de baixar */
+  @media screen and (max-width:700px) and (max-height:680px), screen and (max-height:500px) and (min-aspect-ratio:3/2) and (max-width:950px){
+    .qe-app{padding:5px 12px;font-size:16px;margin-bottom:0;border-radius:12px 12px 0 0}
+    .qe-app .ico{width:20px;height:20px}
+    .qe-app small{font-size:13px}
+    .qe-app + .qe-card{border-top:0 !important;border-radius:0 0 14px 14px}
+  }
+  @media screen and (max-width:700px) and (max-height:680px) and (orientation:portrait){
+    .qe{scroll-margin-top:calc(var(--top,0px) + 2px)}
+    .qe-display{font-size:36px;min-height:50px;margin:6px 0 2px}
+    .qe-keys{margin-bottom:8px}
   }
   /* ordinador o tauleta de pantalla baixa (portàtil de 1366×768 o 1280×800, tauleta girada): el teclat al costat de la
      gimnasta, perquè a sobre també hi càpiguen els grups i les pastilles dels aparells (es veu on va la nota). El mòbil girat
@@ -3501,6 +3540,33 @@ const qeStripBusy = () => qeStripDown || Date.now() - qeStripAt < 1200;
 document.addEventListener('scroll', e => { if (e.target && e.target.classList && e.target.classList.contains('qe-strip')) qeStripAt = Date.now(); }, true);
 document.addEventListener('pointerdown', e => { if (e.target.closest && e.target.closest('.qe-strip')) { qeStripDown = true; qeStripAt = Date.now(); } }, true);
 ['pointerup', 'pointercancel'].forEach(t => document.addEventListener(t, () => { qeStripDown = false; }, true));
+// mòbil: a les classificacions i al rànquing (el total enganxat a la dreta i el lloc a l'esquerra), la columna que queda a
+// mitges sota l'un o l'altre es tapa sencera (--cutr, --cutl): mai es llegeix «24» on hi diu 24,45, ni «8,4» on hi diu 8,45,
+// ni dues xifres enganxades («24,4599,22»). Es torna a mirar en fer lliscar la taula i quan canvia de mida (girar el mòbil,
+// desplegar un equip)
+function tblCuts(wrap) {
+  const t = wrap && wrap.querySelector(':scope > table.tbl');
+  const ths = t && t.tHead ? [...t.tHead.rows[0].cells].filter(x => x.offsetWidth) : [];
+  const tot = ths.find(x => x.classList.contains('total'));
+  if (!tot) return;
+  let cr = 0, cl = 0;
+  if (getComputedStyle(tot).position === 'sticky') {
+    const R = tot.getBoundingClientRect().left, L = ths[0].getBoundingClientRect().right;
+    for (const th of ths.slice(1)) {
+      if (th === tot) continue;
+      const r = th.getBoundingClientRect(), s = getComputedStyle(th), num = th.classList.contains('num');
+      // (una xifra que es veu sencera però queda a menys de 6 px de la del total, o de la del lloc, també es tapa; del nom,
+      // només si en queda una engruna)
+      if (num && r.left < R && r.right - parseFloat(s.paddingRight) > R - 2) cr = Math.max(cr, R - r.left);
+      if (r.left < L && r.right > L && (num ? r.left + parseFloat(s.paddingLeft) < L + 2 : r.right - L < 24)) cl = Math.max(cl, r.right - L);
+    }
+  }
+  t.style.setProperty('--cutr', Math.ceil(cr) + 'px');
+  t.style.setProperty('--cutl', Math.ceil(cl) + 'px');
+  t.classList.toggle('sx', wrap.scrollLeft > 0);
+}
+const tblCutRO = window.ResizeObserver ? new ResizeObserver(es => new Set(es.map(e => e.target.closest('.tbl-wrap'))).forEach(tblCuts)) : null;
+document.addEventListener('scroll', e => { if (e.target && e.target.classList && e.target.classList.contains('tbl-wrap')) tblCuts(e.target); }, true);
 function render() {
   const v = views[ui.view] || views.competicions;
   focusIds.clear();
@@ -3518,6 +3584,7 @@ function render() {
     qeLastCur = qe.entryId;
   }
   if (ui.view === 'tutor') { tutStatusBar(); tutShape(); }
+  if (tblCutRO) { tblCutRO.disconnect(); $$('#main .tbl-wrap > table.tbl').forEach(t => { if (t.querySelector('th.total')) { tblCutRO.observe(t); tblCutRO.observe(t.parentElement); } }); }
   document.body.classList.toggle('has-qe', !!$('#qe'));
   if ($('#qe')) qeRefresh();
   if (ui.view === 'configuracio') offlineStatus();
@@ -6758,7 +6825,7 @@ function judgeBlocks(c, g, a, rv = c.rot && c.rot.made ? rotViewOf(c) : null, np
 }
 // notes que falten a aquestes inscripcions (les que no són NP) en aquests aparells; i, si n'hi ha, el que diu el full imprès
 const missIn = (c, entries, apps) => entries.reduce((n, e) => n + (e.status === 'np' ? 0 : apps.filter(a => !Engine.appComplete(e, a, c)).length), 0);
-const provTxt = n => (n ? `PROVISIONAL · falten ${plural(n, 'nota', 'notes')}` : '');
+const provTxt = n => (n ? `PROVISIONAL · ${n === 1 ? 'falta' : 'falten'} ${plural(n, 'nota', 'notes')}` : '');
 function judgeSheet(c, g, a, rv) {
   const det = c.scoring === 'detailed', n = Math.max(1, a.attempts || 1);
   const cols = det ? ['D', 'E', 'Pen.', 'Nota'] : ['Nota'];

@@ -1924,7 +1924,7 @@ try {
       assert.ok(want.all > 0 && want.salt > 0 && want.teams > 0, JSON.stringify(want));
       await pg.evaluate(k => doPrint(curComp(), ['podium', 'general', 'apps', 'teams'], [k]), key); await pg.waitForTimeout(100);
       const s1 = await sheets();
-      const nota = n => `PROVISIONAL · falten ${n} ${n === 1 ? 'nota' : 'notes'}`;
+      const nota = n => `PROVISIONAL · ${n === 1 ? 'falta 1 nota' : `falten ${n} notes`}`;
       assert.equal(s1.length, 6, 'podi, general, 3 aparells i equips');
       assert.ok(s1[0].text.includes(nota(want.all)) && s1[0].marks === want.open && s1[0].marks > 0, JSON.stringify(s1[0]).slice(0, 300));
       assert.ok(s1[1].rep.every(x => x.includes('Classificació individual') && x.includes(nota(want.all))), JSON.stringify(s1[1].rep));
@@ -1939,7 +1939,120 @@ try {
       const s2 = await sheets();
       assert.equal(s2.length, 6);
       assert.ok(s2.every(x => !/PROVISIONAL|falten/.test(x.text) && !x.marks), JSON.stringify(s2.map(x => x.text.slice(0, 120))));
+      // només en falta una (la barra d'una gimnasta): «falta 1 nota», i només als fulls on compta
+      const d1 = r7(false); const e1 = d1.competitions[0].entries.find(e => e.gender === 'F' && e.category === 'Prebenjamí' && e.level === 'A'); delete e1.scores.barra;
+      await pg.evaluate(r => { db = migrate(JSON.parse(r)); commit(); render(); }, JSON.stringify(d1));
+      await pg.evaluate(k => doPrint(curComp(), ['podium', 'general', 'apps', 'teams'], [k]), key); await pg.waitForTimeout(100);
+      const s3 = await sheets();
+      assert.deepEqual(s3.map(x => (x.text.match(/PROVISIONAL · falt\w+ \d+ nota(?!e)/) || [''])[0]), ['PROVISIONAL · falta 1 nota', 'PROVISIONAL · falta 1 nota', '', 'PROVISIONAL · falta 1 nota', '', 'PROVISIONAL · falta 1 nota'], JSON.stringify(s3.map(x => x.text.slice(0, 160))));
+      assert.ok(s3.every(x => !x.text.includes('falten 1')));
     } finally { await cx.close(); }
+  });
+
+  // ─── setena revisió, segona volta: el que es veu a mitges al mòbil, el teclat gran en un mòbil baix i les pastilles a 320 px
+  // (què es llegeix de cada xifra de les classificacions i del rànquing: sencera, tapada del tot o tallada; i si una de
+  // sencera queda enganxada a la del total o a la del lloc)
+  const cutNums = pg => pg.evaluate(() => $$('#main .tbl-wrap').filter(w => w.offsetParent && w.querySelector('th.total')).map(w => {
+    const ths = [...w.querySelector('thead tr').cells].filter(x => x.offsetWidth), tot = ths.find(x => x.classList.contains('total'));
+    const R = tot.getBoundingClientRect().left, L = ths[0].getBoundingClientRect().right;
+    const txt = el => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect(); };
+    const bad = []; let hidden = 0;
+    for (const tr of $$('tbody tr', w)) {
+      if (!tr.offsetHeight) continue;
+      const cells = [...tr.cells].filter(x => x.offsetWidth), last = tr.querySelector('td.total') || cells[cells.length - 1], first = cells[0];
+      const cr = parseFloat(getComputedStyle(last, '::before').width) || 0, cl = parseFloat(getComputedStyle(first, '::after').width) || 0;
+      const tt = txt(last), ft = txt(first);
+      for (const td of cells.slice(1)) {
+        if (td === last || !td.classList.contains('num')) continue;
+        const t = txt(td); if (!t.width) continue;
+        const vis = Math.min(t.right, R - cr) - Math.max(t.left, L + cl);
+        if (vis <= 0.5) { hidden++; continue; }
+        if (vis < t.width - 1.5) bad.push(`${td.textContent.trim()} a mitges (${Math.round(vis)} de ${Math.round(t.width)} px)`);
+        else if ((tt.width && tt.left - t.right < 5) || (ft.width && t.left - ft.right < 5)) bad.push(`${td.textContent.trim()} enganxada a ${tt.left - t.right < 5 ? 'la del total' : 'la del lloc'}`);
+      }
+    }
+    return { bad: [...new Set(bad)].slice(0, 6), hidden, fits: w.scrollWidth <= w.clientWidth + 1 };
+  }));
+  // (la taula feta lliscar a uns quants llocs, fins al final; l'avís de lliscar arriba al cap d'un moment)
+  const slides = async (pg, what) => {
+    for (const sl of [0, 3, 7, 13, 21, 34, 55, 89, 9999]) {
+      await pg.evaluate(sl => $$('#main .tbl-wrap').forEach(w => { w.scrollLeft = sl; }), sl); await pg.waitForTimeout(60);
+      const r = await cutNums(pg);
+      assert.ok(r.length, what);
+      assert.deepEqual(r.flatMap(x => x.bad), [], `${what}, lliscada ${sl} px`);
+      if (sl === 0) assert.ok(r.every(x => !x.fits || !x.hidden), `${what}: si la taula hi cap, no es tapa res`);
+    }
+  };
+  await step('setena revisió (2a volta): al mòbil (360, 390 i 412 px), a Classificacions i al Rànquing cap xifra es veu a mitges ni enganxada al total, tampoc fent lliscar la taula (3–6 aparells, equips desplegats, 3 i 4 jornades)', async () => {
+    const APPS = [['salt', 'Salt'], ['barra', 'Barra'], ['terra', 'Terra'], ['mini', 'Minitramp'], ['paral', 'Paral·leles'], ['anelles', 'Anelles']];
+    for (const w of [360, 390, 412]) {
+      for (const k of [3, 4, 6]) {
+        const d = r7(false), c = d.competitions[0];
+        c.apparatus = APPS.slice(0, k).map(([id, name]) => ({ id, name, icon: id === 'anelles' ? 'altre' : id, modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' }));
+        c.entries.forEach((e, i) => { e.scores = {}; for (const [id] of APPS.slice(0, k)) e.scores[id] = [{ v: 8 + (i % 9) * 0.45 }]; });
+        const { cx, pg } = await open7(phoneVp(w), d, '#/competicio/c418/classificacions');
+        try {
+          for (const t of ['general', 'teams', 'apps']) {
+            await pg.click(`button[data-act=pickClsType][data-t=${t}]`); await pg.waitForTimeout(150);
+            if (t === 'teams') { await pg.click('button[data-act=toggleAllTeams][data-open="1"]'); await pg.waitForTimeout(150); }
+            await slides(pg, `${w} px, ${k} aparells, ${t}`);
+            // (amb 3 aparells, totes hi caben senceres, també la dels equips desplegats: no se'n tapa cap)
+            if (k === 3) assert.ok((await cutNums(pg)).every(x => x.fits), `${w} px, 3 aparells, ${t}: la taula hi cap`);
+          }
+        } finally { await cx.close(); }
+      }
+      for (const n of [3, 4]) {
+        const d = r7(false), c0 = d.competitions[0];
+        d.competitions = Array.from({ length: n }, (_, j) => Object.assign(JSON.parse(JSON.stringify(c0)), { id: 'j' + j, name: `${j + 1}a fase`, date: `2026-0${j + 1}-15`, season: '2025-2026' }));
+        d.competitions.forEach((c, j) => c.entries.forEach((e, i) => { e.scores = { salt: [{ v: 8 + ((i + j) % 9) * 0.45 }], barra: [{ v: 9.15 }], terra: [{ v: 7.05 + (i % 4) }] }; }));
+        const { cx, pg } = await open7(phoneVp(w), d, '#/ranquing');
+        try {
+          for (const t of ['ind', 'teams']) {
+            await pg.evaluate(t => { ui.rkSeason = '2025-2026'; ui.rkType = t; ui.rkGroup = 'Aleví||F||A'; render(); }, t); await pg.waitForTimeout(150);
+            await slides(pg, `rànquing ${w} px, ${n} jornades, ${t}`);
+          }
+        } finally { await cx.close(); }
+      }
+    }
+  });
+
+  await step('setena revisió (2a volta): mòbil de pantalla baixa (360×560, 375×553, 320×568 i girat, 740×360): en obrir «Entrada ràpida», la barra de l’aparell i «Següent» es veuen sense baixar', async () => {
+    for (const [w, hh] of [[360, 560], [375, 553], [320, 568], [390, 664], [740, 360], [844, 390]]) {
+      const { cx, pg } = await open7({ viewport: { width: w, height: hh }, isMobile: true, hasTouch: true }, r7(), '#/competicio/c418/notes');
+      try {
+        await pg.click('button[data-act=toggleQe]'); await pg.waitForSelector('#qe'); await pg.waitForTimeout(400);
+        assert.ok((await pg.textContent('#qe .qe-app')).includes('Salt'), `${w}×${hh}: la barra diu l’aparell`);
+        for (const sel of ['#qe .qe-app', '#qe .qe-who', '#qedisp', '#qesave']) assert.equal(await onScreen(pg, sel), true, `${w}×${hh}: ${sel}`);
+        // (i, en desar, la gimnasta següent: «Desa» continua a la vista. Es toca com amb el dit, sense que Playwright faci
+        // baixar la pàgina abans)
+        for (const k of ['8', ',', '5', 'save']) await pg.evaluate(k => (k === 'save' ? $('#qesave') : $(`#qe button[data-act=qeKey][data-k="${k}"]`)).click(), k);
+        await pg.waitForTimeout(300);
+        assert.equal(await pg.evaluate(() => qe.buf), '');
+        for (const sel of ['#qe .qe-app', '#qesave']) assert.equal(await onScreen(pg, sel), true, `${w}×${hh}, després de desar: ${sel}`);
+      } finally { await cx.close(); }
+    }
+  });
+
+  await step('setena revisió (2a volta): mòbil de 320 px, a Notes les pastilles dels aparells (comptes de dues xifres, 3–6 aparells) no eixamplen la pàgina ni es tallen', async () => {
+    const APPS = [['salt', 'Salt'], ['barra', 'Barra'], ['terra', 'Terra'], ['paral', 'Paral·leles'], ['mini', 'Minitramp'], ['anelles', 'Anelles']];
+    const pills = pg => pg.evaluate(() => { const seg = $('#main .pills.seg'), sr = seg.getBoundingClientRect();
+      const bad = [...seg.children].filter(p => { const r = p.getBoundingClientRect(); return r.left < sr.left - 0.5 || r.right > sr.right + 0.5 || p.scrollWidth > p.clientWidth + 1
+        || [...p.querySelectorAll('*')].some(ch => { const a = ch.getBoundingClientRect(); return a.width && (a.right > r.right + 0.5 || a.left < r.left - 0.5); }); }).map(p => p.textContent.trim());
+      return { page: document.documentElement.scrollWidth - innerWidth, inner: innerWidth, bad }; });
+    for (const k of [3, 4, 5, 6]) {
+      const d = r7(), c = d.competitions[0];
+      if (k > 3) c.apparatus = APPS.slice(0, k).map(([id, name]) => ({ id, name, icon: id === 'anelles' ? 'altre' : id, modes: { F: 'total', M: 'total' }, attempts: 1, rule: 'best' }));
+      const { cx, pg } = await open7(phoneVp(320), d, '#/competicio/c418/notes');
+      try {
+        // (els grups amb més gimnastes: el compte, de dues xifres; i un de nois)
+        const keys = await pg.evaluate(() => { const gs = groupsOf(curComp()).filter(g => g.entries.length); return [...gs.filter(g => g.entries.length >= 10).map(g => g.key).slice(0, 2), ...gs.filter(g => g.gender === 'M').map(g => g.key).slice(0, 1)]; });
+        assert.ok(keys.length >= 2, JSON.stringify(keys));
+        for (const key of keys) for (const quick of [false, true]) {
+          await pg.evaluate(([key, quick]) => { ui.group = key; ui.qe = quick; render(); }, [key, quick]); await pg.waitForTimeout(150);
+          assert.deepEqual(await pills(pg), { page: 0, inner: 320, bad: [] }, `${k} aparells, ${key}${quick ? ', entrada ràpida' : ''}`);
+        }
+      } finally { await cx.close(); }
+    }
   });
 } finally {
   await browser.close();

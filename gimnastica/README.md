@@ -95,7 +95,8 @@ internet.
    tauleta, **Entrada ràpida**: una gimnasta cada vegada amb un teclat gran, i passa sola a la
    següent sense nota. A dalt del teclat hi diu sempre l'aparell on va la nota (i quantes en porta),
    també a l'ordinador; en un portàtil o una tauleta girada, el teclat surt al costat de la gimnasta
-   i a sobre es veuen els grups i els aparells. Tot es desa sol. Amb les rotacions fetes, si tries un aparell
+   i a sobre es veuen els grups i els aparells, i en un mòbil petit tot el teclat, fins a «Següent»,
+   hi cap sense baixar. Tot es desa sol. Amb les rotacions fetes, si tries un aparell
    les gimnastes surten en l'ordre del full de jutge (el de pas per aquell aparell, amb una fila a sobre de cada
    rotació): el full es copia de dalt a baix amb Intro. Amb «Totes les notes», per dorsal. Un canvi d'equip el
    mateix dia (des de la graella o *Inscripcions*) només val per a aquella competició; el botó «També a la fitxa»
@@ -109,7 +110,9 @@ internet.
    d'imprimir, i cada full de
    classificació diu a dalt **«PROVISIONAL · falten N notes»** (també a cada pàgina); al podi, les
    gimnastes i els equips a qui encara falten notes hi surten marcats. Al mòbil, el total de cada
-   classificació es veu sempre, a la dreta (les columnes que no hi caben es miren fent lliscar la taula).
+   classificació es veu sempre, a la dreta, i el lloc, a l'esquerra (les columnes que no hi caben es
+   miren fent lliscar la taula; la que hi queda a mitges es tapa sencera, perquè mai es llegeixi una
+   xifra tallada).
 6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips (al mòbil, el
    total també es veu sempre). Si un equip canvia de gimnastes d'una jornada a l'altra, surt l'avís
    (qui entra i qui en surt) al rànquing i a la classificació per equips de la competició, i l'equip
@@ -309,7 +312,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
   següent», la mida de pantalla de les tauletes, el que es veu al portàtil i al mòbil (entrada ràpida,
-  totals, grup, categories) i als fulls amb notes que falten, i una temporada sencera (la mateixa gimnasta en una altra
+  totals i xifres a mitges, grup, pastilles dels aparells a 320 px, categories) i als fulls amb notes
+  que falten, i una temporada sencera (la mateixa gimnasta en una altra
   entitat o amb un altre any, dues gimnastes amb el mateix nom a dues entitats, fusionar entitats, sigles, un equip ple
   i una competició passada entrada després).
 - `tests/e2e-pwa.mjs` — l'app instal·lable com a GitHub Pages (https): sense internet, posar-se al

@@ -945,3 +945,139 @@ test('el repartiment exacte és el millor de tots (comprovat un per un), també 
     assert.equal(r.cost.total, best, `cas ${t}: ${JSON.stringify(units)} ${JSON.stringify(opts)}`);
   }
 });
+
+// ─── moure-ho tot, tercera revisió
+// en quants grups és cada entitat i cada entitat en cada categoria i nivell (per comprovar que no n'hi ha cap en més grups)
+const spreadOf = (units, a) => { const m = new Map(), add = (k, g) => { if (!m.has(k)) m.set(k, new Set()); m.get(k).add(g); };
+  for (const u of units) if (u.clubId) { add(u.clubId, a[u.id]); add(u.clubId + '|' + u.ko, a[u.id]); } return m; };
+const noWorse = (units, a, a0, opts) => {
+  const s0 = spreadOf(units, a0), s1 = spreadOf(units, a), c0 = E.rotEval(units, a0, opts), c1 = E.rotEval(units, a, opts);
+  return [...s1].every(([k, s]) => s.size <= s0.get(k).size) && c1.cap <= c0.cap && (opts.mode === 'bal' || (c1.mix <= c0.mix && c1.cat <= c0.cat && c1.gap <= c0.gap));
+};
+test('«Reequilibra» sense deixar res pitjor (within): el més igualat de tots i, d’aquests, el que mou menys gimnastes (comprovat un per un)', () => {
+  let seed = 11; const rnd = n => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+  for (let t = 0; t < 80; t++) {
+    const U = 4 + rnd(4), k = 2 + rnd(2), nK = 1 + rnd(3), units = [], pins = {}, now = {};
+    for (let i = 0; i < U; i++) {
+      const ko = i < nK ? i : rnd(nK), u = { id: 'u' + i, size: 1 + rnd(7), ko, cat: ko, clubId: 'c' + rnd(3), sortName: 'u' + i };
+      if (rnd(4) === 0) u.guest = true;
+      now[u.id] = rnd(k);
+      if (rnd(3) === 0) pins[u.id] = now[u.id];
+      units.push(u);
+    }
+    const opts = { k, maxGroup: 10, mode: rnd(3) ? 'cat' : 'bal', pins };
+    const r = E.rotPartition(units, Object.assign({ within: now }, opts));
+    assert.ok(r.exact, `cas ${t}`);
+    for (const id in pins) assert.equal(r.assign[id], pins[id]);
+    assert.ok(noWorse(units, r.assign, now, opts), `cas ${t}: res pitjor`);
+    // (un per un: el mínim de Σ(k·n − N)² dels que no deixen res pitjor i, amb aquest, el mínim de gimnastes que es mouen)
+    let best = null; const a = {}, size = Object.fromEntries(units.map(u => [u.id, u.size]));
+    const rec = i => {
+      if (i === U) {
+        if (!noWorse(units, a, now, opts)) return;
+        const bal = E.rotEval(units, a, opts).bal, mv = units.reduce((s, u) => s + (a[u.id] !== now[u.id] ? size[u.id] : 0), 0);
+        if (!best || bal < best.bal || (bal === best.bal && mv < best.mv)) best = { bal, mv };
+        return;
+      }
+      const id = units[i].id;
+      for (let g = 0; g < k; g++) { if (id in pins && pins[id] !== g) continue; a[id] = g; rec(i + 1); }
+    };
+    rec(0);
+    const mv = units.reduce((s, u) => s + (r.assign[u.id] !== now[u.id] ? u.size : 0), 0);
+    assert.deepEqual([E.rotEval(units, r.assign, opts).bal, mv], [best.bal, best.mv], `cas ${t}: ${JSON.stringify(units)} ${JSON.stringify(now)} ${JSON.stringify(opts)}`);
+  }
+});
+
+test('l’equip INEF Lleida (Prebenjamí A) portat al Grup 2 de la de Benjamí B (10 · 13 · 10): es pot fer 12 · 11 · 10 sense moure’l, sense partir cap equip ni posar cap entitat en més grups', () => {
+  const c = fixture(); make(c);
+  const v0 = E.rotView(c, settings, CTX), sB = v0.subs.find(s => s.label === 'BENJAMÍ B').id;
+  const t = teamOf(c, 'INEF LLEIDA', 'Prebenjamí', 'A'), mem = c.entries.filter(e => e.teamId === t.id);
+  for (const e of mem) X(c, e, sB, 1);
+  const b = E.rotView(c, settings, CTX).subs.find(s => s.id === sB);
+  assert.deepEqual(plain(b.sizes), [10, 13, 10]);
+  const guest = b.units.find(u => u.guest);
+  const units = b.units.filter(u => u.n > 0).map(u => ({ id: u.id, size: u.n, ko: u.ko, cat: u.cat, clubId: u.clubId, sortName: u.sortName, guest: !!u.guest }));
+  const now = Object.fromEntries(b.units.map(u => [u.id, u.g])), opts = { k: 3, maxGroup: 15, mode: 'cat', pins: { [guest.id]: 1 } };
+  // (movent el mínim, cada gimnasta que es mou hi compta en contra: no s'hi arriba)
+  const st = E.rotPartition(units, Object.assign({ prev: now }, opts));
+  assert.equal(Math.max(...st.cost.sizes), 13);
+  const r = E.rotPartition(units, Object.assign({ within: now }, opts));
+  assert.ok(r.exact);
+  assert.equal(r.assign[guest.id], 1, 'l’equip fixat es queda al Grup 2');
+  assert.equal(Math.max(...r.cost.sizes), 12, plain(r.cost.sizes).join(' · '));
+  assert.ok(noWorse(units, r.assign, now, opts));
+});
+
+test('premis: una categoria que no hi té ningú perquè totes són NP no surt a la fila «PREMIS»; el nom posat a mà, només si s’hi premien just les seves', () => {
+  const c = fixture(); make(c);
+  const pr = () => { const v = E.rotView(c, settings, CTX); return [v.subs.find(s => s.keys.includes(K('Juvenil', 'A'))), v.subs.find(s => s.g === 'M')]; };
+  let [icj, boys] = pr();
+  assert.deepEqual([icj.awardsLabel, boys.awardsLabel], ['INFANTIL A i B, CADET A i B i JUVENIL', 'MASCULINA']);
+  const juv = c.entries.find(e => e.category === 'Juvenil'), pre = c.entries.filter(e => e.gender === 'M' && e.category === 'Prebenjamí');
+  juv.status = 'np'; pre.forEach(e => { e.status = 'np'; });
+  [icj, boys] = pr();
+  assert.ok(!icj.awardKeys.includes(K('Juvenil', 'A')));
+  assert.deepEqual([icj.awardsLabel, boys.awardsLabel], ['INFANTIL A i B i CADET A i B', 'MASCULINA – BENJAMÍ i ALEVÍ']);
+  assert.equal(icj.awards, E.rotAwardsDefault(4, c.rot.time));
+  const row = E.rotSchedule(E.rotView(c, settings, CTX), c.rot).blocks.flatMap(b => b.rows).find(r => r.kind === 'awards' && r.subId === icj.id);
+  assert.equal(row.text, 'PREMIS INFANTIL A i B i CADET A i B');
+  // el nom que ella hi ha posat: si s'hi premien totes les seves, és el de la fila; si no, les que s'hi premien
+  c.rot.subs.find(s => s.id === icj.id).name = 'GRANS';
+  assert.equal(pr()[0].awardsLabel, 'INFANTIL A i B i CADET A i B');
+  juv.status = '';
+  assert.equal(pr()[0].awardsLabel, 'GRANS');
+});
+
+test('una subdivisió que es queda sense gimnastes: l’exhibició que hi havia no desapareix de l’horari (va on anava la subdivisió) i es pot comparar amb l’imprès', () => {
+  const c = fixture(); make(c, RULES({ joins: [] }));
+  let v = E.rotView(c, settings, CTX);
+  const juv = v.subs.find(s => s.label === 'JUVENIL'), cad = v.subs.find(s => s.label === 'CADET A i B'), next = v.subs[v.subs.indexOf(juv) + 1];
+  assert.equal(v.subs.indexOf(juv), v.subs.indexOf(cad) + 1);
+  c.rot.subs.find(s => s.id === juv.id).extras = [{ id: 'x1', text: 'EXHIBICIÓ', min: 15, when: 'abans' }, { id: 'x2', text: 'PAUSA', min: 10, when: 'despres' }];
+  const rows0 = E.rotHorRows(E.rotSchedule(v, c.rot));
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: null, hor: { at: null, rows: rows0 } };
+  // la seva única gimnasta, a la de Cadet
+  X(c, c.entries.find(e => e.category === 'Juvenil'), cad.id, 1);
+  v = E.rotView(c, settings, CTX);
+  assert.equal(v.subs.find(s => s.id === juv.id).N, 0);
+  const sch = E.rotSchedule(v, c.rot), bi = sch.blocks.findIndex(b => b.subId === juv.id), blk = sch.blocks[bi];
+  assert.ok(blk && blk.kind === 'extra' && blk.alone && blk.idx === 0, JSON.stringify(sch.blocks.map(b => [b.kind, b.subId])));
+  assert.deepEqual(plain(blk.rows.map(r => [r.text, r.extraId, r.to - r.from])), [['EXHIBICIÓ', 'x1', 15], ['PAUSA', 'x2', 10]]);
+  // just després dels premis de la de Cadet, i la següent comença quan s'acaba
+  const prev = sch.blocks[bi - 1], comp = sch.blocks[bi + 1].rows.find(r => r.kind === 'comp');
+  assert.equal(prev.subId, cad.id);
+  assert.equal(blk.rows[0].from, prev.rows[prev.rows.length - 1].to);
+  assert.equal(comp.subId, next.id);
+  assert.equal(comp.from, blk.rows[1].to);
+  // a l'horari imprès, l'exhibició hi era i hi és (amb unes altres hores)
+  const p = v.issues.find(i => i.t === 'printed'), x1 = p.hor.find(d => d.k === 'extra' && d.was && d.was.id === 'x1');
+  assert.ok(!x1 || (x1.now && x1.now.x === 'EXHIBICIÓ'), JSON.stringify(x1));
+  assert.ok(!p.hor.some(d => d.k === 'extra' && !d.now));
+});
+
+test('el full de rotacions imprès: si es corregeix el nivell, l’equip, el nom o l’entitat d’una que es queda al seu grup, cal tornar-lo a imprimir (una NP, no)', () => {
+  const c = fixture(); make(c);
+  const v = E.rotView(c, settings, CTX), pr = (ctx = CTX) => E.rotView(c, settings, ctx).issues.find(i => i.t === 'printed');
+  c.rot.printed = { sig: v.sig, ord: v.ord, txt: E.rotTxtSig(v, CTX), at: '2026-04-18T06:00:00.000Z' };
+  assert.equal(pr(), undefined);
+  const e = c.entries.find(x => x.category === 'Cadet' && x.level === 'B' && x.teamId), g0 = v.place.get(e);
+  e.status = 'np';
+  assert.equal(pr(), undefined, 'una NP no');
+  e.status = '';
+  e.level = 'A';
+  const v1 = E.rotView(c, settings, CTX);
+  assert.deepEqual([v1.place.get(e).subId, v1.place.get(e).g], [g0.subId, g0.g], 'es queda al seu grup');
+  let p = pr();
+  assert.ok(p && !p.rot, JSON.stringify(p));
+  assert.ok(p.txt || p.ord);
+  e.level = 'B';
+  assert.equal(pr(), undefined);
+  // un altre nom de l'entitat (també pot canviar l'ordre del full, que va per entitats) o de la gimnasta
+  const q = pr({ ...CTX, clubName: id => (id === 'CGL' ? 'GIMNÀS LLEIDA' : clubName(id)) });
+  assert.ok(q && !q.rot && (q.txt || q.ord));
+  assert.ok(pr({ ...CTX, name: x => (x.id === e.id ? 'Una altra' : x.id) }).txt);
+  // imprès amb una versió d'abans (sense txt): no es mira
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: '2026-04-18T06:00:00.000Z' };
+  e.level = 'A';
+  assert.equal(pr(), undefined);
+});

@@ -199,17 +199,28 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   subdivisió, les que ella ha mogut es queden on les ha posat i la resta de l'equip va amb la categoria (i
   les que tornen a la seva, amb «Treu les fixacions» o «Torna-ho a fer tot», hi van de debò, encara que la
   resta de l'equip sigui en una altra que ella ha triat). Tot el que es mou a mà queda fixat (📌):
-  «Reequilibra», «Torna a fer els grups», «Nombre de grups…» i «Com es fan els grups…» no ho mouen mai
-  (i «Quines categories van juntes…», tampoc, si la seva categoria no canvia de subdivisió; si canvia,
-  vegeu més amunt). Si amb «Mou…» en passa només unes a un altre grup de la mateixa
+  «Reequilibra», «Torna a fer els grups» i «Com es fan els grups…» no ho mouen mai (i «Quines categories
+  van juntes…», tampoc, si la seva categoria no canvia de subdivisió; si canvia, vegeu més amunt). Si amb
+  un altre màxim per grup una subdivisió n'hauria de tenir menys però ella n'ha fixat alguna en un grup
+  que sobraria, la subdivisió es queda amb els grups que calen i l'avís ho diu («A la 4a subdivisió hi
+  continua havent 5 grups, i no 4, perquè hi has fixat C.G. Lleida al Grup 5 (📌)»); **Nombre de grups…**
+  sí que en pot fer menys, i diu qui ja no hi és fixat, en el seu gènere i nombre («Mora Mora, Paula ·
+  FEDAC Lleida ja no hi està fixada»). El 📌 també ho diu així: «Deixa-la lliure», «Ara estan lliures:
+  «Reequilibra» les pot moure de grup». Si amb «Mou…» en passa només unes a un altre grup de la mateixa
   subdivisió, cada tros queda fixat al seu grup (també les que es queden): el 📌 surt a tots dos, i l'avís
   diu «L'equip C.G. Lleida està repartit a mà: 2 al Grup 1 i 3 al Grup 2». «Treu les fixacions», «Torna-ho
   a fer tot» i «Esborra les rotacions» abans diuen quantes gimnastes tornaran a la seva subdivisió.
   **Reequilibra** torna a repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què
-  es mourà (amb la categoria i el nivell, si n'hi ha més d'un: «C.G. Lleida 2 · Benjamí B (4)»). Només es
-  proposa («Es pot repartir més bé», i el botó «Reequilibra la resta» de l'avís de moure) si millora
-  alguna cosa: el grup més gran, que els grups siguin més iguals, les entrenadores, el màxim, cada
-  categoria al seu grup o els equips d'una entitat junts. El que ella ha posat a mà no fa fora les altres:
+  es mourà (amb la categoria i el nivell, si n'hi ha més d'un: «C.G. Lleida 2 · Benjamí B (4)»). Si
+  movent-ne poques no es pot millorar, proposa el repartiment més igualat que no deixa res pitjor que ara
+  (cap entitat en més grups, ni més barreja de categories i nivells, ni les entrenadores ni el màxim) i,
+  d'aquests, el que en mou menys: p. ex., l'equip INEF Lleida portat al Grup 2 de la 3a (10 · 13 · 10)
+  queda en 12 · 11 · 10 sense moure'l. Només es proposa («Es pot repartir més bé», i el botó «Reequilibra
+  la resta» de l'avís de moure) si millora alguna cosa: el grup més gran, que els grups siguin més
+  iguals, les entrenadores, el màxim, cada categoria al seu grup o els equips d'una entitat junts. Si no
+  es pot, la targeta i «Reequilibra» diuen per què, i només si és veritat: el que ella ha fixat a mà
+  («Més igualats no poden ser sense moure el que has fixat a mà (📌)»), cada categoria i nivell al seu
+  grup, un equip que no es pot partir o les gimnastes d'una entitat juntes. El que ella ha posat a mà no fa fora les altres:
   una categoria portada d'una altra subdivisió, o un tros fixat en un grup d'una altra categoria, no fa
   que «cada categoria i nivell al seu grup» en tregui les que ja hi són. Al desplegable d'un equip
   repartit, «→ Grup 1 (14 → 17)» compta només les que encara no hi són.
@@ -218,8 +229,15 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i l'avís
   ho diu («Mou-la amb l'equip», o «Mou-lo» si és un noi; a la pestanya, «Ajunta-les», o «Ajunta'ls» si són
   nois). Si se li corregeix el nivell o la categoria i passa a una altra subdivisió, no surt com a nova:
-  es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat de la 2a subdivisió (9:25) a la 3a
-  (10:25)»), també en desar la inscripció o la fitxa.
+  en desar la inscripció o la fitxa es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat de
+  la 2a subdivisió (9:25) a la 3a (10:25)»), i el rètol de la pestanya, amb l'hora d'ara («… ha passat de
+  la 2a subdivisió a la 3a (10:25)»: la de la d'on ve pot haver canviat, i ella no hi ha competit mai).
+  Moure una NP no diu cap hora («És NP: no competeix»), i una unitat amb totes NP ho diu bé: «(NP)»,
+  «(tots NP)», «(totes NP)». Una subdivisió que es queda sense ningú que competeixi ho diu a la targeta
+  («Ara no hi competeix ningú: no surt als fulls ni a l'horari») i la seva exhibició o pausa, si n'hi
+  havia, continua a l'horari i al full, on anava la subdivisió (es pot canviar o esborrar); l'explicació
+  de «Fes les rotacions» continua dient les que va fer. Amb el teclat, després d'«Ajunta-les» o
+  «Ajunta-les aquí» el focus es queda a l'equip.
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
   junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell: tots junts
   al final i, de moment, com a «Classificació a part» (no suma al total dels nois); si ha de sumar, es
@@ -230,7 +248,8 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   1′28″ fins a Aleví i 1′48″ d'Infantil amunt (noies), i 1′ i 1′30″ d'escalfament (nois). Premis: 5′
   per cada 3 categories i nivells. Els premis de cada categoria i nivell es fan després de l'**última**
   subdivisió on competeix alguna de les seves gimnastes: si se n'ha portat alguna a una subdivisió de més
-  tard, la fila de premis ho diu («PREMIS BENJAMÍ B i ALEVÍ A i B»), una subdivisió que ja no en dona cap
+  tard, la fila de premis ho diu («PREMIS BENJAMÍ B i ALEVÍ A i B»); una categoria que no hi té ningú
+  perquè totes són NP no hi surt («PREMIS INFANTIL A i B i CADET A i B» si Juvenil és NP); una subdivisió que ja no en dona cap
   no té fila de premis (si no s'hi posen minuts a mà), i les pestanyes Grups i Horari ho diuen un sol cop
   («Els premis de Benjamí B es fan després de la 4a subdivisió, perquè FEDAC Lleida hi competeix»). Si
   una subdivisió es queda sense cap premi però s'hi havien posat minuts de premis a mà, l'horari els
@@ -243,9 +262,13 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   i nivell de cadascuna, i l'ordre de rotació) i l'horari general, com els models. L'ordre de cada grup al full
   (per categoria i nivell, entitat, primer els equips i després les individuals, i per dorsal) és l'ordre en què
   passen per cada aparell: el mateix que segueixen el mòbil de les tutores i els fulls de jutge. Si es canvien les
-  rotacions després d'imprimir-les, o l'ordre de les gimnastes d'un grup (p. ex. en renumerar els dorsals), l'app ho
-  avisa; i si l'horari imprès ja no és el d'ara (una NP que escurça una subdivisió, una durada, una exhibició…), ho diu
-  a les dues pestanyes amb les hores d'abans i les d'ara («4a subdivisió 11:25 – 12:40 → 11:25 – 12:35»).
+  rotacions després d'imprimir-les, l'ordre de les gimnastes d'un grup (p. ex. en renumerar els dorsals) o el que diu
+  el full d'alguna que es queda al seu grup (se li corregeix el nivell, la categoria, l'equip, l'entitat o el nom),
+  l'app ho avisa (una NP, no); i si l'horari imprès ja no és el d'ara (una NP que escurça una subdivisió, una durada,
+  una exhibició…), ho diu a les dues pestanyes amb les hores d'abans i les d'ara («4a subdivisió 11:25 – 12:40 →
+  11:25 – 12:35»): primer les files de més o de menys i els premis que diuen una altra cosa, amb el text d'abans i el
+  d'ara («PREMIS BENJAMÍ B 11:20 – 11:25 → PREMIS BENJAMÍ A i B 11:30 – 11:35; PREMIS BENJAMÍ A 10:20 – 10:25 → (ja
+  no hi és)»).
 - **Renumera dorsals** (pestanya Inscripcions): amb les rotacions fetes, numera en l'ordre en què competeixen
   (subdivisió, grup, l'ordre del full i cognoms); si no, per categoria i nivell, i a cada grup per entitat, equip (les
   individuals al final) i cognoms.

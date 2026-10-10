@@ -86,7 +86,9 @@ internet.
    classificació per equips de la competició, i l'equip continua sumant igual. Un equip és el mateix
    encara que li canviïs el nom; un equip que s'esborra i després es torna a fer igual (mateix nom i
    entitat), també. Dos equips que han competit alguna vegada a la mateixa jornada, o que el dia d'una
-   jornada existien tots dos (p. ex. un de reanomenat i un de nou amb el nom d'abans), no s'ajunten mai.
+   jornada existien tots dos (p. ex. un de reanomenat i un de nou amb el nom d'abans), no s'ajunten mai,
+   tampoc si aquella jornada es desmarca del rànquing (desmarcar-ne una només en treu la columna; cada
+   equip surt amb el nom de l'última jornada del curs on va competir).
    El total de cada fila és sempre la suma de les seves jornades, i el rànquing d'un curs ja acabat no
    canvia quan es passa al curs següent (ni quan després s'esborren equips).
 
@@ -151,17 +153,25 @@ estiu el botó **Passa al curs següent (+1 any)** ho avança tot i actualitza l
 cada gimnasta que té l'any de naixement (de les que no en tenen, avisa perquè es revisin a mà). Les competicions ja fetes conserven la categoria d'aquell dia.
 
 - Abans de canviar res, diu qui canvia de categoria, quins equips es desfan (hi quedarien menys del
-  mínim; també els que va dir l'entitat al full d'inscripció, i qui s'hi quedaria) i a quines
-  competicions que vénen canvien inscripcions i equips. Es pot triar *Actualitza-les* o *Només els anys
-  de les categories*. Tot plegat és un sol canvi: el **Desfés** de l'avís ho torna tot com era.
-- Si encara hi ha competicions del curs per fer (a mig curs), primer pregunta si de debò es vol passar
-  al curs següent ara (segurament és un clic sense voler).
-- **Desfés un curs (−1)** just després del +1, sense cap altre canvi entremig, ho deixa tot exactament
-  com era abans del +1: categories, gimnastes i equips (també els que havia dit l'entitat al full). Si
-  després s'ha canviat alguna cosa, ho avisa abans i diu a quines competicions es tornen a fer els equips.
+  mínim; també els que va dir l'entitat al full d'inscripció, i qui s'hi quedaria), qui es quedaria sense
+  equip (també les que canvien de categoria, si la seva entitat ja ha dit els seus equips al full: van
+  com a individuals), els equips nous i a quines competicions que vénen canvien inscripcions i equips. Es
+  pot triar *Actualitza-les* o *Només els anys de les categories*. Tot plegat és un sol canvi: el
+  **Desfés** de l'avís ho torna tot com era.
+- Si sembla un clic sense voler, primer pregunta si de debò es vol passar al curs següent ara (amb el
+  botó en vermell): quan el curs ja ha començat (ja se n'ha fet alguna competició) i encara en queden per
+  fer o no és estiu, o quan ja s'ha passat al curs següent per a aquest curs. Al setembre, abans de la
+  primera competició del curs nou, no pregunta res de més.
+- **Desfés un curs (−1)** just després del +1, sense cap altre canvi entremig (les notes que arriben no
+  compten), ho deixa tot exactament com era abans del +1: categories, gimnastes i equips (també els que
+  havia dit l'entitat al full). També si mentrestant s'ha tancat i tornat a obrir NotesGim, o des d'una
+  altra finestra del mateix ordinador. Si després s'ha canviat alguna cosa (o el +1 es va fer en un altre
+  ordinador), ho avisa abans: diu quins equips del full no tornaran a ser com eren i a quines
+  competicions es tornen a fer els equips.
 - A *Gimnastes* (i a *Configuració → Categories*), si alguna gimnasta no té la categoria que li toca per
-  l'any, **Posa a tothom la categoria que li toca** pregunta sempre abans (amb qui canvia i quins equips
-  es desfan) i l'avís diu quins equips han canviat i qui s'ha quedat sense equip.
+  l'any, **Posa a tothom la categoria que li toca** pregunta sempre abans (amb qui canvia, quins equips
+  es desfan i qui es quedaria sense equip) i l'avís diu quins equips han canviat i qui s'ha quedat sense
+  equip.
 
 ## Regles que aplica
 

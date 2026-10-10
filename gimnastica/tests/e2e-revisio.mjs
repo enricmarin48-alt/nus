@@ -445,6 +445,7 @@ try {
   const teams7 = cid => p7.evaluate(cid => { const c = compById(cid); return Object.fromEntries(c.teams.map(t => [t.name, c.entries.filter(e => e.teamId === t.id).map(e => gymById(e.gymnastId).name).sort().join(',')]).filter(x => x[1])); }, cid);
   const confirm7 = async () => { await p7.waitForSelector('#confirm[open]'); return p7.locator('#confirm').textContent(); };
   const lastToast7 = () => p7.locator('.toast').last().textContent();
+  const shift7 = d => p7.click(`button[data-act=shiftYears][data-d="${d}"]`);
 
   await step('«Posa a tothom la categoria que li toca» (a Gimnastes i a Configuració) sempre pregunta abans, amb els equips que es desfan; l’avís diu quins equips han canviat', async () => {
     await load7(season7(), '#/gimnastes');
@@ -455,13 +456,15 @@ try {
       const t = await confirm7();
       assert.ok(t.includes('Laia Prova: Aleví → Benjamí') && t.includes('«CG Lleida 2» (Aleví A), el va dir l’entitat al full d’inscripció: hi quedarien Gina Prova i Helena Prova'), t);
       assert.ok(t.includes('«2a Fase comarcal» (21/11/2026: 3 inscripcions)'), t);
+      // (qui es queda sense equip, també la Laia: el CG Lleida no té cap altre equip benjamí; cap promesa d'equips nous)
+      assert.ok(t.includes('Es quedarien sense equip: Gina Prova, Helena Prova i Laia Prova') && !t.includes('equips nous'), t);
       await p7.click('#confirm button[value=no]'); await p7.waitForTimeout(150);
       assert.equal(await state7(), before, 'Cancel·la: res no canvia (' + hash + ')');
     }
     await p7.locator('button[data-act=recalcCats]').first().click(); await confirm7();
     await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
     const toast = await lastToast7();
-    assert.ok(toast.includes('Equip desfet: «CG Lleida 2» (Aleví A)') && toast.includes('Es queden sense equip: Gina Prova i Helena Prova'), toast);
+    assert.ok(toast.includes('Equip desfet: «CG Lleida 2» (Aleví A)') && toast.includes('Es queden sense equip: Gina Prova, Helena Prova i Laia Prova'), toast);
     // (a la 2a Fase, la Laia ja és benjamí; la Gina i l'Helena, individuals: l'entitat ja ha dit els seus equips)
     assert.deepEqual(await teams7('k2'), { 'CG Lleida': 'Anna,Berta,Carla,Dana' });
     // els botons que obren els fulls d'inscripció, amb un clic: el diàleg, sense cap fitxer
@@ -477,7 +480,6 @@ try {
   await step('«Passa al curs següent» a mig curs pregunta abans; «Desfés un curs» just després ho deixa tot com era (també els equips del full); si després s’ha canviat res, avisa abans', async () => {
     await load7(season7(), '#/configuracio');
     const before = await state7();
-    const shift7 = d => p7.click(`button[data-act=shiftYears][data-d="${d}"]`);
     await shift7(1);
     let t = await confirm7();
     assert.ok(t.includes('Hi ha una competició d’aquest curs (2026-2027) per fer') && t.includes('«2a Fase comarcal», 21/11/2026'), t);
@@ -502,9 +504,64 @@ try {
     const mid = await state7();
     await shift7(-1);
     t = await confirm7();
-    assert.ok(t.includes('Ja no es pot tornar exactament a com estava abans de «Passa al curs següent»') && t.includes('«2a Fase comarcal» (21/11/2026'), t);
+    assert.ok(t.includes('Ja no es pot tornar exactament a com estava abans de «Passa al curs següent» (el 10/11/2026): després s’hi han fet altres canvis') && t.includes('«2a Fase comarcal» (21/11/2026'), t);
+    // (i quins equips dels que havia dit l'entitat no tornaran: el +1 va desfer «CG Lleida»)
+    assert.ok(t.includes('no tornarà a ser com era: «CG Lleida» (Aleví A)'), t);
     await p7.click('#confirm button[value=""]'); await p7.waitForTimeout(150);
     assert.equal(await state7(), mid, 'Cancel·la: res no canvia');
+    // +1, es tanca NotesGim i es torna a obrir (sense cap altre canvi), −1: tot com era, també els equips del full
+    await load7(season7(), '#/configuracio');
+    const before2 = await state7();
+    const plus7 = async () => { await shift7(1); await confirm7(); await p7.click('#confirm button[value=ok]');
+      await p7.waitForSelector('#confirm[open] >> text=Amb els anys nous'); await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200); };
+    await plus7();
+    await p7.waitForFunction(() => !saveTimer); await p7.waitForTimeout(500);
+    await p7.reload(); await p7.waitForSelector('button[data-act=shiftYears]');
+    assert.equal(await p7.evaluate(() => db.settings.lastShift.d), 1, 'tornat a obrir: les dades de després del +1');
+    await shift7(-1); await p7.waitForTimeout(300);
+    assert.equal(await p7.locator('#confirm[open]').count(), 0);
+    assert.equal(await state7(), before2, 'tornat a obrir, −1: tot com era');
+    // el «Desfés» de l'avís (torna a després del +1) i −1 un altre cop: tot com era
+    await p7.locator('.toast').last().locator('button', { hasText: 'Desfés' }).click(); await p7.waitForTimeout(200);
+    assert.notEqual(await state7(), before2);
+    await shift7(-1); await p7.waitForTimeout(300);
+    assert.equal(await p7.locator('#confirm[open]').count(), 0);
+    assert.equal(await state7(), before2, '«Desfés» i −1: tot com era');
+    // el +1 es va fer en un altre ordinador (aquí no hi ha la còpia d'abans): s'avisa, amb els equips del full
+    await plus7();
+    await p7.evaluate(async () => { shiftUndo = null; await idbDel(SHIFT_KEY); });
+    await shift7(-1);
+    t = await confirm7();
+    assert.ok(t.includes('la còpia de com estava abans no és en aquest ordinador') && t.includes('no tornarà a ser com era: «CG Lleida» (Aleví A)'), t);
+    await p7.click('#confirm button[value=""]'); await p7.waitForTimeout(150);
+  });
+
+  await step('«Passa al curs següent» al setembre, abans de la primera competició del curs, no fa la pregunta vermella; si ja s’ha fet per a aquest curs o el curs ja ha començat, sí', async () => {
+    const red = async () => { const t = await confirm7(); return [t, await p7.locator('#confirm[open] button.danger').count()]; };
+    // 15/09/2027: la 1a Fase del curs nou (23/10/2027) ja és feta a l'app, però encara no s'ha fet
+    const d = season7(), k3 = JSON.parse(JSON.stringify(d.competitions[1]));
+    Object.assign(k3, { id: 'k3', name: '1a Fase comarcal', date: '2027-10-23' }); k3.entries.forEach(e => { e.id = 'k3' + e.gymnastId; });
+    k3.teams.forEach(t => { t.id = 'k3' + t.sourceTeamId; }); k3.entries.forEach(e => { e.teamId = 'k3' + e.teamId.slice(2); });
+    d.competitions.push(k3);
+    await ctx7.clock.setSystemTime(new Date('2027-09-15T10:00:00+02:00'));
+    await load7(d, '#/configuracio');
+    await shift7(1);
+    let [t, n] = await red();
+    assert.ok(t.startsWith('Amb els anys nous') && !n, t);
+    await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
+    // un altre +1 el mateix setembre: els anys ja són els del curs 2027-2028
+    await shift7(1);
+    [t, n] = await red();
+    assert.ok(n && t.includes('Ja s’ha passat al curs següent el 15/09/2027: els anys de les categories ja són els del curs 2027-2028'), t);
+    await p7.click('#confirm button[value=no]'); await p7.waitForTimeout(150);
+    // al desembre, entre fases (encara no hi ha la següent): el curs ja ha començat
+    await ctx7.clock.setSystemTime(new Date('2026-12-10T10:00:00+01:00'));
+    await load7(season7(), '#/configuracio');
+    await shift7(1);
+    [t, n] = await red();
+    assert.ok(n && t.includes('El curs 2026-2027 ja ha començat: ja s’han fet «1a Fase comarcal», 24/10/2026 i «2a Fase comarcal», 21/11/2026'), t);
+    await p7.click('#confirm button[value=no]'); await p7.waitForTimeout(150);
+    await ctx7.clock.setSystemTime(new Date('2026-11-10T10:00:00+01:00'));
   });
 
   await step('rànquing del curs: un equip reanomenat i un de nou amb el nom d’abans no es barregen, tampoc després de «Passa al curs següent»', async () => {

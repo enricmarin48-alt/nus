@@ -396,8 +396,9 @@ await step('passar de curs: +1 any i les gimnastes canvien de categoria', async 
   await page.goto(url + '#/configuracio');
   await page.click('button[data-act=shiftYears][data-d="1"]');
   await page.waitForSelector('#confirm[open]');
-  // (si encara hi ha competicions d'aquest curs per fer, primer es pregunta si és un clic sense voler)
-  if ((await page.locator('#confirm').textContent()).includes('per fer')) {
+  // (a mig curs —ja se n'ha fet alguna competició i en queden per fer, o no és estiu—, primer es pregunta si és un
+  // clic sense voler, amb el botó en vermell; depèn del dia que es passin les proves)
+  if (await page.locator('#confirm[open] button.danger').count()) {
     await page.click('#confirm button[value=ok]');
     await page.waitForSelector('#confirm[open] >> text=Amb els anys nous');
   }

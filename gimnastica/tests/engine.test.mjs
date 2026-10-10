@@ -526,6 +526,19 @@ test('rànquing de jornades: dos equips que han competit alguna vegada alhora no
   sane(g4, [j1, j4]);
 });
 
+test('rànquing de jornades: treure una jornada del rànquing només en treu la columna (no s’ajunten els equips que hi van competir alhora)', () => {
+  // J1: T1 «Club X». J2: T1 ja es diu «Club X Groc» i T2, nou, «Club X». Després s'esborra T1. J3: només T2
+  const S = { categories: CATS, levels: ['A'] };
+  const j1 = mkTeams('j1', [['a', 'Club X', 'T1', 'g', 8]]);
+  const j2 = mkTeams('j2', [['b', 'Club X Groc', 'T1', 'g', 8], ['c', 'Club X', 'T2', 'h', 7]]);
+  const j3 = mkTeams('j3', [['d', 'Club X', 'T2', 'h', 7]]);
+  const all = [j1, j2, j3], teamGone = (id, c) => id === 'T1' && c.id === 'j3';
+  const rows = comps => { const [g] = E.seasonRanking(comps, S, { nameOf, teamGone, allComps: all }); sane(g, comps); return plain(g.teams.map(t => [t.name, comps.map(c => t.per[c.id] ?? null), t.n])); };
+  assert.deepEqual(rows(all), [['Club X Groc', [72000, 72000, null], 2], ['Club X', [null, 63000, 63000], 2]]);
+  // sense la J2: les mateixes dues files (amb el nom de l'última jornada del curs), cadascuna amb una jornada
+  assert.deepEqual(rows([j1, j3]), [['Club X Groc', [72000, null], 1], ['Club X', [null, 63000], 1]]);
+});
+
 test('rànquing de jornades: una gimnasta inscrita dues vegades a la mateixa jornada només hi suma un cop', () => {
   const c = comp({ id: 'j1' });
   c.entries.push(entry('Anna', { salt: 8 }, { gymnastId: 'g1' }), entry('Anna', { salt: 9 }, { gymnastId: 'g1' }));

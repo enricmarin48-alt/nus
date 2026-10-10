@@ -30,6 +30,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -84,6 +85,12 @@ type store struct {
 	handoff  chan struct{}  // una altra finestra hi vol treballar: l'activa desa el que té i la deixa (es tanca llavors)
 	handTo   string         // la que hi vol treballar (quan l'activa la deixa, passa a ser l'activa tot seguit)
 	started  int64          // quan s'ha engegat el programa (ms)
+	relWin   string         // l'activa s'ha tancat just després d'un canvi que encara no ha arribat: es deixa quan arriba (vegeu pendingReleaseLocked)
+	relStamp string         // (l'hora de les dades que ha d'enviar, meta.updated)
+	relUntil int64          // si no arriben, es deixa igualment a partir d'aquesta hora (ms)
+	closing  bool           // s'ha clicat «Tanca NotesGim»: les finestres en pausa ho diuen (no que se'n fa servir una altra)
+	hadOne   bool           // des que s'ha engegat, ja hi ha hagut una finestra activa (ja no cal esperar la d'abans: startGrace)
+	closed   []string       // les finestres que s'han tancat (api/release amb stamp): un canvi seu que arriba tard no les torna a fer actives
 }
 
 // ─── només una finestra de la taula pot canviar les dades alhora
@@ -95,9 +102,10 @@ type store struct {
 // hagués pogut desar es queda a la seva finestra, per descarregar. Si l'activa ja no hi és (tancada, o fa estona que no
 // se'n sap res), la primera finestra que fa alguna cosa passa a ser l'activa.
 const (
-	activeTTL  = 30 * 1000 // ms sense saber res de la finestra activa (ni tenir-ne cap api/wait obert): ja no hi és
-	startGrace = 5 * 1000  // en engegar el programa, la finestra que ja era l'activa la torna a agafar abans que cap altra
-	recentMs   = 1500      // la finestra activa, sense cap api/wait obert, encara en farà un de seguida (se li pot demanar que la deixi)
+	activeTTL   = 30 * 1000 // ms sense saber res de la finestra activa (ni tenir-ne cap api/wait obert): ja no hi és
+	startGrace  = 5 * 1000  // en engegar el programa, la finestra que ja era l'activa la torna a agafar abans que cap altra
+	recentMs    = 1500      // la finestra activa, sense cap api/wait obert, encara en farà un de seguida (se li pot demanar que la deixi)
+	releaseWait = 10 * 1000 // la finestra activa s'ha tancat i el seu últim canvi no arriba: al cap d'aquests ms es deixa igualment
 )
 
 var (
@@ -112,15 +120,16 @@ func (s *store) aliveLocked(now int64) bool {
 	return s.activeOn && (s.waits[s.active] > 0 || now-s.seen < activeTTL || now < s.hold)
 }
 
-// no hi ha cap finestra activa (i, si el programa s'acaba d'engegar, ja ha tingut temps de tornar-la a agafar la que ho era)
+// no hi ha cap finestra activa (i, si el programa s'acaba d'engegar, ja ha tingut temps de tornar-la a agafar la que ho era,
+// o ja n'hi ha hagut una)
 func (s *store) freeLocked(now int64) bool {
-	return !s.aliveLocked(now) && s.handoff == nil && now-s.started >= startGrace
+	return !s.aliveLocked(now) && s.handoff == nil && (now-s.started >= startGrace || s.hadOne)
 }
 
 func (s *store) isActiveLocked(win string) bool { return s.activeOn && s.active == win }
 
 func (s *store) takeLocked(win string, now int64) {
-	s.active, s.activeOn, s.seen, s.hold = win, true, now, 0
+	s.active, s.activeOn, s.seen, s.hold, s.hadOne = win, true, now, 0, true
 }
 
 func (s *store) touchLocked(win string, now int64) {
@@ -140,6 +149,36 @@ func (s *store) mayWriteLocked(win string, now int64) bool {
 	}
 	s.takeLocked(win, now)
 	return true
+}
+
+// l'hora de les dades (meta.updated, la posa la finestra de la taula cada vegada que hi canvia res)
+func stampOf(db map[string]any) string { return str(obj(db["meta"])["updated"]) }
+
+// l'activa la deixa: si una altra l'havia demanada, ara és aquella (cap altra no la pot agafar entremig); si no, cap
+func (s *store) releaseLocked() {
+	s.relWin, s.relStamp, s.relUntil = "", "", 0
+	if s.handoff != nil {
+		s.takeLocked(s.handTo, nowMs())
+		s.endHandoffLocked(s.handoff)
+	} else {
+		s.activeOn = false
+	}
+	s.bumpLocked() // (les altres ho saben: la primera que ho vol passa a ser l'activa, si no n'hi ha cap)
+}
+
+// l'activa s'ha tancat just després d'un canvi (api/release amb stamp): quan el programa té aquelles dades, o si no
+// arriben al cap de releaseWait, es deixa (les altres continuen de seguida, sense esperar que caduqui)
+func (s *store) pendingReleaseLocked(now int64) {
+	if s.relWin == "" {
+		return
+	}
+	if !s.isActiveLocked(s.relWin) {
+		s.relWin, s.relStamp, s.relUntil = "", "", 0
+		return
+	}
+	if stampOf(s.db) == s.relStamp || now >= s.relUntil {
+		s.releaseLocked()
+	}
 }
 
 func (s *store) endHandoffLocked(ch chan struct{}) {
@@ -164,6 +203,7 @@ func (s *store) expireActiveLocked(now int64) bool {
 // deixi (com a molt handoffMax); ifFree: només si no n'hi ha cap. Torna si ho és (amb el lock agafat)
 func (s *store) claimLocked(win string, ifFree bool, done <-chan struct{}) bool {
 	now := nowMs()
+	s.pendingReleaseLocked(now)
 	if s.isActiveLocked(win) {
 		s.seen = now
 		return true
@@ -1102,12 +1142,15 @@ func (s *store) routes(port int) http.Handler {
 			// replace: la finestra substitueix totes les dades (restaurar una còpia): no s'hi barregen notes.
 			// window: l'id de la finestra. Si no és l'activa (n'hi ha una altra on es treballa), no s'hi escriu (423):
 			// la finestra es posa en pausa i el que no s'ha desat es queda allà, per descarregar
+			// after: la finestra es tanca amb un canvi que encara no havia enviat perquè se n'estava enviant un altre (el de
+			// les dades amb aquesta hora): és el següent d'aquell, encara que no en sàpiga el dataRev
 			var body struct {
 				DB      map[string]any `json:"db"`
 				Base    int64          `json:"base"`
 				Replace bool           `json:"replace"`
 				Since   float64        `json:"since"`
 				Window  string         `json:"window"`
+				After   string         `json:"after"`
 			}
 			if err := json.NewDecoder(io.LimitReader(r.Body, 50<<20)).Decode(&body); err != nil || body.DB == nil {
 				fail(w, 400, "dades incorrectes")
@@ -1115,11 +1158,21 @@ func (s *store) routes(port int) http.Handler {
 			}
 			s.mu.Lock()
 			defer s.mu.Unlock()
-			if !s.mayWriteLocked(body.Window, nowMs()) {
+			now := nowMs()
+			// (una finestra que ja s'ha tancat i el seu canvi arriba tard: es desa si és més nou que el que hi ha i no hi ha cap
+			// altra finestra activa, però no torna a ser l'activa, que ja no hi és)
+			late := !s.isActiveLocked(body.Window) && slices.Contains(s.closed, body.Window)
+			if late && (s.aliveLocked(now) || s.handoff != nil || stampOf(body.DB) <= stampOf(s.db)) || !late && !s.mayWriteLocked(body.Window, now) {
 				writeJSON(w, 423, map[string]any{"error": pausedMsg, "paused": true, "version": s.version, "dataRev": s.dataRev, "db": s.db})
 				return
 			}
-			if body.Base != s.dataRev {
+			// (una finestra que s'ha tancat esperant que arribin aquestes dades: un cop desades, es deixa; vegeu pendingReleaseLocked)
+			defer s.pendingReleaseLocked(nowMs())
+			// (after: el programa ja té aquell canvi de la mateixa finestra, l'activa, i res més des d'aleshores)
+			if body.Base != s.dataRev && !(body.After != "" && body.After == stampOf(s.db)) {
+				if s.relWin == body.Window {
+					s.releaseLocked() // (s'ha tancat: ja no les pot tornar a enviar)
+				}
 				writeJSON(w, 409, map[string]any{"error": "les dades han canviat des d'una altra finestra", "version": s.version, "dataRev": s.dataRev, "db": s.db})
 				return
 			}
@@ -1190,6 +1243,7 @@ func (s *store) routes(port int) http.Handler {
 		s.lastAdmin.Store(time.Now().UnixMilli())
 		s.mu.Lock()
 		now := nowMs()
+		s.pendingReleaseLocked(now)
 		if on && !s.isActiveLocked(win) && !s.aliveLocked(now) && s.handoff == nil {
 			s.takeLocked(win, now)
 		}
@@ -1202,6 +1256,13 @@ func (s *store) routes(port int) http.Handler {
 			d = 0
 		} else if !mine && !s.aliveLocked(now) && now-s.started < startGrace {
 			d = min(d, time.Duration(startGrace-(now-s.started)+50)*time.Millisecond)
+		}
+		// t: com a molt aquests ms (una finestra en pausa pregunta i se'n va de seguida: el navegador només obre 6 connexions
+		// alhora amb el programa, i les ha de tenir lliures la finestra activa per desar i les altres per «Treballa en aquesta finestra»)
+		if tq := q.Get("t"); tq != "" {
+			if ms, err := strconv.Atoi(tq); err == nil && ms >= 0 {
+				d = min(d, time.Duration(ms)*time.Millisecond)
+			}
 		}
 		if s.waits == nil {
 			s.waits = map[string]int{}
@@ -1222,6 +1283,9 @@ func (s *store) routes(port int) http.Handler {
 		}
 		mine = s.isActiveLocked(win)
 		resp := map[string]any{"version": s.version, "active": mine, "yield": mine && s.handoff != nil, "free": !mine && s.freeLocked(now)}
+		if s.closing {
+			resp["closing"] = true
+		}
 		if changed {
 			resp["dataRev"], resp["db"], resp["saveErr"] = s.dataRev, s.db, s.saveErr
 		}
@@ -1256,20 +1320,26 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, 403, "no permès")
 			return
 		}
+		// stamp: en tancar-se, l'hora de les últimes dades de la finestra; si encara no han arribat (s'acaba d'enviar el
+		// canvi), es deixa quan arribin (o, si no arriben, al cap de releaseWait)
 		var body struct {
 			Window string `json:"window"`
+			Stamp  string `json:"stamp"`
 		}
 		_ = json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body)
 		s.mu.Lock()
 		if s.isActiveLocked(body.Window) {
-			if s.handoff != nil {
-				// (la que l'ha demanada la té ara mateix: cap altra no la pot agafar entremig)
-				s.takeLocked(s.handTo, nowMs())
-				s.endHandoffLocked(s.handoff)
-			} else {
-				s.activeOn = false
+			if body.Stamp != "" {
+				s.closed = append(s.closed, body.Window)
+				if len(s.closed) > 50 {
+					s.closed = s.closed[1:]
+				}
 			}
-			s.bumpLocked() // (les altres ho saben: la primera que ho vol passa a ser l'activa, si no n'hi ha cap)
+			if body.Stamp != "" && body.Stamp != stampOf(s.db) {
+				s.relWin, s.relStamp, s.relUntil = body.Window, body.Stamp, nowMs()+releaseWait
+			} else {
+				s.releaseLocked()
+			}
 		}
 		s.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"ok": true})
@@ -1358,6 +1428,9 @@ func (s *store) routes(port int) http.Handler {
 			fail(w, 500, msg)
 			return
 		}
+		s.mu.Lock()
+		s.closing = true
+		s.mu.Unlock()
 		writeJSON(w, 200, map[string]any{"ok": true, "saved": saved})
 		s.quitOnce.Do(func() { go func() { time.Sleep(300 * time.Millisecond); close(s.quit) }() })
 	})
@@ -1794,6 +1867,7 @@ func main() {
 			}
 			// la finestra activa ja no hi és: una de les que són en pausa la pot agafar
 			s.mu.Lock()
+			s.pendingReleaseLocked(nowMs())
 			if s.expireActiveLocked(nowMs()) {
 				log.Print("la finestra activa de la taula ja no hi és")
 			}

@@ -14,7 +14,8 @@ un USB), fa servir aquell. Si el tornes a obrir mentre ja està obert (encara qu
 clic dues vegades seguides), no s'engega un altre programa: s'obre una altra finestra del mateix, amb
 les mateixes dades. Només la finestra que has obert o fet servir l'última pot canviar les dades: l'altra
 queda en pausa (no desa res, però hi continuen arribant les notes de les tutores) fins que hi cliques
-«Treballa en aquesta finestra»; abans de deixar-ho, la que manava desa el que tenia. Si tanques la que
+«Treballa en aquesta finestra»; abans de deixar-ho, la que manava desa el que tenia (una nota a mig
+escriure, com «8,», no: quan hi tornes, la trobes tal com l'havies deixada i hi continues escrivint). Si tanques la que
 manava, l'altra continua sola. Pots tancar la que no facis servir. Quan tanques la finestra, el
 programa es tanca sol al cap d'una estona (o amb el botó «Tanca NotesGim»). Si un dia no pot escriure al fitxer
 (disc ple, un USB que s'ha tret), ho diu a dalt de la finestra i ho torna a provar sol; si el fitxer

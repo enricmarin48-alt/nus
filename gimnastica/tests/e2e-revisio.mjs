@@ -854,6 +854,74 @@ try {
     assert.ok(now.endsWith('✓') && !now.includes('falten'), now);
     assert.ok(!(await p3.evaluate(k => $$('select[data-target=pickGroup] option').filter(x => x.value === k).map(x => x.textContent).join('|'), o.key)).includes('falten'));
   });
+
+  // ─── sisena revisió (finestres de la taula): dues pestanyes que s'obren alhora, i el que s'escriu en una pestanya no es
+  // desa mai com una altra cosa (ni en passar a una altra pestanya, ni si la finestra queda en segon pla)
+  await step('dues pestanyes que s’obren alhora (el navegador torna a obrir les pestanyes en engegar-se): una treballa i l’altra queda en pausa, mai totes dues en pausa', async () => {
+    for (let run = 0; run < 6; run++) {
+      const c = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+      const a = await c.newPage(), b = await c.newPage();
+      for (const p of [a, b]) p.on('pageerror', e => errors.push('pageerror (pestanyes alhora): ' + e.message));
+      const ga = a.goto(url + '#/gimnastes'); if (run % 3) await new Promise(r => setTimeout(r, run % 3 === 1 ? 3 : 12)); const gb = b.goto(url + '#/gimnastes');
+      await Promise.all([ga, gb]);
+      await a.waitForTimeout(2500);
+      const st = async () => (await Promise.all([a, b].map(p => p.evaluate(() => win.paused)))).map(x => x ? 'P' : 'a').join('');
+      const s1 = await st();
+      assert.ok(s1 === 'Pa' || s1 === 'aP', `${run}: ${s1}`);
+      await a.waitForTimeout(1500);
+      assert.equal(await st(), s1, `${run}: es queda així`);
+      await c.close();
+    }
+  });
+
+  const focused3 = () => p3.evaluate(() => { const el = document.activeElement; return { e: el.dataset.e, v: el.value, s: [el.selectionStart, el.selectionEnd] }; });
+  await step('dues pestanyes: «8,» (de 8,5) escrit quan se n’obre una altra no es desa; en tornar-hi s’hi continua escrivint on s’havia deixat i es desa 8,5', async () => {
+    await load3('#/competicio/c418/notes');
+    await p3.evaluate(() => flush());
+    const eid = await p3.evaluate(() => $('#scoregrid input.sc[data-a=salt]').dataset.e);
+    const v = p => p.evaluate(id => (((curComp().entries.find(e => e.id === id).scores || {}).salt || [])[0] || {}).v ?? null, eid);
+    const before = await v(p3);
+    await p3.click(`#scoregrid input.sc[data-a=salt][data-e=${eid}]`); await p3.keyboard.type('8,');
+    const other = await ctx3.newPage(); await other.goto(url + '#/competicio/c418/notes'); await other.waitForTimeout(400);
+    assert.ok(await paused(p3));
+    assert.equal(await v(other), before, 'l’altra no té «8,» (ni 8,00)');
+    await p3.bringToFront();
+    await p3.click('#pause button:has-text("Treballa en aquesta finestra")'); await p3.waitForFunction(() => !win.paused);
+    assert.deepEqual(await focused3(), { e: eid, v: '8,', s: [2, 2] }, 'el camp tal com era, amb el cursor al final');
+    await p3.keyboard.type('5'); await p3.keyboard.press('Enter'); await p3.waitForTimeout(300);
+    assert.equal(await v(p3), 8.5);
+    await other.close();
+  });
+
+  await step('la finestra es minimitza o queda tapada amb «8,» escrit: no es desa ni es toca res; en tornar-hi, «5» + Intro desa 8,5', async () => {
+    await load3('#/competicio/c418/notes');
+    const eid = await p3.evaluate(() => $$('#scoregrid input.sc[data-a=salt]')[1].dataset.e);
+    const v = () => p3.evaluate(id => (((curComp().entries.find(e => e.id === id).scores || {}).salt || [])[0] || {}).v ?? null, eid);
+    const before = await v();
+    await p3.click(`#scoregrid input.sc[data-a=salt][data-e=${eid}]`); await p3.keyboard.type('8,');
+    await p3.evaluate(() => {
+      const el = document.activeElement;
+      document.hasFocus = () => false;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new FocusEvent('blur')); el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      window.dispatchEvent(new FocusEvent('blur'));
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await p3.waitForTimeout(400);
+    assert.equal(await v(), before, '«8,» no es desa');
+    assert.deepEqual(await focused3(), { e: eid, v: '8,', s: [2, 2] });
+    await p3.evaluate(() => {
+      delete document.hasFocus; delete document.visibilityState;
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new FocusEvent('focus'));
+      const el = document.activeElement;
+      el.dispatchEvent(new FocusEvent('focus')); el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+    assert.deepEqual(await focused3(), { e: eid, v: '8,', s: [2, 2] }, 'en tornar-hi, el cursor on era');
+    await p3.keyboard.type('5'); await p3.keyboard.press('Enter'); await p3.waitForTimeout(300);
+    assert.equal(await v(), 8.5);
+  });
 } finally {
   await browser.close();
 }

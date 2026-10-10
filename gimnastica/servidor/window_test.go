@@ -303,4 +303,192 @@ func TestRestartKeepsActiveWindow(t *testing.T) {
 	}
 }
 
+// una finestra en pausa pregunta (t=0) i el programa contesta de seguida, encara que no hi hagi res de nou: el navegador
+// només obre 6 connexions alhora amb el programa, i amb moltes finestres obertes la que treballa ha de poder desar i
+// les altres, «Treballa en aquesta finestra». La que treballa sí que espera (fins que hi ha res de nou)
+func TestPausedWindowWaitIsShort(t *testing.T) {
+	wt := newWinTest(t)
+	_, a := wt.claim("A", false)
+	start := time.Now()
+	m := wt.waitShort("B", ver(a))
+	if time.Since(start) > time.Second || m["active"] != false || m["free"] != false || m["db"] != nil {
+		t.Fatalf("t=0: %v (%v)", m, time.Since(start))
+	}
+	got := make(chan map[string]any, 1)
+	go func() { got <- wt.wait("A", ver(a), true) }()
+	select {
+	case m := <-got:
+		t.Fatalf("l'activa no havia de tenir resposta encara: %v", m)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if code, r := wt.put("A", renamed(obj(a["db"]), "Anna nova"), rev(a)); code != 200 {
+		t.Fatalf("PUT: %d %v", code, r)
+	}
+	select {
+	case m := <-got:
+		if m["db"] == nil || m["active"] != true {
+			t.Fatalf("l'activa: %v", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("l'activa no se n'assabenta")
+	}
+	if m := wt.waitShort("B", ver(a)); m["db"] == nil {
+		t.Fatalf("la de la pausa veu les dades noves: %v", m)
+	}
+}
+
+func (wt *winTest) waitShort(win string, since int64) map[string]any {
+	wt.t.Helper()
+	_, m := wt.call(http.MethodGet, "/api/wait?since="+itoa(since)+"&w="+win+"&t=0", nil)
+	return m
+}
+
+func stamped(db map[string]any, name, stamp string) map[string]any {
+	c := renamed(db, name)
+	if obj(c["meta"]) == nil {
+		c["meta"] = map[string]any{}
+	}
+	obj(c["meta"])["updated"] = stamp
+	return c
+}
+
+// la finestra activa es tanca just després d'un canvi que encara s'està enviant (api/release amb stamp abans que arribi
+// el PUT): continua sent l'activa fins que arriba (cap altra no la pot agafar, i el canvi no es perd) i llavors es deixa
+// de seguida (no al cap de 30 s)
+func TestReleaseWaitsForLastChange(t *testing.T) {
+	wt := newWinTest(t)
+	_, a := wt.claim("A", false)
+	const st = "2027-01-22T10:00:00.000Z"
+	wt.call(http.MethodPost, "/api/release", map[string]any{"window": "A", "stamp": st})
+	if m := wt.waitShort("B", 0); m["free"] != false {
+		t.Fatalf("encara és d'A (el canvi no ha arribat): %v", m)
+	}
+	if code, _ := wt.claim("B", true); code != 409 {
+		t.Fatalf("B ifFree abans que arribi el canvi d'A: %d", code)
+	}
+	if code, r := wt.put("A", stamped(obj(a["db"]), "Anna última", st), rev(a)); code != 200 {
+		t.Fatalf("l'últim canvi d'A: %d %v", code, r)
+	}
+	if !fileHas(t, wt.s, "Anna última") {
+		t.Fatal("l'últim canvi d'A s'ha de desar")
+	}
+	if m := wt.waitShort("B", 0); m["free"] != true {
+		t.Fatalf("ara ja és lliure: %v", m)
+	}
+	if code, r := wt.claim("B", true); code != 200 || r["active"] != true {
+		t.Fatalf("B: %d %v", code, r)
+	}
+	// (i si el canvi ja havia arribat, es deixa de seguida)
+	_, b := wt.claim("B", false)
+	db := stamped(obj(b["db"]), "Anna de B", "2027-01-22T10:05:00.000Z")
+	if code, r := wt.put("B", db, rev(b)); code != 200 {
+		t.Fatalf("B desa: %d %v", code, r)
+	}
+	wt.call(http.MethodPost, "/api/release", map[string]any{"window": "B", "stamp": "2027-01-22T10:05:00.000Z"})
+	if m := wt.waitShort("C", 0); m["free"] != true {
+		t.Fatalf("B ja ho havia enviat tot: lliure de seguida: %v", m)
+	}
+}
+
+// si l'últim canvi no arriba mai (la finestra s'ha tancat abans d'enviar-lo), es deixa al cap de releaseWait; i si
+// arriba però no es pot desar (409), també de seguida
+func TestReleaseWithoutLastChange(t *testing.T) {
+	wt := newWinTest(t)
+	_, a := wt.claim("A", false)
+	wt.call(http.MethodPost, "/api/release", map[string]any{"window": "A", "stamp": "mai"})
+	if m := wt.waitShort("B", 0); m["free"] != false {
+		t.Fatalf("encara és d'A: %v", m)
+	}
+	wt.later(releaseWait + 1)
+	if m := wt.waitShort("B", 0); m["free"] != true {
+		t.Fatalf("al cap de releaseWait, lliure: %v", m)
+	}
+	// (si al final arriba, es desa, però A no torna a ser l'activa: ja no hi és)
+	if code, r := wt.put("A", stamped(obj(a["db"]), "Anna tard", "mai"), rev(a)); code != 200 {
+		t.Fatalf("el canvi d'A que arriba tard: %d %v", code, r)
+	}
+	if !fileHas(t, wt.s, "Anna tard") {
+		t.Fatal("el canvi d'A que arriba tard s'ha de desar")
+	}
+	if m := wt.waitShort("B", 0); m["free"] != true {
+		t.Fatalf("A no torna a ser l'activa: %v", m)
+	}
+	_, b := wt.claim("B", false)
+	// (i un que arribés encara més tard, amb B treballant, no s'hi escriu)
+	if code, _ := wt.put("A", stamped(obj(a["db"]), "Anna massa tard", "mai2"), rev(b)); code != 423 {
+		t.Fatalf("amb B activa: %d", code)
+	}
+	wt.call(http.MethodPost, "/api/release", map[string]any{"window": "B", "stamp": "tampoc"})
+	if code, _ := wt.put("B", stamped(obj(b["db"]), "Anna", "tampoc"), rev(b)-1); code != 409 {
+		t.Fatalf("PUT amb un dataRev vell: %d", code)
+	}
+	if m := wt.waitShort("C", 0); m["free"] != true {
+		t.Fatalf("el canvi de B no es pot desar: lliure de seguida: %v", m)
+	}
+	_ = a
+}
+
+// la finestra activa es tanca amb dos canvis seguits: el primer encara s'està enviant i el segon surt en tancar-se (after:
+// l'hora del primer). Arribin en l'ordre que arribin, el fitxer es queda amb el segon (que també té el primer)
+func TestLastChangeAfterOneInFlight(t *testing.T) {
+	for _, order := range []string{"1-2", "2-1"} {
+		wt := newWinTest(t)
+		_, a := wt.claim("A", false)
+		const s1, s2 = "2027-01-22T10:00:00.000Z", "2027-01-22T10:00:00.300Z"
+		one := map[string]any{"db": stamped(obj(a["db"]), "Anna primer", s1), "base": rev(a), "window": "A"}
+		two := map[string]any{"db": stamped(obj(a["db"]), "Anna segon", s2), "base": rev(a), "window": "A", "after": s1}
+		wt.call(http.MethodPost, "/api/release", map[string]any{"window": "A", "stamp": s2})
+		first, second := one, two
+		if order == "2-1" {
+			first, second = two, one
+		}
+		c1, _ := wt.call(http.MethodPut, "/api/db", first)
+		c2, _ := wt.call(http.MethodPut, "/api/db", second)
+		if order == "1-2" && (c1 != 200 || c2 != 200) || order == "2-1" && (c1 != 200 || c2 == 200) {
+			t.Fatalf("%s: %d %d", order, c1, c2)
+		}
+		if !fileHas(t, wt.s, "Anna segon") || fileHas(t, wt.s, "Anna primer") {
+			t.Fatalf("%s: el fitxer s'ha de quedar amb el segon canvi", order)
+		}
+		if m := wt.waitShort("B", 0); m["free"] != true {
+			t.Fatalf("%s: un cop arribat l'últim canvi, lliure: %v", order, m)
+		}
+		// (after no serveix per escriure a sobre del que ha desat una altra finestra)
+		_, b := wt.claim("B", false)
+		if code, _ := wt.put("B", stamped(obj(b["db"]), "Anna de B", "2027-01-22T11:00:00.000Z"), rev(b)); code != 200 {
+			t.Fatalf("%s: B: %d", order, code)
+		}
+		if code, _ := wt.call(http.MethodPut, "/api/db", map[string]any{"db": stamped(obj(b["db"]), "Anna vella", "2027-01-22T11:00:01.000Z"), "base": rev(b), "window": "B", "after": s2}); code != 409 {
+			t.Fatalf("%s: after d'unes dades que ja no hi són: %d", order, code)
+		}
+	}
+}
+
+// el programa s'acaba d'engegar i la finestra que hi treballava es tanca: les altres continuen de seguida (startGrace
+// només és perquè la que treballava, si encara hi és, la torni a agafar abans que cap altra)
+func TestReleaseRightAfterStart(t *testing.T) {
+	wt := newWinTest(t)
+	wt.s.started = nowMs()
+	wt.claim("A", false)
+	wt.call(http.MethodPost, "/api/release", map[string]any{"window": "A"})
+	if m := wt.waitShort("B", 0); m["free"] != true {
+		t.Fatalf("lliure de seguida: %v", m)
+	}
+}
+
+// «Tanca NotesGim» en una finestra: les que són en pausa ho saben (closing), i no diuen que se'n fa servir una altra
+func TestQuitTellsPausedWindows(t *testing.T) {
+	wt := newWinTest(t)
+	wt.claim("A", false)
+	if m := wt.waitShort("B", 0); m["closing"] != nil {
+		t.Fatalf("encara no: %v", m)
+	}
+	if code, _ := wt.call(http.MethodPost, "/api/quit", map[string]any{}); code != 200 {
+		t.Fatalf("api/quit: %d", code)
+	}
+	if m := wt.waitShort("B", 0); m["closing"] != true {
+		t.Fatalf("vull closing: %v", m)
+	}
+}
+
 func mustJSON(v any) []byte { b, _ := json.Marshal(v); return b }

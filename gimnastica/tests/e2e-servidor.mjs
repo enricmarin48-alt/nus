@@ -6,6 +6,7 @@ import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, copyFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import os from 'node:os';
+import http from 'node:http';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 
@@ -481,7 +482,10 @@ try {
     await step('«Treballa en aquesta finestra» la torna a fer manar (l’altra queda en pausa), i al revés; cap no trepitja el que ha desat l’altra', async () => {
       await takeOver(admin);
       assert.ok(await isPaused(other));
-      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]').click(); await admin.keyboard.type('9,35'); await admin.keyboard.press('Enter');
+      // (la casella on s'escrivia en posar-se en pausa torna a dir el que s'hi havia escrit, amb el cursor al final: s'hi
+      // continuaria escrivint; aquí s'hi escriu una altra nota)
+      assert.deepEqual(await admin.evaluate(() => [document.activeElement.dataset.e, document.activeElement.value, document.activeElement.selectionStart]), ['e1', '6,6', 3]);
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=barra]').click(); await admin.keyboard.press('Control+A'); await admin.keyboard.type('9,35'); await admin.keyboard.press('Enter');
       await other.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e1][data-a=barra]').value === '9,35', null, { timeout: 8000 });
       await takeOver(other);
       assert.ok(await isPaused(admin));
@@ -545,6 +549,229 @@ try {
       await nap(800);
       assert.equal(fileEntry('e1').scores.barra[0].v, 9.1);
       assert.deepEqual(await alarms(admin), []);
+    });
+  }
+
+  // ─── sisena revisió (finestres de la taula): el que s'escriu no es desa mai com una altra cosa (ni en passar a una altra
+  // finestra, ni si la finestra queda en segon pla), i moltes finestres obertes no l'encallen
+  {
+    const nap = ms => new Promise(r => setTimeout(r, ms));
+    const fileEntry = id => JSON.parse(readFileSync(dataFile, 'utf8')).competitions[0].entries.find(e => e.id === id);
+    const cellV = (p, e, a) => p.evaluate(([e, a]) => { const i = document.querySelector(`#scoregrid input.sc[data-e=${e}][data-a=${a}]`); return i && i.value; }, [e, a]);
+    const focused = p => p.evaluate(() => { const el = document.activeElement; return { at: el.dataset.e ? el.dataset.e + '/' + el.dataset.a : el.dataset.id, v: el.value, s: [el.selectionStart, el.selectionEnd] }; });
+    const terra = () => (fileEntry('e1').scores.terra || [])[0].v;
+    const spy = p => p.evaluate(() => { if (window.__t) return; window.__t = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__t.push(n.textContent); }).observe(document.body, { childList: true, subtree: true }); });
+    const openWin = async (hash = '#/competicio/k1/notes') => {
+      const p = await admin.context().newPage(); watch(p, 'una altra finestra');
+      await p.goto(`http://127.0.0.1:${PORT}/${hash}`); await p.waitForSelector('text=Desat al fitxer', { timeout: 15000 });
+      return p;
+    };
+    const unpaused = P => Promise.all(P.map(p => p.evaluate(() => !win.paused))).then(l => l.filter(Boolean).length);
+    // la finestra es minimitza o queda tapada (com fa el navegador: el camp es queda el focus, però avisa d'un canvi i de
+    // sortir-ne, i la finestra perd el focus), i després torna
+    const away = p => p.evaluate(() => {
+      const el = document.activeElement;
+      document.hasFocus = () => false;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new FocusEvent('blur')); el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      window.dispatchEvent(new FocusEvent('blur'));
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    const back = p => p.evaluate(() => {
+      delete document.hasFocus; delete document.visibilityState;
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new FocusEvent('focus'));
+      const el = document.activeElement;
+      el.dispatchEvent(new FocusEvent('focus')); el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    });
+
+    await step('una nota a mig escriure («8,» de 8,5) quan s’obre una altra finestra no es desa; en tornar-hi (amb el botó o perquè l’altra es tanca) s’hi continua escrivint on s’havia deixat i es desa el que es volia', async () => {
+      for (const [how, a, b] of [['botó', '8,', '5'], ['es tanca', '7,', '4']]) {
+        const before = terra();
+        await admin.bringToFront();
+        await admin.locator('#scoregrid input.sc[data-e=e1][data-a=terra]').click(); await admin.keyboard.type(a);
+        const B = await openWin();
+        await admin.waitForSelector('#pause[open]');
+        await nap(600);
+        assert.equal(terra(), before, `${how}: «${a}» no es desa`);
+        assert.equal(await cellV(B, 'e1', 'terra'), await B.evaluate(v => fmt(Engine.toM(v)), before), 'l’altra finestra té la nota d’abans');
+        if (how === 'botó') { await takeOver(admin); assert.ok(await isPaused(B)); await B.close(); }
+        else { await B.close({ runBeforeUnload: true }); await admin.waitForFunction(() => !win.paused, null, { timeout: 5000 }); }
+        assert.deepEqual(await focused(admin), { at: 'e1/terra', v: a, s: [a.length, a.length] }, `${how}: el camp tal com era, amb el cursor al final (no tot seleccionat)`);
+        await admin.keyboard.type(b); await admin.keyboard.press('Enter'); await nap(700);
+        assert.equal(terra(), +(a + b).replace(',', '.'), `${how}: es desa ${a}${b}`);
+      }
+      // una nota acabada sense Intro sí que es desa abans de la pausa, i en tornar-hi també s'hi continua escrivint
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=terra]').click(); await admin.keyboard.type('6,6');
+      const B = await openWin();
+      await admin.waitForSelector('#pause[open]'); await nap(500);
+      assert.equal(terra(), 6.6, 'la nota acabada es desa');
+      assert.equal(await cellV(B, 'e1', 'terra'), '6,60');
+      await takeOver(admin); await B.close();
+      assert.deepEqual(await focused(admin), { at: 'e1/terra', v: '6,6', s: [3, 3] });
+      await admin.keyboard.type('5'); await admin.keyboard.press('Enter'); await nap(700);
+      assert.equal(terra(), 6.65);
+    });
+
+    await step('un dorsal a mig escriure («1» de 14, i l’1 ja el té una altra gimnasta) quan s’obre una altra finestra: no es desa cap dorsal repetit, i en tornar-hi «4» + Tab desa el 14', async () => {
+      await admin.evaluate(() => go('#/competicio/k1/inscripcions')); await admin.waitForSelector('input[data-chg=bib][data-id=e3]');
+      const d = String(fileEntry('e1').bib), bib3 = fileEntry('e3').bib;
+      await admin.locator('input[data-chg=bib][data-id=e3]').click(); await admin.keyboard.press('Control+A'); await admin.keyboard.type(d);
+      const B = await openWin('#/competicio/k1/inscripcions');
+      await admin.waitForSelector('#pause[open]'); await nap(500);
+      assert.equal(fileEntry('e3').bib, bib3, 'cap dorsal repetit al fitxer');
+      await takeOver(admin); await B.close();
+      assert.deepEqual(await focused(admin), { at: 'e3', v: d, s: [d.length, d.length] });
+      await admin.keyboard.type('4'); await admin.keyboard.press('Tab'); await nap(700);
+      assert.equal(fileEntry('e3').bib, +(d + '4'));
+    });
+
+    await step('la finestra es minimitza o queda tapada amb «8,» escrit: no es desa ni es toca res; en tornar-hi, «5» + Intro desa 8,5 (i un dorsal escrit es desa en sortir-ne amb Tab)', async () => {
+      await admin.evaluate(() => go('#/competicio/k1/notes')); await admin.waitForSelector('#scoregrid');
+      const before = terra();
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=terra]').click(); await admin.keyboard.type('8,');
+      await away(admin); await nap(700);
+      assert.equal(terra(), before, '«8,» no es desa');
+      assert.deepEqual(await focused(admin), { at: 'e1/terra', v: '8,', s: [2, 2] }, 'ni es canvia el que hi ha escrit');
+      await back(admin);
+      assert.deepEqual(await focused(admin), { at: 'e1/terra', v: '8,', s: [2, 2] }, 'en tornar-hi, el cursor on era (no tot seleccionat)');
+      await admin.keyboard.type('5'); await admin.keyboard.press('Enter'); await nap(700);
+      assert.equal(terra(), 8.5);
+      assert.equal(await cellV(admin, 'e1', 'terra'), '8,50');
+      // un dorsal: el navegador avisa d'un canvi en minimitzar, però no es desa fins que se'n surt
+      await admin.evaluate(() => go('#/competicio/k1/inscripcions')); await admin.waitForSelector('input[data-chg=bib][data-id=e3]');
+      const bib3 = fileEntry('e3').bib;
+      await admin.locator('input[data-chg=bib][data-id=e3]').click(); await admin.keyboard.press('Control+A'); await admin.keyboard.type('77');
+      await away(admin); await nap(700);
+      assert.equal(fileEntry('e3').bib, bib3, 'el dorsal encara no es desa');
+      await back(admin);
+      await admin.keyboard.press('Tab'); await nap(700);
+      assert.equal(fileEntry('e3').bib, 77, 'en sortir-ne, sí');
+      await admin.evaluate(() => go('#/competicio/k1/notes')); await admin.waitForSelector('#scoregrid');
+    });
+
+    await step('«Desfés» es torna a oferir en tornar a la finestra on s’ha fet el canvi, si mentrestant no ha canviat res', async () => {
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=salt]').click(); await admin.keyboard.type('np'); await admin.keyboard.press('Enter');
+      await admin.waitForSelector('.toast:has-text("no presentada") button:has-text("Desfés")'); await nap(600);
+      assert.equal(fileEntry('e1').status, 'np');
+      const B = await openWin();
+      await admin.waitForSelector('#pause[open]');
+      assert.equal(await B.locator('.toast button:has-text("Desfés")').count(), 0);
+      await nap(1500);
+      await takeOver(admin);
+      await admin.locator('.toast:has-text("no presentada") button:has-text("Desfés")').click();
+      await admin.waitForSelector('.toast:has-text("Desfet.")'); await nap(700);
+      assert.equal(fileEntry('e1').status, '', 'desfet al fitxer');
+      // (si mentrestant l'altra finestra hi ha canviat res, ja no)
+      await admin.locator('#scoregrid input.sc[data-e=e1][data-a=salt]').click(); await admin.keyboard.type('np'); await admin.keyboard.press('Enter');
+      await admin.waitForSelector('.toast:has-text("no presentada") button:has-text("Desfés")');
+      await takeOver(B);
+      await B.evaluate(() => { S().org = 'ORG DE B'; commit(); }); await nap(700);
+      await takeOver(admin);
+      await nap(300);
+      assert.equal(await admin.locator('.toast button:has-text("Desfés")').count(), 0, 'cap Desfés de les dades d’abans');
+      await B.close();
+      await admin.evaluate(() => { curComp().entries.find(e => e.id === 'e1').status = ''; commit(); }); await nap(700);
+      assert.equal(fileEntry('e1').status, '');
+    });
+
+    await step('7 finestres obertes (NotesGim obert moltes vegades): es desa de seguida, «Treballa en aquesta finestra» va de seguida i desa el que s’escrivia a l’altra, una de nova s’obre de seguida, i mai no n’hi ha dues que manin', async () => {
+      const W = [];
+      for (let i = 0; i < 6; i++) { const t = Date.now(); W.push(await openWin()); assert.ok(Date.now() - t < 5000, `la finestra ${i + 2} triga ${Date.now() - t} ms a obrir-se`); }
+      const all = [admin, ...W], act = W[5];
+      await nap(2500);
+      assert.equal(await unpaused(all), 1, 'només una mana');
+      assert.ok(!(await isPaused(act)), 'la darrera que s’ha obert');
+      await act.locator('#scoregrid input.sc[data-e=e2][data-a=terra]').click(); await act.keyboard.type('9,15'); await act.keyboard.press('Enter');
+      let t = Date.now();
+      while (Date.now() - t < 8000 && (fileEntry('e2').scores.terra || [])[0].v !== 9.15) await nap(100);
+      assert.ok(Date.now() - t < 1500, `la nota arriba al fitxer en ${Date.now() - t} ms`);
+      await act.locator('#scoregrid input.sc[data-e=e2][data-a=salt]').click(); await act.keyboard.type('6,6');
+      await admin.bringToFront();
+      t = Date.now();
+      await takeOver(admin);
+      assert.ok(Date.now() - t < 3000, `«Treballa en aquesta finestra» triga ${Date.now() - t} ms`);
+      await nap(600);
+      assert.equal(fileEntry('e2').scores.salt[0].v, 6.6, 'el que s’escrivia a l’altra finestra es desa');
+      assert.equal(await act.evaluate(() => !!win.unsent), false);
+      assert.equal(await unpaused(all), 1);
+      t = Date.now(); const W8 = await openWin(); assert.ok(Date.now() - t < 5000, `la vuitena finestra triga ${Date.now() - t} ms`);
+      await nap(1000);
+      assert.equal(await unpaused([...all, W8]), 1);
+      for (const p of [...W, W8]) await p.close();
+      await admin.waitForFunction(() => !win.paused, null, { timeout: 5000 });
+    });
+
+    await step('es tanca la finestra que mana just després d’un canvi: el canvi arriba al fitxer i l’altra continua de seguida (no al cap de 40 s)', async () => {
+      const B = await openWin();
+      await admin.waitForSelector('#pause[open]');
+      await B.locator('#scoregrid input.sc[data-e=e2][data-a=terra]').click(); await B.keyboard.type('7,35'); await B.keyboard.press('Enter');
+      const t = Date.now();
+      await B.close({ runBeforeUnload: true });
+      await admin.waitForFunction(() => !win.paused, null, { timeout: 8000 });
+      assert.ok(Date.now() - t < 3000, `l’altra continua al cap de ${Date.now() - t} ms`);
+      assert.equal(fileEntry('e2').scores.terra[0].v, 7.35);
+      await admin.waitForFunction(() => document.querySelector('#scoregrid input.sc[data-e=e2][data-a=terra]').value === '7,35', null, { timeout: 3000 });
+      // dos canvis seguits, i es tanca quan el primer encara s'està enviant (el programa triga a desar: un USB lent; aquí, un
+      // intermediari que l'endarrereix): tots dos arriben, i l'altra continua de seguida
+      let slow = false;
+      const px = http.createServer((req, res) => {
+        const go = () => { const up = http.request({ host: '127.0.0.1', port: PORT, path: req.url, method: req.method, headers: req.headers }, r => { res.writeHead(r.statusCode, r.headers); r.pipe(res); }); up.on('error', () => res.destroy()); req.pipe(up); };
+        if (slow && req.method === 'PUT' && req.url.startsWith('/api/db')) { slow = false; setTimeout(go, 600); } else go();
+      });
+      await new Promise(r => px.listen(0, '127.0.0.1', r));
+      try {
+        const C = await admin.context().newPage(); watch(C, 'finestra lenta');
+        await C.goto(`http://127.0.0.1:${px.address().port}/#/competicio/k1/notes`); await C.waitForSelector('text=Desat al fitxer', { timeout: 15000 });
+        await admin.waitForSelector('#pause[open]');
+        slow = true;
+        await C.locator('#scoregrid input.sc[data-e=e1][data-a=salt]').click(); await C.keyboard.type('7,1'); await C.keyboard.press('Enter');
+        await nap(300);
+        await C.keyboard.type('7,2'); await C.keyboard.press('Enter');
+        await nap(250);
+        assert.deepEqual(await C.evaluate(() => [server.pushing, server.again]), [true, true], 'el segon espera que acabi el primer');
+        const t2 = Date.now();
+        await C.close({ runBeforeUnload: true });
+        await admin.waitForFunction(() => !win.paused, null, { timeout: 8000 });
+        assert.ok(Date.now() - t2 < 4000, `l’altra continua al cap de ${Date.now() - t2} ms`);
+        await nap(300);
+        assert.deepEqual([fileEntry('e1').scores.salt[0].v, fileEntry('e2').scores.salt[0].v], [7.1, 7.2], 'tots dos canvis són al fitxer');
+      } finally { px.close(); }
+    });
+
+    await step('el programa es tanca just quan s’obre una altra finestra (entre api/info i api/claim): la finestra diu «Connectant…» i s’obre sola quan torna', async () => {
+      await admin.route('**/api/release', () => {});   // (la que mana no la deixa: la nova espera)
+      const B = await admin.context().newPage(); watch(B, 'finestra que s’obre');
+      const g = B.goto(`http://127.0.0.1:${PORT}/#/competicio/k1/notes`);
+      await B.waitForRequest(r => r.url().includes('api/claim'));
+      await nap(300);
+      await new Promise(r => { proc.once('exit', r); proc.kill('SIGKILL'); });
+      await g.catch(() => {});
+      await nap(1500);
+      await startServer();
+      await B.waitForSelector('#scoregrid', { timeout: 15000 }); await B.waitForSelector('text=Desat al fitxer', { timeout: 15000 });
+      await admin.unroute('**/api/release');
+      await takeOver(admin); await B.close();
+    });
+
+    await step('«Tanca NotesGim» a la finestra que mana: la que és en pausa diu que NotesGim s’ha tancat (no que s’està fent servir en una altra), i quan es torna a obrir continua sola', async () => {
+      const B = await openWin('#/competicions');
+      await admin.waitForSelector('#pause[open]');
+      await spy(admin);
+      const exited = new Promise(r => proc.once('exit', r));
+      await B.click('button[data-act=quitApp]'); await B.waitForSelector('#confirm[open]'); await B.click('#confirm button[value=ok]');
+      await B.waitForSelector('text=NotesGim s’ha tancat');
+      await exited;
+      await admin.waitForSelector('#pause[open] >> text=NotesGim s’ha tancat o no respon', { timeout: 4000 });
+      assert.ok(!(await admin.locator('#pause').innerText()).includes('altra finestra'));
+      await admin.click('#pause #pausetake'); await nap(1500);
+      assert.ok((await admin.locator('#pause').innerText()).includes('NotesGim s’ha tancat o no respon'), 'el botó també ho diu');
+      assert.deepEqual(await admin.evaluate(() => window.__t.filter(x => /no respon: torna-ho/.test(x))), []);
+      await startServer();
+      await admin.waitForFunction(() => !win.paused, null, { timeout: 15000 });
+      await B.close();
+      await admin.evaluate(() => go('#/competicio/k1/notes')); await admin.waitForSelector('#scoregrid');
     });
   }
 

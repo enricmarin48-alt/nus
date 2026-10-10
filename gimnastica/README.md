@@ -160,7 +160,8 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
   «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i
-  l'avís ho diu («Mou-la amb l'equip», o «Mou-lo» si és un noi; a la pestanya, «Ajunta-les»). Si se li corregeix el nivell o la categoria i
+  l'avís ho diu («Mou-la amb l'equip», o «Mou-lo» si és un noi; a la pestanya, «Ajunta-les», o
+  «Ajunta'ls» si són nois). Si se li corregeix el nivell o la categoria i
   passa a una altra subdivisió, no surt com a nova: es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat
   de la 2a subdivisió (9:25) a la 3a (10:25)»), també en desar la inscripció o la fitxa.
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots

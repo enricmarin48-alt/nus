@@ -724,6 +724,70 @@ try {
     });
     assert.deepEqual(heads[0], [['Ordre', 'Dorsal', 'Esportista', 'Entitat', '1r salt', '2n salt', 'Final']]);
     assert.deepEqual(heads[1], [['Ordre', 'Dorsal', 'Esportista', 'Entitat', '1r salt×4', '2n salt×4', 'Final'], ['D', 'E', 'Pen.', 'Nota', 'D', 'E', 'Pen.', 'Nota']]);
+    // i a la pestanya Notes (la taula de l'aparell, amb D + E) i al full de càlcul (la classificació de l'aparell)
+    const more = await p7.evaluate(() => {
+      const c = Object.assign({}, curComp() || db.competitions[0], { scoring: 'detailed' }), g = groupsOf(c).find(x => x.key === 'Aleví||M||A'), a = c.apparatus.find(x => x.id === 'mini');
+      const d = document.createElement('div'); d.innerHTML = notesAppTable(c, g, a);
+      return [[...d.querySelectorAll('thead th.grp')].map(x => x.textContent), d.querySelector('tbody input.sc').getAttribute('aria-label')];
+    });
+    assert.deepEqual(more[0].slice(0, 2), ['1r salt', '2n salt'], JSON.stringify(more));
+    assert.ok(more[1].startsWith('Minitramp 1r salt D '), more[1]);
+  });
+
+  await step('setena revisió: un grup de nois, en masculí («2 gimnastes nous… els he posat», «Esborra’ls», «els seus gimnastes»), i d’un de sol, el seu nom', async () => {
+    // d'una llista, en masculí només si tots són nois
+    assert.deepEqual(await p7.evaluate(() => [[{ gender: 'M' }, { gender: 'M' }], [{ gender: 'M' }, { gender: 'F' }], []].map(l => mf(l, 'marcats', 'marcades'))), ['marcats', 'marcades', 'marcades']);
+    // rotacions fetes i després 2 nois nous: el rètol i la pregunta d'abans d'imprimir; amb una noia més, en femení
+    await load7('#/competicio/c418/rotacions');
+    await p7.click('button[data-act=rotMake]'); await p7.waitForSelector('.card.rot-sub');
+    const addNew = list => p7.evaluate(list => { const c = curComp(); for (const [id, gender] of list) { const g = { id, name: 'Nou', surname: id, clubId: 'CGL', gender, category: 'Aleví', level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); } commit(); render(); }, list);
+    const banner = () => p7.locator('.note.warn', { hasText: 'des que vas fer les rotacions' }).innerText();
+    await addNew([['nb1', 'M'], ['nb2', 'M']]); await p7.waitForTimeout(150);
+    let b = (await banner()).replace(/\s+/g, ' ');
+    assert.ok(b.startsWith('2 gimnastes nous des que vas fer les rotacions: els he posat ') && b.includes('(surten marcats NOU)') && b.includes('D’acord, deixa’ls així'), b);
+    await p7.evaluate(() => { rotPrintPrep(curComp()); });
+    assert.ok((await confirmTxt7()).startsWith('Hi ha 2 gimnastes nous que encara no has revisat (surten on els he posat).'), await confirmTxt7());
+    await cancel7();
+    await addNew([['nb3', 'F']]); await p7.waitForTimeout(150);
+    b = (await banner()).replace(/\s+/g, ' ');
+    assert.ok(b.startsWith('3 gimnastes noves des que vas fer les rotacions: les he posades ') && b.includes('(surten marcades NOU)') && b.includes('D’acord, deixa-les així'), b);
+    // Gimnastes: 2 nois que surten a una competició que ve → «Tots surten», «Esborra’ls del tot», «Arxiva’ls», «Trets de»
+    await load7('#/gimnastes', `db => { db.competitions[0].date = '${today}'; db.competitions[0].entries.find(e => e.gymnastId === 'g86').scores = { salt: [{ v: 8, at: 1 }] }; }`);
+    await p7.evaluate(() => { selSet('gyms').clear(); selSet('gyms').add('g83'); selSet('gyms').add('g84'); render(); });
+    await p7.click('button[data-act=delGymsSel]');
+    const q = await confirmTxt7();
+    assert.ok(q.includes('Tots surten a alguna competició') && q.includes('Esborrar-los del tot:') && q.includes('Arxivar-los:') && q.includes('Esborra’ls del tot') && q.includes('Arxiva’ls'), q);
+    await p7.locator('#confirm button', { hasText: 'Arxiva’ls' }).click(); await p7.waitForTimeout(200);
+    assert.ok((await lastToast7()).startsWith('2 gimnastes arxivats: ja no surten a les llistes ni són a cap equip. Trets de: '), await lastToast7());
+    // un sol noi amb notes, esborrat del tot: «les notes d’Emma Serra Ferrer», i no «d’una gimnasta»
+    await p7.evaluate(() => { selSet('gyms').clear(); selSet('gyms').add('g86'); render(); });
+    await p7.click('button[data-act=delGymsSel]');
+    await confirmTxt7();
+    await p7.locator('#confirm button', { hasText: 'Esborra-lo del tot' }).click(); await p7.waitForTimeout(150);
+    assert.ok((await confirmTxt7()).startsWith('Segur? S’esborraran les notes d’Emma Serra Ferrer d’una competició.'), await confirmTxt7());
+    await cancel7();
+    // un sol noi amb la categoria d'un altre any: «Canviar la categoria d’Emma Serra Ferrer…»
+    await p7.evaluate(() => { const g = gymById('g86'); for (let y = 2000; y < 2025; y++) if (catForYear(String(y)) === 'Infantil') { g.birthYear = String(y); break; } commit(); render(); actions.recalcCats(null); });
+    const rc = await confirmTxt7();
+    assert.ok(rc.startsWith('Canviar la categoria d’Emma Serra Ferrer segons l’any de naixement?') && rc.includes('(si encara no hi té notes)') && rc.includes('Canvia-la'), rc);
+    await cancel7();
+    // esborrar un equip de nois: «Els seus gimnastes», «Es tornen a agrupar sols»
+    await load7('#/equips', 'db => { db.teams.push({ id: "TM1", name: "C.G. Lleida", clubId: "CGL", gender: "M", category: "Prebenjamí", level: "A", memberIds: ["g83", "g84"] }); }');
+    await p7.evaluate(() => { actions.delTeam({ dataset: { id: 'TM1' } }); });
+    const tq = await confirmTxt7();
+    assert.ok(tq.includes('Els gimnastes no s’esborren') && tq.includes('Els seus gimnastes, a partir d’ara') && tq.includes('Es tornen a agrupar sols'), tq);
+    await p7.locator('#confirm button', { hasText: 'Es tornen a agrupar sols' }).click(); await p7.waitForTimeout(150);
+    assert.equal(await lastToast7(), 'Equip esborrat: els seus gimnastes es tornen a agrupar sols.');
+    // el full d'inscripció dels nois: «surten marcats amb «pot fer equip»»; si es diu que són noies, «marcades»
+    await p7.evaluate(() => go('#/gimnastes')); await p7.waitForTimeout(150);
+    await p7.locator('button[data-act=inscOpen] >> visible=true').first().click();
+    await p7.setInputFiles('#inscfile', [path.join(here, 'fixtures', 'inscripcio-masculina-A.xlsx')]);
+    await p7.waitForSelector('#dlg >> text=inscripcio-masculina-A.xlsx');
+    const ctNote = async () => (await p7.locator('#dlg .note.warn', { hasText: 'pot fer equip' }).innerText()).replace(/\s+/g, ' ');
+    assert.ok((await ctNote()).includes('(surten marcats amb «pot fer equip»)'), await ctNote());
+    await p7.selectOption('#dlg select[data-chg=inscGender]', 'F'); await p7.waitForTimeout(150);
+    assert.ok((await ctNote()).includes('(surten marcades amb «pot fer equip»)'), await ctNote());
+    await p7.evaluate(() => closeDialog());
   });
 
   await step('setena revisió: el primer dia, «Com començar» diu el camí de veritat i les Inscripcions buides ofereixen els fulls dels clubs (també al mòbil)', async () => {

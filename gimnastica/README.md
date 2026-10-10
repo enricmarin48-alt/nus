@@ -151,38 +151,64 @@ A la pestanya **Rotacions i horari** de la competició, **Fes les rotacions** fa
 els grups, i en calcula l'horari. Després tot es pot canviar.
 
 - **Subdivisions**: cada una competeix sola, amb el seu escalfament general, les seves rotacions i els
-  seus premis. Noies i nois sempre van per separat; per defecte, tots els nois junts. Una categoria
-  massa gran (més de 3 grups × 15) es parteix per nivells, i les categories amb poques gimnastes
-  s'ajunten amb la del costat (com Cadet i Juvenil amb Infantil). **Quines categories van juntes…**
-  deixa ajuntar o separar categories, separar els nois, canviar el màxim per grup o triar la
-  subdivisió de cada categoria i nivell. L'ordre del dia es canvia amb ↑ ↓. Tot això es recorda per a
+  seus premis. Cada categoria va a la seva subdivisió: **només van juntes les que ajunta l'organitzadora**
+  a **Quines categories van juntes…** (com Infantil, Cadet i Juvenil el 18/04); l'app no n'ajunta cap
+  sola, i d'una categoria amb poques gimnastes només ho diu («Juvenil només té 1 gimnasta: si vols,
+  ajunta-la amb una altra…»). Noies i nois sempre van per separat; per defecte, tots els nois junts (es
+  pot treure). Una categoria massa gran (més de 3 grups × 15) es parteix per nivells. **Quines categories
+  van juntes…** deixa ajuntar o separar categories, separar els nois, canviar el màxim per grup o triar
+  la subdivisió de cada categoria i nivell. L'ordre del dia es canvia amb ↑ ↓. Tot això es recorda per a
   les properes competicions (un dia que una regla no hi fa res, p. ex. perquè d'una categoria només hi
-  ha un nivell, no s'oblida), i «Jornada següent» copia les subdivisions.
+  ha un nivell, no s'oblida), i «Jornada següent» copia les subdivisions. Unes rotacions fetes amb una
+  versió d'abans es queden com eren: no es torna a fer res si ella no ho demana.
 - **Com es fan els grups** (per ordre d'importància): 1) un equip no se separa mai, i les individuals
   d'una entitat i d'un mateix nivell van juntes; 2) si s'ha dit quantes **entrenadores** porta una
   entitat, les seves gimnastes no van en més grups dels que pot portar; 3) cada categoria i nivell al
   seu grup (o, si es tria «Grups tan igualats com es pugui», s'hi poden barrejar); 4) grups tan
   igualats com es pugui; 5) els equips d'una mateixa entitat, junts. El càlcul és exacte i sempre dona
   el mateix resultat.
-- **Moure** un equip: el desplegable de cada equip diu a quin grup va i com quedaran els grups
-  («→ Grup 3 · Terra (6 → 12)»). Queda fixat (📌): «Reequilibra» no el mourà. **Reequilibra** torna a
-  repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què es mourà. «comença
-  a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
-  «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
+- **Moure-ho tot**: el desplegable de cada equip diu a quin grup va i com quedaran els grups
+  («→ Grup 3 · Terra (6 → 12)»): primer els de la seva subdivisió i després els de les altres
+  subdivisions del mateix gènere, amb l'hora («3a subdivisió · BENJAMÍ B (10:25)»). **Mou…** (a cada
+  equip) deixa triar qui es mou (totes, o només una o unes quantes gimnastes, també les NP) i on (qualsevol
+  grup de qualsevol subdivisió de noies, o de nois, amb l'aparell, quantes n'hi ha abans i després i
+  l'hora), i abans de fer-ho diu què canvia: si l'equip queda repartit («L'equip C.G. Lleida quedarà
+  repartit: 2 al Grup 3 de la 3a subdivisió i 3 al Grup 2 de la 4a»), l'hora («Passen de les 11:25 (4a
+  subdivisió) a les 10:25 (3a)»), si una entitat passa del seu límit d'entrenadores, si un grup passa del
+  màxim i si els premis d'una categoria es fan més tard. Noies i nois mai no comparteixen subdivisió
+  (fan aparells diferents). Les que es porten a una altra subdivisió hi competeixen amb la seva
+  categoria i nivell (a la targeta, al títol de la subdivisió —«(i C.G. Lleida 2 · Aleví A)»—, al full de
+  rotacions, al de jutge, al mòbil de les tutores i a «Renumera dorsals»); un equip repartit en dues
+  subdivisions ho diu a totes dues, amb «Ajunta-les aquí». Per tornar-les a la seva subdivisió, n'hi ha
+  prou de triar-hi un grup (al desplegable hi diu «la seva»). Una gimnasta nova d'un equip que s'ha
+  portat a una altra subdivisió hi va amb el seu equip. Si se li canvia la categoria, el nivell o el
+  gènere, o la subdivisió triada ja no hi és, torna a la seva i es diu. Tot el que es mou a mà queda
+  fixat (📌): «Reequilibra» i «Torna a fer els grups» no ho mouen mai; «Treu les fixacions», «Torna-ho a
+  fer tot» i «Esborra les rotacions» abans diuen quantes gimnastes tornaran a la seva subdivisió.
+  **Reequilibra** torna a repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya
+  què es mourà. «comença a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció
+  nova surt marcada «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i
   l'avís ho diu («Mou-la amb l'equip», o «Mou-lo» si és un noi; a la pestanya, «Ajunta-les», o
   «Ajunta'ls» si són nois). Si se li corregeix el nivell o la categoria i
   passa a una altra subdivisió, no surt com a nova: es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat
   de la 2a subdivisió (9:25) a la 3a (10:25)»), també en desar la inscripció o la fitxa.
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
-  junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell.
+  junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell: tots junts
+  al final i, de moment, com a «Classificació a part» (no suma al total dels nois); si ha de sumar, es
+  canvia a Configuració → Aparells → «Compta».
 - **Horari**: comença a les 8:30, amb 30 minuts d'escalfament general abans de cada subdivisió.
   Durada = rotacions × (3′ d'escalfament per aparell + el grup més llarg × temps per gimnasta) i, si
   n'hi ha, els aparells tots junts al final; arrodonit als 5 minuts. Temps per gimnasta i aparell:
   1′28″ fins a Aleví i 1′48″ d'Infantil amunt (noies), i 1′ i 1′30″ d'escalfament (nois). Premis: 5′
-  per cada 3 categories i nivells. Es pot fixar la durada, els premis o l'hora d'inici de cada
-  subdivisió, afegir exhibicions o pauses, i canviar els temps i les observacions. Amb les dades del
-  18/04/2026, surt l'horari del model (de 8:00 a 15:00).
+  per cada 3 categories i nivells. Els premis de cada categoria i nivell es fan després de l'**última**
+  subdivisió on competeix alguna de les seves gimnastes: si se n'ha portat alguna a una subdivisió de més
+  tard, la fila de premis ho diu («PREMIS BENJAMÍ B i ALEVÍ A i B»), una subdivisió que ja no en dona cap
+  no té fila de premis (si no s'hi posen minuts a mà), i les pestanyes Grups i Horari ho diuen un sol cop
+  («Els premis de Benjamí B es fan després de la 4a subdivisió, perquè FEDAC Lleida hi competeix»). Es
+  pot fixar la durada, els premis o l'hora d'inici de cada subdivisió, afegir exhibicions o pauses, i
+  canviar els temps i les observacions. Amb les dades del 18/04/2026 (i Infantil, Cadet i Juvenil
+  juntes, com aquell dia), surt l'horari del model (de 8:00 a 15:00).
 - **Imprimeix**: un full A4 per subdivisió (amb l'aparell, la categoria, el grup, i gimnasta, entitat
   i nivell de cadascuna, i l'ordre de rotació) i l'horari general, com els models. L'ordre de cada grup al full
   (per categoria i nivell, entitat, primer els equips i després les individuals, i per dorsal) és l'ordre en què
@@ -301,7 +327,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/engine.test.mjs` i `tests/rotacions.test.mjs` — `node --test tests/*.test.mjs` (sense dependències). Les
   rotacions es proven amb les dades reals del 18/04/2026 i comparant el repartiment amb provar-ho tot.
 - `tests/e2e-rotacions.mjs` — la pestanya Rotacions i horari sencera (amb `tests/fixture-rotacions.mjs`):
-  fer-les, moure, reequilibrar, entrenadores, barra fixa, horari, fulls en PDF, bloqueig i mòbil.
+  fer-les, ajuntar categories, moure (també a una altra subdivisió i només unes gimnastes, amb «Mou…»),
+  reequilibrar, entrenadores, barra fixa, horari i premis, fulls en PDF, bloqueig i mòbil.
 - `tests/e2e.mjs` — `node tests/e2e.mjs` prova l'app sencera en un Chromium obrint-la des del
   disc (cal Playwright). Deixa captures, un PDF i un `.xlsx` a `tests/out/`.
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi

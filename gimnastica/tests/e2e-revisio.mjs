@@ -1305,10 +1305,11 @@ try {
     assert.equal(await p7.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1');
     assert.ok((await p7.locator('#dlg').textContent()).includes('Al full l’entitat és «CLUB GIMNÀSTIC LLEIDA», però gairebé totes les gimnastes ja són de CG Lleida'));
     // (si es tria «Nova», les que ja hi són ho diuen; com que CG Lleida ja les ha inscrites a la 2a Fase amb el seu
-    // full, per defecte són unes altres gimnastes)
+    // full, per defecte són unes altres gimnastes, i a la fila es diu per què)
     await p7.selectOption('#dlg select[data-chg=inscClub]', '__new');
     await p7.waitForFunction(() => /n’hi ha una amb aquest nom: CG Lleida/.test($('#dlg').textContent));
-    assert.ok((await p7.locator('#dlg').textContent()).includes('3 gimnastes del full es diuen com una d’una altra entitat que ja és en un equip del full de la seva entitat en aquesta competició (o en una que ve)'));
+    assert.ok((await p7.locator('#dlg').textContent()).includes('3 gimnastes del full es diuen com gimnastes d’una altra entitat que el full de la seva entitat ja ha inscrit a 2a Fase'));
+    assert.ok((await row7('Pons, Helena').textContent()).includes('CG Lleida · any 2016, ja és al full de la seva entitat per a 2a Fase'), await row7('Pons, Helena').textContent());
     assert.equal(await row7('Pons, Helena').locator('select[data-chg=inscRowSame]').inputValue(), '__other');
     await p7.click('#dlg button[data-act=closeDlg]');
   });
@@ -1374,6 +1375,196 @@ try {
     await p7.click('#confirm button[value=ok]');
     await toast7(/nom d’equip canviat/);
     assert.deepEqual(await teamNames(), ['INEF Lleida Centre'], 'a la llista d’equips i a totes les competicions');
+  });
+
+  // ─── setena revisió (comprovació): dues gimnastes amb el mateix nom a dues entitats, cadascuna al full de la seva
+  // (arribin en l'ordre que arribin, o el dia mateix amb les notes posades), una competició passada amb una gimnasta que
+  // ha canviat d'entitat, «Importa» just després d'escriure el nom de l'entitat nova i els textos (un, una, sense entitat)
+  // CG Lleida: la Queralt Mora (individual) i la Helena Pons (equip) ja han competit a la 1a Fase; la 2a Fase s'ha fet
+  // amb «Jornada següent». L'Escola Pardinyes porta al seu full una altra Queralt Mora i una altra Helena Pons.
+  const seed8 = ({ f1Date = day(-20) } = {}) => {
+    const gs = [G7('q1', 'Queralt', 'Mora', 'c1', 2015, 'Aleví', { noTeam: true }), G7('h1', 'Helena', 'Pons', 'c1', 2016), G7('gg', 'Gina', 'Gil', 'c1', 2016),
+      G7('i1', 'Iris', 'Font', 'c1', 2015), G7('j1', 'Júlia', 'Roca', 'c1', 2014, 'Infantil', { noTeam: true }),
+      G7('r2', 'Rut', 'Soler', 'c2', 2015, 'Aleví', { noTeam: true }), G7('s2', 'Sara', 'Vidal', 'c2', 2016, 'Aleví', { noTeam: true })];
+    const E8 = (k, g, bib, teamId = null, scores = {}) => ({ id: k + g.id, gymnastId: g.id, clubId: g.clubId, gender: 'F', category: g.category, level: 'A', bib, teamId, status: '', scores, ...(teamId ? {} : { noAuto: true }) });
+    return { app: 'notesgim', version: 1, settings: { org: 'PROVA', rev: 4 },
+      clubs: [{ id: 'c1', name: 'CG Lleida' }, { id: 'c2', name: 'Escola Pardinyes' }],
+      gymnasts: gs,
+      teams: [{ id: 'T1', name: 'CG Lleida', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', memberIds: ['h1', 'gg', 'i1'], form: true }],
+      competitions: [
+        { id: 'f1', name: '1a Fase', date: f1Date, place: 'Lleida', season: 'Curs 8', locked: false, autoTeams: true,
+          teams: [ct7('f1t', 'CG Lleida', 'c1', 'T1', 'Aleví', true)],
+          entries: gs.map((g, i) => E8('f1', g, i + 1, ['h1', 'gg', 'i1'].includes(g.id) ? 'f1t' : null, sc(8 + i / 10))) },
+        { id: 'f2', name: '2a Fase', date: day(10), place: 'Alpicat', season: 'Curs 8', locked: false, autoTeams: true,
+          teams: [ct7('f2t', 'CG Lleida', 'c1', 'T1')],
+          entries: gs.map((g, i) => E8('f2', g, i + 1, ['h1', 'gg', 'i1'].includes(g.id) ? 'f2t' : null)) }],
+      meta: { created: new Date().toISOString(), updated: new Date().toISOString(), dbId: 'proves8' } };
+  };
+  const open8 = async seed => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES' });
+    await ctx.addInitScript(r => { if (!localStorage.getItem('notesgim.db')) localStorage.setItem('notesgim.db', r); }, JSON.stringify(seed));
+    const p = await ctx.newPage();
+    p.on('pageerror', e => errors.push('pageerror (7a revisió, mateix nom): ' + e.message));
+    p.on('console', m => { if (m.type() === 'error') errors.push('console (7a revisió, mateix nom): ' + m.text()); });
+    const data = () => p.evaluate(() => JSON.parse(JSON.stringify(db)));
+    const row = txt => p.locator('#dlg tr', { hasText: txt });
+    const toast = async re => { await p.waitForFunction(r => $$('.toast').some(t => new RegExp(r).test(t.textContent)), re.source); return p.evaluate(r => $$('.toast').filter(t => new RegExp(r).test(t.textContent)).pop().textContent, re.source); };
+    // obre «Fulls d'inscripció» (a la competició, o a Gimnastes) amb el fitxer
+    const sheet = async (hash, file) => {
+      await p.goto(url + hash); await p.click('button[data-act=inscOpen] >> visible=true');
+      await p.setInputFiles('#inscfile', [fx7(file)]); await p.waitForSelector(`#dlg >> text=${file}`);
+    };
+    const doImport = async () => { await p.evaluate(() => $$('.toast').forEach(t => t.remove())); await p.click('#dlg button[data-act=inscDo]'); return toast(/Fulls d’inscripció importats/); };
+    return { ctx, p, data, row, toast, sheet, doImport };
+  };
+  const who8 = (d, n) => d.gymnasts.filter(g => g.name + ' ' + g.surname === n);
+
+  await step('dues entitats porten cadascuna una Queralt Mora i una Helena Pons (primer el full de l’altra entitat): cadascuna té la seva fitxa i la seva inscripció, i la de sempre es queda amb les seves notes', async () => {
+    const T = await open8(seed8()), { p } = T;
+    // 1) el full de l'Escola Pardinyes: per defecte és la mateixa (ha canviat d'entitat)
+    await T.sheet('#/competicio/f2/inscripcions', 'inscripcio-mateix-nom.xlsx');
+    assert.equal(await p.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c2');
+    assert.ok((await T.row('Mora, Queralt').textContent()).includes('ja hi és (abans a CG Lleida)'));
+    assert.ok((await p.locator('#dlg').textContent()).includes('2 gimnastes del full ja hi són amb una altra entitat o un altre any (surten marcades «ja hi és (abans a …)»): són les mateixes persones;'));
+    let t = await T.doImport();
+    assert.ok(t.includes('Han canviat d’entitat: Queralt Mora (abans a CG Lleida) i Helena Pons (abans a CG Lleida)'), t);
+    let d = await T.data();
+    assert.equal(d.gymnasts.find(g => g.id === 'q1').clubId, 'c2');
+    // 2) després, el full del CG Lleida, que també les porta: són dues persones
+    await T.sheet('#/competicio/f2/inscripcions', 'inscripcio-canvis-entitat.xlsx');
+    assert.equal(await p.locator('#dlg select[data-chg=inscClub]').inputValue(), 'c1');
+    assert.ok((await T.row('Mora, Queralt').textContent()).includes('ja hi és (també al full d’Escola Pardinyes: són dues)'), await T.row('Mora, Queralt').textContent());
+    assert.equal(await T.row('Mora, Queralt').locator('select[data-chg=inscRowSame]').inputValue(), 'q1');
+    assert.ok((await p.locator('#dlg').textContent()).includes('Queralt Mora i Helena Pons: el full d’Escola Pardinyes també en porta unes amb aquests noms'), await p.locator('#dlg').textContent());
+    t = await T.doImport();
+    assert.ok(t.includes('Són persones diferents amb el mateix nom, cadascuna amb la seva fitxa i la seva inscripció: Queralt Mora (CG Lleida i Escola Pardinyes) i Helena Pons (CG Lleida i Escola Pardinyes).'), t);
+    assert.ok(!/Ha canviat d’entitat/.test(t), t);
+    d = await T.data();
+    const f1 = d.competitions.find(c => c.id === 'f1'), f2 = d.competitions.find(c => c.id === 'f2');
+    for (const [n, id] of [['Queralt Mora', 'q1'], ['Helena Pons', 'h1']]) {
+      const gs = who8(d, n);
+      assert.deepEqual(gs.map(g => g.clubId).sort(), ['c1', 'c2'], 'dues fitxes: ' + n);
+      assert.equal(d.gymnasts.find(g => g.id === id).clubId, 'c1', 'la fitxa de sempre torna a CG Lleida: ' + n);
+      assert.ok(f1.entries.find(e => e.gymnastId === id && e.clubId === 'c1' && hasSc(e)), 'la 1a Fase (amb notes) és de la de sempre: ' + n);
+      for (const g of gs) assert.equal(f2.entries.filter(e => e.gymnastId === g.id).length, 1, 'una inscripció cadascuna a la 2a Fase: ' + n);
+      const other = gs.find(g => g.id !== id);
+      assert.equal(f2.entries.find(e => e.gymnastId === other.id).clubId, 'c2');
+      assert.equal(f2.entries.find(e => e.gymnastId === id).clubId, 'c1');
+    }
+    assert.equal(f2.entries.find(e => e.gymnastId === 'q1').bib, 1, 'el dorsal es queda amb la de sempre');
+    const tn = e => (f2.teams.find(x => x.id === e.teamId) || {}).name || null;
+    const helP = who8(d, 'Helena Pons').find(g => g.id !== 'h1');
+    assert.equal(tn(f2.entries.find(e => e.gymnastId === 'h1')), 'CG Lleida');
+    assert.equal(tn(f2.entries.find(e => e.gymnastId === helP.id)), 'Escola Pardinyes');
+    assert.ok(d.teams.find(x => x.id === 'T1').memberIds.includes('h1') && d.teams.some(x => x.clubId === 'c2' && x.memberIds.includes(helP.id) && !x.memberIds.includes('h1')), 'cada una al seu equip de la fitxa');
+    // 3) el full de l'Escola Pardinyes una altra vegada: ja són les seves, res de nou
+    await T.sheet('#/competicio/f2/inscripcions', 'inscripcio-mateix-nom.xlsx');
+    t = await T.doImport();
+    assert.ok(t.includes('0 fitxes noves') && t.includes('cap inscripció nova') && !/canviat d’entitat|persones diferents/.test(t), t);
+    const d2 = await T.data();
+    assert.equal(d2.gymnasts.length, d.gymnasts.length);
+    assert.equal(d2.competitions.find(c => c.id === 'f2').entries.length, f2.entries.length);
+    await T.ctx.close();
+  });
+
+  await step('i en l’altre ordre (primer el full del CG Lleida): per defecte són unes altres, i es diu per què', async () => {
+    const T = await open8(seed8()), { p } = T;
+    await T.sheet('#/competicio/f2/inscripcions', 'inscripcio-canvis-entitat.xlsx');
+    await T.doImport();
+    await T.sheet('#/competicio/f2/inscripcions', 'inscripcio-mateix-nom.xlsx');
+    assert.ok((await T.row('Mora, Queralt').textContent()).includes('nova (n’hi ha una amb aquest nom: CG Lleida · any 2015, ja és al full de la seva entitat)'), await T.row('Mora, Queralt').textContent());
+    assert.equal(await T.row('Mora, Queralt').locator('select[data-chg=inscRowSame]').inputValue(), '__other');
+    assert.ok((await p.locator('#dlg').textContent()).includes('2 gimnastes del full es diuen com gimnastes d’una altra entitat que el full de la seva entitat ja ha inscrit a 2a Fase: s’importen com a gimnastes noves (surten marcades «és una altra»). Si alguna és la mateixa persona, tria «és la mateixa».'));
+    const t = await T.doImport();
+    assert.ok(t.includes('2 fitxes noves') && !/canviat d’entitat/.test(t), t);
+    const d = await T.data(), f2 = d.competitions.find(c => c.id === 'f2');
+    for (const n of ['Queralt Mora', 'Helena Pons']) {
+      assert.deepEqual(who8(d, n).map(g => g.clubId).sort(), ['c1', 'c2'], n);
+      for (const g of who8(d, n)) assert.equal(f2.entries.filter(e => e.gymnastId === g.id && e.clubId === g.clubId).length, 1, n);
+    }
+    await T.ctx.close();
+  });
+
+  await step('el dia mateix, un full que arriba tard amb una gimnasta que es diu com una que ja té notes amb una altra entitat: és una altra; i si es diu que és la mateixa, la inscripció amb notes no es toca', async () => {
+    const T = await open8(seed8({ f1Date: today })), { p } = T;
+    await T.sheet('#/competicio/f1/inscripcions', 'inscripcio-mateix-nom.xlsx');
+    assert.ok((await T.row('Mora, Queralt').textContent()).includes('ja hi té notes'), await T.row('Mora, Queralt').textContent());
+    assert.equal(await T.row('Mora, Queralt').locator('select[data-chg=inscRowSame]').inputValue(), '__other');
+    assert.ok((await p.locator('#dlg').textContent()).includes('2 gimnastes del full es diuen com gimnastes d’una altra entitat que ja tenen notes a 1a Fase'));
+    // (la Queralt: l'organitzadora diu que és la mateixa)
+    await T.row('Mora, Queralt').locator('select[data-chg=inscRowSame]').selectOption('q1');
+    await p.waitForFunction(() => /ja hi és/.test([...document.querySelectorAll('#dlg tr')].find(t => t.textContent.includes('Mora, Queralt')).cells[0].textContent));
+    const t = await T.doImport();
+    assert.ok(t.includes('Compte: Queralt Mora ja té notes a 1a Fase amb una altra entitat i allà no s’hi ha canviat res'), t);
+    const d = await T.data(), f1 = d.competitions.find(c => c.id === 'f1');
+    const eq = f1.entries.filter(e => e.gymnastId === 'q1');
+    assert.ok(eq.length === 1 && eq[0].clubId === 'c1' && hasSc(eq[0]), 'la inscripció amb notes, com era');
+    assert.equal(who8(d, 'Queralt Mora').length, 1);
+    const hel = who8(d, 'Helena Pons');
+    assert.deepEqual(hel.map(g => g.clubId).sort(), ['c1', 'c2'], 'la Helena de l’Escola Pardinyes és una altra');
+    assert.ok(f1.entries.find(e => e.gymnastId === 'h1' && e.clubId === 'c1' && hasSc(e)) && f1.entries.find(e => e.gymnastId === hel.find(g => g.id !== 'h1').id && e.clubId === 'c2'));
+    await T.ctx.close();
+  });
+
+  await step('fulls d’una competició passada: una gimnasta que ara és d’una altra entitat hi passa a la fitxa (i «Jornada següent» la hi posa), llevat que en una competició posterior hi sigui amb una altra entitat', async () => {
+    const gs = [G7('q1', 'Queralt', 'Mora', 'c2', 2015, 'Aleví', { noTeam: true }), G7('j1', 'Júlia', 'Roca', 'c2', 2013, 'Infantil', { noTeam: true })];
+    const E = (k, g, bib, scores = {}) => ({ id: k + g.id, gymnastId: g.id, clubId: g.clubId, gender: 'F', category: g.category, level: 'A', bib, teamId: null, status: '', scores, noAuto: true });
+    const T = await open8({ app: 'notesgim', version: 1, settings: { org: 'PROVA', rev: 4 }, clubs: [{ id: 'c1', name: 'CG Lleida' }, { id: 'c2', name: 'Escola Pardinyes' }], gymnasts: gs, teams: [],
+      competitions: [{ id: 'f0', name: 'Final', date: day(-200), place: 'Lleida', season: 'Curs 7', locked: false, teams: [], entries: gs.map((g, i) => E('f0', g, i + 1, sc(8))) },
+        { id: 'fu', name: 'Trofeu', date: day(20), place: 'Lleida', season: 'Curs 8', locked: false, teams: [], entries: [E('fu', gs[1], 1)] },
+        { id: 'fp', name: '1a Fase en paper', date: day(-5), place: 'Lleida', season: 'Curs 8', locked: false, autoTeams: true, teams: [], entries: [] }],
+      meta: { created: new Date().toISOString(), updated: new Date().toISOString(), dbId: 'proves8b' } }), { p } = T;
+    await T.sheet('#/competicio/fp/inscripcions', 'inscripcio-canvis-entitat.xlsx');
+    assert.ok((await T.row('Roca, Júlia').textContent()).includes('la fitxa es queda com és'), await T.row('Roca, Júlia').textContent());
+    const note = await p.locator('#dlg').textContent();
+    assert.ok(note.includes('Com que la competició ja ha passat, cada fitxa només s’actualitza (entitat, any i equip del full) si en cap competició posterior no hi és amb una altra entitat (la fitxa de Júlia Roca es queda com és)'), note);
+    assert.ok(!note.includes('se n’actualitzen l’entitat i l’any'));
+    const t = await T.doImport();
+    assert.ok(t.includes('Ha canviat d’entitat: Queralt Mora (abans a Escola Pardinyes)'), t);
+    assert.ok(t.includes('Júlia Roca (Escola Pardinyes): a la fitxa continua com era (en una competició posterior hi és amb una altra entitat)'), t);
+    let d = await T.data();
+    const q = d.gymnasts.find(g => g.id === 'q1'), j = d.gymnasts.find(g => g.id === 'j1');
+    assert.ok(q.clubId === 'c1' && q.noTeam, 'la Queralt, a CG Lleida i «només individual», com diu el full');
+    assert.ok(j.clubId === 'c2' && j.birthYear === '2013', 'la Júlia, com era');
+    assert.equal(d.competitions.find(c => c.id === 'f0').entries.find(e => e.gymnastId === 'q1').clubId, 'c2', 'la Final no canvia');
+    assert.ok(d.competitions.find(c => c.id === 'fp').entries.every(e => e.clubId === 'c1'), 'aquell dia, totes de CG Lleida');
+    await p.goto(url + '#/competicions');
+    await p.click('button[data-act=dupComp][data-id=fp]'); await p.waitForSelector('#dlg[open] form[data-form=comp]');
+    await p.fill('#dlg input[name=name]', '2a Fase'); await p.fill('#dlg input[name=date]', day(15));
+    await p.click('#dlg button.primary'); await p.waitForFunction(() => !$('#dlg').open);
+    d = await T.data();
+    const nc = d.competitions.find(c => c.name === '2a Fase'), eq = nc.entries.find(e => e.gymnastId === 'q1');
+    assert.ok(eq && eq.clubId === 'c1' && !eq.teamId, 'a la jornada següent, de CG Lleida i individual');
+    await T.ctx.close();
+  });
+
+  await step('«Importa» just després d’escriure el nom de l’entitat nova (sense sortir del camp) importa d’un sol clic; i els textos: un noi, una gimnasta, «abans sense entitat»', async () => {
+    const T = await open8({ app: 'notesgim', version: 1, settings: { org: 'PROVA', rev: 4 }, clubs: [{ id: 'c1', name: 'CG Lleida' }, { id: 'c5', name: 'C.E. Alpicat' }],
+      gymnasts: [G7('q0', 'Queralt', 'Mora', null, 2015, 'Aleví', { noTeam: true }), G7('o5', 'Ona', 'Bosch', 'c5', 2016, 'Benjamí', { gender: 'M' })], teams: [], competitions: [],
+      meta: { created: new Date().toISOString(), updated: new Date().toISOString(), dbId: 'proves8c' } }), { p } = T;
+    // un full de nois amb l'any d'un corregit
+    await T.sheet('#/gimnastes', 'inscripcio-masculina-A.xlsx');
+    assert.ok((await T.row('Bosch, Ona').textContent()).includes('ja hi és (any 2016)'));
+    assert.deepEqual(await T.row('Bosch, Ona').locator('select[data-chg=inscRowSame] option').allTextContents(), ['és el mateix', 'és un altre']);
+    assert.ok((await p.locator('#dlg').textContent()).includes('Un gimnasta del full ja hi és amb una altra entitat o un altre any (surt marcat «ja hi és (abans a …)»): és la mateixa persona; se n’actualitzen l’entitat i l’any, i en cap competició no s’inscriu dues vegades. Si és una altra persona amb el mateix nom, tria «és un altre».'));
+    await p.click('#dlg button[data-act=closeDlg]');
+    // una fitxa que s'havia quedat sense entitat
+    await T.sheet('#/gimnastes', 'inscripcio-canvis-entitat.xlsx');
+    assert.ok((await T.row('Mora, Queralt').textContent()).includes('ja hi és (abans sense entitat)'));
+    assert.ok((await p.locator('#dlg').textContent()).includes('Una gimnasta del full ja hi és amb una altra entitat o un altre any (surt marcada «ja hi és (abans a …)»): és la mateixa persona;'));
+    const t = await T.doImport();
+    assert.ok(t.includes('Ha canviat d’entitat: Queralt Mora (abans sense entitat).'), t);
+    // el nom de l'entitat nova, i «Importa» directament
+    await T.sheet('#/gimnastes', 'inscripcio-inef.xlsx');
+    await p.evaluate(() => $$('.toast').forEach(t => t.remove()));
+    await p.fill('#dlg input[data-chg=inscClubName]', 'INEF Lleida (Universitat)');
+    await p.click('#dlg button[data-act=inscDo]');
+    await p.waitForFunction(() => !$('#dlg').open, null, { timeout: 3000 });
+    await T.toast(/Fulls d’inscripció importats: 4 fitxes noves/);
+    const d = await T.data(), club = d.clubs.find(c => c.name === 'INEF Lleida (Universitat)');
+    assert.ok(club && d.gymnasts.filter(g => g.clubId === club.id).length === 4, JSON.stringify(d.clubs));
+    assert.equal(d.teams.find(x => x.clubId === club.id).name, 'INEF Lleida (Universitat)');
+    await T.ctx.close();
   });
 } finally {
   await browser.close();

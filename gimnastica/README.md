@@ -58,12 +58,18 @@ internet.
    equips, l'avís ho diu). Si una gimnasta ja hi és, se n'actualitzen el grup, l'any i l'equip. Si ja hi és amb el
    mateix nom i cognoms però d'una altra entitat o amb un altre any (ha canviat de club, o l'any estava malament), surt
    «ja hi és (abans a INEF Lleida · any 2013)»: per defecte és la mateixa (la fitxa passa a l'entitat i l'any del full,
-   i a la competició no s'inscriu mai dues vegades); si és una altra persona amb el mateix nom, tria «és una altra». El nom
+   i a la competició no s'inscriu mai dues vegades); si és una altra persona amb el mateix nom, tria «és una altra». Si
+   aquella ja és inscrita a la competició pel full de la seva entitat, o ja hi té notes, per defecte és una altra (una
+   gimnasta no surt al full de dues entitats per al mateix dia), i una inscripció amb notes mai no canvia d'entitat. Si
+   dues entitats porten cadascuna una gimnasta amb el mateix nom, arribin els fulls en l'ordre que arribin, cadascuna té
+   la seva fitxa i la seva inscripció, i la de sempre (amb les competicions d'abans) es queda a la seva entitat. El nom
    de l'entitat es posa com el diu el full, amb les sigles en majúscules (INEF, CEIP, AMPA, UE…), i el d'una entitat
    nova es pot canviar abans d'importar; si el full l'escriu d'una altra manera («CLUB GIMNÀSTIC LLEIDA») però gairebé
    totes les gimnastes ja són d'una entitat, es tria aquella i s'avisa. En una **competició que ja ha passat** (p. ex.
    feta en paper i entrada després), les fitxes que ja hi eren no es canvien, però les noves (i les que encara no
-   tenien equip) es queden amb l'equip del full, i «Jornada següent» proposa els equips que van dir les entitats. També les pots entrar una a una o *Enganxa des
+   tenien equip) es queden amb l'equip del full, i «Jornada següent» proposa els equips que van dir les entitats; una
+   que ja hi era amb una altra entitat o un altre any també passa a dir el que diu el full, llevat que en una competició
+   posterior hi sigui amb una altra entitat (l'avís ho diu). També les pots entrar una a una o *Enganxa des
    d'Excel* qualsevol llista (amb la fila de títols: Nom, Cognoms, Entitat, Gènere, Any de naixement,
    Nivell, i si vols Categoria i Equip). Amb l'any de naixement la **categoria es posa sola**. Es
    queden guardades per a totes les competicions.
@@ -283,11 +289,13 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/e2e-fitxer.mjs` — prova el fitxer vinculat: si un altre ordinador l'ha canviat, no s'hi
   escriu sense preguntar.
 - `tests/fixtures/` — fulls d'inscripció d'exemple (model del Consell, nivell A i B, un de buit, i els de la setena
-  revisió: una gimnasta que ha canviat d'entitat, anys corregits, una entitat amb sigles i una escrita d'una altra manera).
+  revisió: una gimnasta que ha canviat d'entitat, anys corregits, una entitat amb sigles, una escrita d'una altra manera i
+  una entitat amb gimnastes que es diuen com les d'una altra).
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
   següent», la mida de pantalla de les tauletes i una temporada sencera (la mateixa gimnasta en una altra
-  entitat o amb un altre any, fusionar entitats, sigles, un equip ple i una competició passada entrada després).
+  entitat o amb un altre any, dues gimnastes amb el mateix nom a dues entitats, fusionar entitats, sigles, un equip ple
+  i una competició passada entrada després).
 - `tests/e2e-pwa.mjs` — l'app instal·lable com a GitHub Pages (https): sense internet, posar-se al
   dia sola i que el joc NUS del mateix lloc no li desi versions velles (cal openssl).
 - `servidor/` — el programa per a l'ordinador i les tutores (Go, sense dependències). `go test` dins

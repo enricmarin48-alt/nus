@@ -158,7 +158,10 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   gimnasta», encara que es torni a obrir l'app). Noies i nois sempre van per separat; per defecte, tots
   els nois junts (es pot treure). Una categoria massa gran (més de 3 grups × 15) es parteix per nivells.
   **Quines categories van juntes…** deixa ajuntar o separar categories, separar els nois, canviar el màxim
-  per grup o triar la subdivisió de cada categoria i nivell. L'ordre del dia es canvia amb ↑ ↓. Tot això
+  per grup o triar la subdivisió de cada categoria i nivell (el quadre numera les subdivisions com la
+  pantalla i compta les gimnastes que hi competeixen: «8 gimnastes (1 portada d'una altra)»; una que s'ha
+  quedat sense gimnastes no té número). L'ordre del dia es canvia amb ↑ ↓ (una subdivisió sense gimnastes
+  no compta: es passa per davant o per darrere de la següent que en té). Tot això
   es recorda per a les properes competicions (un dia que una regla no hi fa res, p. ex. perquè d'una
   categoria només hi ha un nivell, no s'oblida), i «Jornada següent» copia les subdivisions. Unes
   rotacions fetes amb una versió d'abans es queden com eren: no es torna a fer res si ella no ho demana.
@@ -186,7 +189,9 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   números de les subdivisions tal com queden a la pantalla (una que es queda sense gimnastes no en té: es
   diu pel nom, «la subdivisió de JUVENIL»). Amb el teclat, les fletxes del desplegable només van pels
   grups de la mateixa subdivisió (a una altra s'hi va triant-la amb el ratolí, o obrint el desplegable), i
-  després de moure-ho el focus segueix l'equip. Per tornar-les a la seva subdivisió, n'hi ha prou de
+  després de moure-ho el focus segueix l'equip (al mòbil, que només ensenya una subdivisió, es passa a la
+  subdivisió on ha anat). Si l'hora no canvia, es diu així («Continua competint a les 14:30»; al diàleg,
+  també si la subdivisió on va començarà abans: «8a subdivisió, que ara comença a les 14:45»). Per tornar-les a la seva subdivisió, n'hi ha prou de
   triar-hi un grup (al desplegable hi diu «la seva»). Una gimnasta nova d'un equip que s'ha portat a una
   altra subdivisió hi va amb el seu equip. Si se li canvia la categoria, el nivell o el gènere, o la
   subdivisió triada ja no hi és, torna a la seva i es diu. Canviar el nom d'una categoria o d'un nivell (o
@@ -194,9 +199,20 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   subdivisió, les que ella ha mogut es queden on les ha posat i la resta de l'equip va amb la categoria (i
   les que tornen a la seva, amb «Treu les fixacions» o «Torna-ho a fer tot», hi van de debò, encara que la
   resta de l'equip sigui en una altra que ella ha triat). Tot el que es mou a mà queda fixat (📌):
-  «Reequilibra» i «Torna a fer els grups» no ho mouen mai; «Treu les fixacions», «Torna-ho a fer tot» i
-  «Esborra les rotacions» abans diuen quantes gimnastes tornaran a la seva subdivisió. **Reequilibra**
-  torna a repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què es mourà.
+  «Reequilibra», «Torna a fer els grups», «Nombre de grups…» i «Com es fan els grups…» no ho mouen mai
+  (i «Quines categories van juntes…», tampoc, si la seva categoria no canvia de subdivisió; si canvia,
+  vegeu més amunt). Si amb «Mou…» en passa només unes a un altre grup de la mateixa
+  subdivisió, cada tros queda fixat al seu grup (també les que es queden): el 📌 surt a tots dos, i l'avís
+  diu «L'equip C.G. Lleida està repartit a mà: 2 al Grup 1 i 3 al Grup 2». «Treu les fixacions», «Torna-ho
+  a fer tot» i «Esborra les rotacions» abans diuen quantes gimnastes tornaran a la seva subdivisió.
+  **Reequilibra** torna a repartir la resta movent el mínim de gimnastes, i abans d'aplicar-ho ensenya què
+  es mourà (amb la categoria i el nivell, si n'hi ha més d'un: «C.G. Lleida 2 · Benjamí B (4)»). Només es
+  proposa («Es pot repartir més bé», i el botó «Reequilibra la resta» de l'avís de moure) si millora
+  alguna cosa: el grup més gran, que els grups siguin més iguals, les entrenadores, el màxim, cada
+  categoria al seu grup o els equips d'una entitat junts. El que ella ha posat a mà no fa fora les altres:
+  una categoria portada d'una altra subdivisió, o un tros fixat en un grup d'una altra categoria, no fa
+  que «cada categoria i nivell al seu grup» en tregui les que ja hi són. Al desplegable d'un equip
+  repartit, «→ Grup 1 (14 → 17)» compta només les que encara no hi són.
   «comença a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
   «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i l'avís
@@ -216,7 +232,10 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   subdivisió on competeix alguna de les seves gimnastes: si se n'ha portat alguna a una subdivisió de més
   tard, la fila de premis ho diu («PREMIS BENJAMÍ B i ALEVÍ A i B»), una subdivisió que ja no en dona cap
   no té fila de premis (si no s'hi posen minuts a mà), i les pestanyes Grups i Horari ho diuen un sol cop
-  («Els premis de Benjamí B es fan després de la 4a subdivisió, perquè FEDAC Lleida hi competeix»). Es
+  («Els premis de Benjamí B es fan després de la 4a subdivisió, perquè FEDAC Lleida hi competeix»). Si
+  una subdivisió es queda sense cap premi però s'hi havien posat minuts de premis a mà, l'horari els
+  manté («PREMIS» sol), però es diu en moure, a les dues pestanyes i en imprimir l'horari, perquè si no
+  calen se'n treguin els minuts. Es
   pot fixar la durada, els premis o l'hora d'inici de cada subdivisió, afegir exhibicions o pauses, i
   canviar els temps i les observacions. Amb les dades del 18/04/2026 (i Infantil, Cadet i Juvenil
   juntes, com aquell dia), surt l'horari del model (de 8:00 a 15:00).

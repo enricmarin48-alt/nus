@@ -198,7 +198,7 @@ try {
     await page.evaluate(k => { ui.group = k; ui.app = 'salt'; render(); }, g);
     const last = page.locator('#scoregrid input.sc[data-a=salt]:not(:disabled)').last();
     await last.click(); await last.press('Enter');
-    const t = page.locator('.toast', { hasText: 'Final de' });
+    const t = page.locator('.toast', { hasText: 'Final d’Aleví' });
     await t.locator('button', { hasText: 'Ara Barra' }).click();
     const a = await page.evaluate(() => { const el = document.activeElement; return { a: el.dataset.a, f: el.dataset.f, v: el.value }; });
     assert.deepEqual(a, { a: 'barra', f: 'v', v: '' });
@@ -611,6 +611,146 @@ try {
     await p7.evaluate(() => closeDialog());
   });
   await ctx7.close();
+
+  // ─── setena revisió (textos): «d’» davant de vocal, noi o noia segons qui és, singular i plural, «1r salt»
+  // i el primer dia (Com començar, Inscripcions buides). Amb les dades de la 3a fase del 18/04/2026.
+  const ctx7t = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES', acceptDownloads: true });
+  const p7t = await ctx7t.newPage();
+  p7t.on('pageerror', e => errors.push('pageerror (7a revisió): ' + e.message));
+  p7t.on('console', m => { if (m.type() === 'error') errors.push('console (7a revisió): ' + m.text()); });
+  await p7t.goto(url);
+  const load7t = async (hash, prep = '') => {
+    await p7t.evaluate(([r, hash, prep]) => { if ($('#dlg').open) closeDialog(); $$('.toast').forEach(t => t.remove()); db = migrate(JSON.parse(r)); if (prep) (0, eval)(prep)(db); ui.qe = false; commit(); go(hash); }, [JSON.stringify(fixture()), hash, prep]);
+    await p7t.waitForTimeout(150);
+  };
+  const lastToast7t = () => p7t.evaluate(() => { const t = $$('#toasts .toast span'); return t.length ? t[t.length - 1].textContent : ''; });
+  const confirmTxt7 = async () => { await p7t.waitForSelector('#confirm[open]'); return (await p7t.locator('#confirm').innerText()).replace(/\s+/g, ' '); };
+  const cancel7 = () => p7t.click('#confirm button[value=no]');
+
+  await step('setena revisió: «de» o «d’», noi o noia i singular o plural, amb les eines de l’app', async () => {
+    await load7t('#/competicions');
+    const r = await p7t.evaluate(() => ({
+      de: ['Ester Vila', 'Iris Font', 'Olga', 'Helena', 'Unió', 'INEF Lleida', 'Aleví', 'aquest grup', 'Iolanda', 'Huelva', 'Lleida', 'Yolanda',
+        '«Interclubs»', '«Comp kp»', '<b>Anna</b>', 1, 11, '11:30', '1a Fase', '1r', 3, '10:00', '1.000', 8].map(deN),
+      mf: [{ gender: 'M' }, { gender: 'F' }, {}, null].map(x => mf(x, 'presentat', 'presentada')),
+      falten: [faltenTxt(1, 'nota', 'notes'), faltenTxt(3, 'nota', 'notes'), faltenTxt(1), faltenTxt(2)],
+      rev: [tutorReviewTxt(1), tutorReviewTxt(2)],
+    }));
+    assert.deepEqual(r.de, ['d’Ester Vila', 'd’Iris Font', 'd’Olga', 'd’Helena', 'd’Unió', 'd’INEF Lleida', 'd’Aleví', 'd’aquest grup', 'de Iolanda', 'de Huelva', 'de Lleida', 'de Yolanda',
+      'd’«Interclubs»', 'de «Comp kp»', 'd’<b>Anna</b>', 'd’1', 'd’11', 'd’11:30', 'de 1a Fase', 'de 1r', 'de 3', 'de 10:00', 'de 1.000', 'de 8']);
+    assert.deepEqual(r.mf, ['presentat', 'presentada', 'presentada', 'presentada']);
+    assert.deepEqual(r.falten, ['falta 1 nota', 'falten 3 notes', 'falta 1', 'falten 2']);
+    assert.deepEqual(r.rev, ['✓ Dona per revisada la nota de les tutores', '✓ Dona per revisades les 2 notes de les tutores']);
+    // la fitxa arxivada d'una noia i la d'un noi (un nom que comença per vocal)
+    const m = await p7t.evaluate(() => [archiveMsg({ name: 'Ester', surname: 'Vila', gender: 'F' }, { comps: ['2a Fase'], weak: [] }).msg,
+      archiveMsg({ name: 'Oriol', surname: 'Mas', gender: 'M' }, { comps: ['2a Fase'], weak: [] }).msg, archiveMsg({ name: 'Pau', surname: 'Roca', gender: 'M' }, { comps: [], weak: [] }).msg]);
+    assert.deepEqual(m, ['Fitxa d’Ester Vila arxivada: ja no surt a les llistes ni és a cap equip. Treta de: 2a Fase.',
+      'Fitxa d’Oriol Mas arxivada: ja no surt a les llistes ni és a cap equip. Tret de: 2a Fase.', 'Fitxa de Pau Roca arxivada: ja no surt a les llistes ni és a cap equip.']);
+  });
+
+  await step('setena revisió: un noi no presentat, treure’l de la competició, la seva fitxa i el canvi de categoria, en masculí', async () => {
+    // (els 3 nois d'Aleví A: l'últim ja té notes; la competició és avui, perquè la fitxa també la canviï)
+    await load7t('#/competicio/c418/notes', `db => { const c = db.competitions[0]; c.date = '${today}'; c.entries.filter(e => e.gender === 'M' && e.category === 'Aleví').pop().scores = { salt: [{ v: 8, at: 1 }] }; }`);
+    const boys = await p7t.evaluate(() => curComp().entries.filter(e => e.gender === 'M' && e.category === 'Aleví').map(e => e.id));
+    assert.equal(boys.length, 3);
+    await p7t.evaluate(() => { ui.group = 'Aleví||M||A'; ui.app = 'all'; render(); });
+    await p7t.waitForTimeout(150);
+    const cell = p7t.locator(`#scoregrid input.sc[data-e="${boys[0]}"][data-a=salt]`).first();
+    await cell.click(); await p7t.keyboard.type('NP'); await p7t.keyboard.press('Enter'); await p7t.waitForTimeout(400);
+    const name0 = await p7t.evaluate(id => entryName(curComp().entries.find(e => e.id === id)), boys[0]);
+    assert.ok((await lastToast7t()).startsWith(`${name0}: no presentat (NP).`), await lastToast7t());
+    // «Entrada ràpida» → NP
+    await p7t.evaluate(id => { const e = curComp().entries.find(x => x.id === id); e.status = ''; commit(); ui.qe = true; qe.entryId = id; qe.i = 0; render(); }, boys[1]);
+    await p7t.waitForSelector('#qe');
+    await p7t.click('#qe button[data-act=qeNP]'); await p7t.waitForTimeout(300);
+    assert.ok((await lastToast7t()).includes(': no presentat (NP).'), await lastToast7t());
+    await p7t.evaluate(() => { ui.qe = false; render(); });
+    // treure de la competició un noi que ja té notes
+    await p7t.evaluate(() => go('#/competicio/c418/inscripcions')); await p7t.waitForTimeout(150);
+    assert.equal(await p7t.getAttribute(`button[data-act=delEntry][data-id="${boys[2]}"]`, 'title'), 'Treu-lo de la competició');
+    await p7t.click(`button[data-act=delEntry][data-id="${boys[2]}"]`);
+    assert.ok((await confirmTxt7()).includes('ja té notes. Segur que el vols treure de la competició?'));
+    await cancel7();
+    // la fitxa nova des del grup dels nois: «Inscriu-lo»; si es canvia a noia, «Inscriu-la»
+    await p7t.click('button[data-act=newGymHere][data-g="Aleví||M||A"]');
+    await p7t.waitForSelector('#dlg[open] form[data-form=gym]');
+    const enroll = async () => (await p7t.locator('#dlg label.chk', { hasText: 'també a' }).innerText()).replace(/\s+/g, ' ');
+    assert.ok((await enroll()).startsWith('Inscriu-lo també a'), await enroll());
+    await p7t.selectOption('#dlg select[name=gender]', 'F');
+    assert.ok((await enroll()).startsWith('Inscriu-la també a'), await enroll());
+    assert.ok((await p7t.locator('#dlg select[name=team] option').first().textContent()).includes('amb les de la seva entitat'));
+    await p7t.selectOption('#dlg select[name=gender]', 'M');
+    assert.ok((await p7t.locator('#dlg select[name=team] option').first().textContent()).includes('amb els de la seva entitat'));
+    await p7t.click('#dlg button[data-act=closeDlg]');
+    // la seva fitxa: «Arxivat», i si ara és d'un altre grup, «està inscrit com a…»
+    const gid = await p7t.evaluate(id => curComp().entries.find(e => e.id === id).gymnastId, boys[1]);
+    await p7t.evaluate(id => actions.editGym({ dataset: { id } }), gid);
+    await p7t.waitForSelector('#dlg[open] form[data-form=gym]');
+    assert.ok((await p7t.locator('#dlg label.chk', { hasText: 'ja no competeix' }).innerText()).startsWith('Arxivat'));
+    await p7t.selectOption('#dlg select[name=level]', 'B');
+    await p7t.click('#dlg button.primary');
+    assert.ok((await confirmTxt7()).includes(' està inscrit com a Aleví A a '), await confirmTxt7());
+    await cancel7();
+  });
+
+  await step('setena revisió: «Fitxa d’Iris…», «No hi ha gimnastes d’Aleví…», «Actualitza-la», «1r salt / 2n salt»', async () => {
+    // una gimnasta sense inscripcions que es diu Iris: el ✕ de la llista
+    await load7t('#/gimnastes', 'db => { db.gymnasts.push({ id: "gi", name: "Iris", surname: "Font", clubId: "INEF", gender: "F", category: "Aleví", level: "A", birthYear: "", notes: "", archived: false }); }');
+    await p7t.click('button[data-act=delGym][data-id="gi"]');
+    await p7t.click('#confirm button[value=ok]'); await p7t.waitForTimeout(200);
+    assert.equal(await lastToast7t(), 'Fitxa d’Iris Font esborrada.');
+    // Equips → Nou equip, d'INEF Lleida, d'Aleví A i d'Infantil A (nois), sense gimnastes
+    await p7t.evaluate(() => go('#/equips')); await p7t.waitForTimeout(150);
+    await p7t.locator('button[data-act=newTeam]').first().click();
+    await p7t.waitForSelector('#dlg[open]');
+    await p7t.selectOption('#dlg select[name=clubId]', 'INEF');
+    await p7t.selectOption('#dlg select[name=category]', 'Aleví');
+    await p7t.selectOption('#dlg select[name=level]', 'A'); await p7t.waitForTimeout(150);
+    assert.ok((await p7t.locator('#teampick').innerText()).startsWith('No hi ha gimnastes d’Aleví femení · nivell A en aquesta entitat.'));
+    await p7t.selectOption('#dlg select[name=category]', 'Infantil'); await p7t.selectOption('#dlg select[name=gender]', 'M'); await p7t.waitForTimeout(150);
+    assert.ok((await p7t.locator('#teampick').innerText()).startsWith('No hi ha gimnastes d’Infantil masculí · nivell A'));
+    await p7t.click('#dlg button[data-act=closeDlg]');
+    // passa al curs següent: només 1 gimnasta (amb l'any) canvia de categoria
+    await load7t('#/configuracio', 'db => { const g = db.gymnasts.find(x => x.id === "g100"); g.category = "Aleví"; g.birthYear = "2015"; }');
+    await p7t.click('button[data-act=shiftYears][data-d="1"]');
+    const q = await confirmTxt7();
+    assert.ok(q.includes('1 gimnasta canvia de categoria. L’actualitzo ara?') && q.includes('Actualitza-la') && !q.includes('Actualitza-les'), q);
+    await cancel7();
+    // full de jutge del minitramp (2 salts) dels nois; i amb D + E, les caselles de cada salt a sota
+    const heads = await p7t.evaluate(() => {
+      const c = curComp() || db.competitions[0], g = groupsOf(c).find(x => x.key === 'Aleví||M||A'), a = c.apparatus.find(x => x.id === 'mini');
+      const th = html => { const d = document.createElement('div'); d.innerHTML = html; return [...d.querySelectorAll('thead tr:not(.rep)')].map(tr => [...tr.children].map(x => x.textContent + (x.colSpan > 1 ? '×' + x.colSpan : ''))); };
+      return [th(judgeSheet(c, g, a)), th(judgeSheet(Object.assign({}, c, { scoring: 'detailed' }), g, a))];
+    });
+    assert.deepEqual(heads[0], [['Ordre', 'Dorsal', 'Esportista', 'Entitat', '1r salt', '2n salt', 'Final']]);
+    assert.deepEqual(heads[1], [['Ordre', 'Dorsal', 'Esportista', 'Entitat', '1r salt×4', '2n salt×4', 'Final'], ['D', 'E', 'Pen.', 'Nota', 'D', 'E', 'Pen.', 'Nota']]);
+  });
+
+  await step('setena revisió: el primer dia, «Com començar» diu el camí de veritat i les Inscripcions buides ofereixen els fulls dels clubs (també al mòbil)', async () => {
+    await p7t.evaluate(() => { if ($('#dlg').open) closeDialog(); db = defaultDb(); commit(); go('#/competicions'); });
+    await p7t.waitForTimeout(150);
+    const intro = (await p7t.locator('.card', { hasText: 'Com començar' }).innerText()).replace(/\s+/g, ' ');
+    for (const x of ['Nova competició', 'Inscripcions → 📥 Fulls d’inscripció dels clubs', 'els equips queden com diu el full', 'Rotacions i horari → Fes les rotacions → 🖨 Imprimeix', 'Tutores i Notes', 'Classificacions i Podi']) assert.ok(intro.includes(x), x + ' | ' + intro);
+    assert.ok(!intro.includes('Els equips es fan sols'), intro);
+    await p7t.locator('.page-head button[data-act=newComp]').click();
+    await p7t.waitForSelector('#dlg[open] form[data-form=comp]');
+    await p7t.fill('#dlg input[name=name]', '1a FASE COMARCAL'); await p7t.fill('#dlg input[name=date]', '2026-11-21');
+    await p7t.click('#dlg button.primary'); await p7t.waitForTimeout(300);
+    await p7t.setViewportSize({ width: 360, height: 740 }); await p7t.waitForTimeout(200);
+    assert.ok(await p7t.evaluate(() => isPhone()));
+    const b = p7t.locator('.empty button[data-act=inscOpen]');
+    assert.ok(await b.isVisible(), 'al mòbil, sense obrir el menú ⋯');
+    assert.ok((await p7t.locator('.empty').innerText()).includes('El més ràpid són els fulls d’inscripció dels clubs'));
+    // «Inscriu gimnastes» sense cap fitxa: també els ofereix, i s'obren amb aquesta competició triada
+    await p7t.click('button[data-act=enrollGyms]');
+    await p7t.waitForSelector('#dlg[open] #gympick button[data-act=inscOpen]');
+    await p7t.click('#dlg #gympick button[data-act=inscOpen]');
+    await p7t.waitForSelector('#dlg[open] #inscfile');
+    assert.equal(await p7t.evaluate(() => ui.insc.compId), await p7t.evaluate(() => curComp().id));
+    await p7t.evaluate(() => closeDialog());
+    await p7t.setViewportSize({ width: 1366, height: 900 });
+  });
+  await ctx7t.close();
 
   // ─── tercera revisió: res es torna a pintar a mig clic, a mitja tecla, amb un menú obert ni a sobre del que
   // s'escriu; el focus, el cursor i la graella es queden on eren (amb les dades de la 3a fase del 18/04/2026)

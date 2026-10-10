@@ -373,7 +373,8 @@ try {
     }, JSON.stringify(data));
     await page.waitForSelector('button[data-act=rotMake]');
   };
-  const make = async () => { await page.click('button[data-act=rotMake]'); await toastHas('Fetes'); await page.waitForSelector('.card.rot-sub'); };
+  // («Fetes 6 subdivisions…» o, si només n'hi ha una, «Feta 1 subdivisió…»)
+  const make = async () => { await page.click('button[data-act=rotMake]'); await toastHas('i mou el que calgui'); await page.waitForSelector('.card.rot-sub'); };
   const clearToasts = () => page.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
   const subId = i => page.evaluate(i => rotViewOf(curComp()).subs[i].id, i);
 
@@ -502,6 +503,11 @@ try {
     const n1 = await page.locator('.note.warn', { hasText: 'gimnasta nova' }).innerText();
     assert.ok(n1.includes('1 gimnasta nova') && n1.includes('l’he posada') && n1.includes('surt marcada') && n1.includes('deixa-la així'), n1);
     await page.click('.note button[data-act=rotAccept]'); await toastHas('Desades on eren');
+    // (i un sol noi nou, en masculí)
+    await page.evaluate(() => { const c = curComp(), g = { id: 'gm1', name: 'Nou', surname: 'Un', clubId: 'CGL', gender: 'M', category: 'Aleví', level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); commit(); render(); });
+    const m1 = await page.locator('.note.warn', { hasText: 'gimnasta nou' }).innerText();
+    assert.ok(m1.includes('1 gimnasta nou ') && m1.includes('l’he posat ') && m1.includes('surt marcat ') && m1.includes('deixa-lo així'), m1);
+    await page.click('.note button[data-act=rotAccept]'); await toastHas('Desades on eren');
     // 4 de Sènior (una categoria sense subdivisió): «nova» al final
     await page.evaluate(() => { const c = curComp(); for (let i = 0; i < 4; i++) { const g = { id: 'gs' + i, name: 'Sèn' + i, surname: 'Nova', clubId: 'CGL', gender: 'F', category: 'Sènior', level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); } commit(); render(); });
     assert.ok((await page.locator('.note.warn', { hasText: 'gimnastes noves' }).innerText()).includes('4 gimnastes noves'));
@@ -551,8 +557,10 @@ try {
     const d = fixture(), c = d.competitions[0], keep = { Prebenjamí: 5, Benjamí: 6, Aleví: 18 };
     c.entries = c.entries.filter(e => e.gender === 'F' && keep[e.category] && keep[e.category]-- > 0);
     await fresh(d); await make();
+    // (una sola subdivisió: en singular)
+    assert.ok((await page.locator('.toast', { hasText: 'i mou el que calgui' }).innerText()).startsWith('Feta 1 subdivisió i '), await page.locator('.toast').last().innerText());
     const note = await page.locator('.note:has-text("He fet")').innerText();
-    assert.ok(note.includes('Prebenjamí (5) i Benjamí (6) tenen poques gimnastes: les he ajuntat amb Aleví.'), note);
+    assert.ok(note.includes('Prebenjamí (5) i Benjamí (6) tenen poques gimnastes: les he ajuntades amb Aleví.'), note);
     assert.ok(!note.includes('té poques') && !note.includes('només té'), note);
     // dues gimnastes sense categoria: subdivisió seva, nom sencer i l'avís per posar-la
     const d2 = fixture();
@@ -786,7 +794,7 @@ try {
     await fresh(d2); await make();
     const li = await page.locator('.note:has-text("He fet") li').allInnerTexts();
     const sp = li.findIndex(x => x.startsWith('Infantil, Cadet i Juvenil tenen 94 gimnastes'));
-    assert.ok(sp >= 0 && li[sp].endsWith('les he partit en «Infantil A i Cadet A» i «Juvenil A».'), li.join(' / '));
+    assert.ok(sp >= 0 && li[sp].endsWith('les he partides en «Infantil A i Cadet A» i «Juvenil A».'), li.join(' / '));
     assert.ok(sp < li.findIndex(x => x.startsWith('Juvenil A té 46 gimnastes')), 'primer es diu que s’ha partit');
   });
 

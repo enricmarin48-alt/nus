@@ -100,7 +100,8 @@ internet.
 5. **Classificacions**: surten soles (general individual, per aparells, per equips i **podi**
    per a les medalles, amb el desplegable de les gimnastes de cada equip). *Imprimeix / PDF* i
    *Exporta a Excel* treuen els fulls (classificacions, podi, acta de notes, llistat d'inscripcions i
-   fulls de jutge en blanc; amb les rotacions fetes, cada full de jutge té les gimnastes en l'ordre en què passen per
+   fulls de jutge en blanc; amb 2 salts, cada salt té la seva columna, «1r salt» i «2n salt», i la
+   «Final»; amb les rotacions fetes, cada full de jutge té les gimnastes en l'ordre en què passen per
    aquell aparell, en un bloc per rotació: «2a subdivisió · rotació 1 · Grup 2»). Si encara falten notes, s'avisa abans
    d'imprimir.
 6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips. Si un equip
@@ -117,7 +118,11 @@ internet.
 7. **Rotacions i horari** (pestanya de cada competició): vegeu més avall.
 
 A la pantalla d'inici hi ha la competició del dia amb accés directe a Notes, Classificacions, Podi i
-Inscripcions. Al mòbil, les seccions són a la barra de baix.
+Inscripcions. Al mòbil, les seccions són a la barra de baix. El primer dia, amb l'app buida, hi surt
+**Com començar** amb aquests passos (Nova competició → Inscripcions amb els fulls dels clubs →
+Rotacions i horari → Tutores i Notes → Classificacions i Podi). Mentre una competició no té cap
+inscripció, *Inscripcions* (i *Inscriu gimnastes*, si encara no hi ha cap fitxa) ofereix directament
+**📥 Fulls d'inscripció dels clubs…**, també al mòbil sense obrir el menú «⋯».
 
 Tot es pot editar o esborrar: fitxes, entitats, equips, competicions, inscripcions, notes,
 categories, nivells i aparells. A cada llista (Gimnastes, Equips, Entitats, Competicions i les
@@ -155,7 +160,7 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   a» canvia l'aparell on comença cada grup. Res no es mou sol: una inscripció nova surt marcada
   «NOU» amb el seu equip o la seva entitat fins que es desa, i si es canvia l'equip d'una gimnasta (a
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i
-  l'avís ho diu («Mou-la amb l'equip»; a la pestanya, «Ajunta-les»). Si se li corregeix el nivell o la categoria i
+  l'avís ho diu («Mou-la amb l'equip», o «Mou-lo» si és un noi; a la pestanya, «Ajunta-les»). Si se li corregeix el nivell o la categoria i
   passa a una altra subdivisió, no surt com a nova: es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat
   de la 2a subdivisió (9:25) a la 3a (10:25)»), també en desar la inscripció o la fitxa.
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots

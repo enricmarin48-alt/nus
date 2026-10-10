@@ -327,7 +327,7 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#dlg form[data-form=wipe] button.danger')]);
     const copy = JSON.parse(readFileSync(await dl.path(), 'utf8'));
     assert.equal(copy.gymnasts.length, 7, 'la còpia és de com era abans');
-    await page.waitForSelector('.toast:has-text("Esborrat: les competicions, les gimnastes i els equips i les entitats")');
+    await page.waitForSelector('.toast:has-text("Esborrat: les competicions, les gimnastes, els equips i les entitats")');
     const d = await data();
     assert.equal(d.gymnasts.length + d.teams.length + d.clubs.length + d.competitions.length, 0);
     assert.equal(d.settings.org, 'ORG PROVA', 'la configuració es queda');

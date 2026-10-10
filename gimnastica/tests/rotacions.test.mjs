@@ -758,6 +758,49 @@ test('només 2 de les 5 d’un equip a una altra subdivisió: l’equip queda re
   assert.equal(b3.N, 30); assert.equal(b3.np, 1);
 });
 
+test('només 2 de les 5 a una altra subdivisió, i la seva categoria passa a una altra (o a una de nova): les 3 que no ha mogut van amb la categoria, no amb les 2', () => {
+  const where = (v, l) => l.map(e => v.place.get(e).subId);
+  for (const to of ['nova', 'prebenjamí', 'perduda']) {
+    const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id, sP = by('PREBENJAMÍ A i B').id;
+    const t = teamOf(c, 'C.G. LLEIDA', 'Aleví', 'B'), mem = c.entries.filter(e => e.teamId === t.id), [m1, m2, ...rest] = mem;
+    X(c, m1, sB, 2); X(c, m2, sB, 2);
+    assert.deepEqual(where(E.rotView(c, settings, CTX), rest), [sAl, sAl, sAl]);
+    // «Quines categories van juntes…»: Aleví B surt de la 6a, a una de nova o a la de Prebenjamí (o un fitxer d'abans on la
+    // subdivisió on eren ja no hi és)
+    const al = c.rot.subs.find(s => s.id === sAl), kB = K('Aleví', 'B');
+    al.keys = al.keys.filter(k => k !== kB);
+    let home;
+    if (to === 'nova') { c.rot.subs.push({ id: 'sAlB', g: 'F', keys: [kB], k: 3, kSet: false, name: '', dur: null, awards: null, start: null, extras: [] }); home = 'sAlB'; }
+    else if (to === 'prebenjamí') { c.rot.subs.find(s => s.id === sP).keys.push(kB); home = sP; }
+    else { c.rot.subs.push({ id: 'sAlB', g: 'F', keys: [kB], k: 3, kSet: false, name: '', dur: null, awards: null, start: null, extras: [] }); home = 'sAlB'; for (const e of rest) c.rot.at[e.id].s = 'jaNoHiEs'; }
+    const v = E.rotView(c, settings, CTX);
+    assert.deepEqual(where(v, [m1, m2]), [sB, sB], to + ': les 2 que ha mogut es queden a la 3a');
+    assert.deepEqual(where(v, rest), [home, home, home], to + ': les 3 que no ha mogut van amb la seva categoria');
+    for (const e of rest) assert.ok(v.place.get(e).derived && !v.place.get(e).x, to);
+    // (i l'equip queda repartit com ella l'havia deixat: es diu a totes dues)
+    const hv = v.subs.find(s => s.id === home), ub = v.subs.find(s => s.id === sB).units.find(u => u.teamId === t.id);
+    assert.ok(hv.warnings.some(w => w.t === 'xsplit') && ub.xs.length === 1 && ub.xs[0].subId === home, to);
+    // (una inscripció nova de l'equip, sense cap lloc desat, sí que va on en són més: aquí, amb les 3)
+    c.entries.push({ id: 'nova', gymnastId: 'gnova', clubId: 'CGL', gender: 'F', category: 'Aleví', level: 'B', teamId: t.id, status: '', bib: 500, scores: {} });
+    assert.equal(E.rotView(c, settings, CTX).place.get(c.entries.at(-1)).subId, home, to);
+  }
+});
+
+test('un equip repartit en dues subdivisions que no són la seva: les que tornen a la seva (sense x) hi van, no a l’altra', () => {
+  const { c, by } = model(), sB = by('BENJAMÍ B').id, sBA = by('BENJAMÍ A').id, sAl = by('ALEVÍ A i B').id;
+  const t = teamOf(c, 'C.G. LLEIDA', 'Aleví', 'B'), mem = c.entries.filter(e => e.teamId === t.id);
+  for (const e of mem.slice(0, 3)) X(c, e, sB, 2);
+  for (const e of mem.slice(3)) X(c, e, sBA, 0);
+  let v = E.rotView(c, settings, CTX);
+  assert.deepEqual(mem.map(e => v.place.get(e).subId), [sB, sB, sB, sBA, sBA]);
+  // «Treu les fixacions» de la 3a (o «Torna-ho a fer tot»): treu x, k i m, i es queda on era (s), per dir d'on a on ha passat
+  for (const e of mem.slice(0, 3)) { const a = c.rot.at[e.id]; delete a.x; delete a.k; delete a.m; }
+  v = E.rotView(c, settings, CTX);
+  assert.deepEqual(mem.map(e => v.place.get(e).subId), [sAl, sAl, sAl, sBA, sBA]);
+  for (const e of mem.slice(0, 3)) assert.ok(v.place.get(e).derived && !v.place.get(e).x);
+  assert.deepEqual(plain(v.issues.find(i => i.t === 'derived').moved.map(m => [m.from, m.to, m.back])), [[sB, sAl, false], [sB, sAl, false], [sB, sAl, false]]);
+});
+
 test('canvis de subdivisió que ja no valen: grups de menys, la subdivisió ja no hi és, una altra categoria o un altre gènere', () => {
   const { c, by } = model(), sB = by('BENJAMÍ B').id, sAl = by('ALEVÍ A i B').id;
   const t = teamOf(c, 'C.G. LLEIDA 2', 'Aleví', 'A'), mem = c.entries.filter(e => e.teamId === t.id);

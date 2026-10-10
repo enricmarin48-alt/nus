@@ -1,0 +1,52 @@
+name: NotesGim · app per a ordinador (Windows, Mac i Linux)
+
+# Cada cop que canvia gimnastica/ a main, compila NotesGim per a ordinador (el programa amb l'app a dins,
+# que també deixa entrar les notes a les tutores) i el deixa, juntament amb index.html, a la pàgina
+# «Releases» del repositori (etiqueta notesgim-servidor).
+
+on:
+  push:
+    branches: [main]
+    paths: ['gimnastica/**', '.github/workflows/notesgim-servidor.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notesgim-servidor
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Tests del motor de càlcul
+        run: node --test gimnastica/tests/engine.test.mjs gimnastica/tests/rotacions.test.mjs
+      - name: Versió (data i commit)
+        run: |
+          v="$(git log -1 --format=%cs -- gimnastica) · $(git log -1 --format=%h -- gimnastica)"
+          sed -i "s/^const APP_BUILD = 'dev';/const APP_BUILD = '$v';/" gimnastica/index.html
+          grep -q "APP_BUILD = '$v'" gimnastica/index.html
+          echo "NOTESGIM_VERSION=$v" >> "$GITHUB_ENV"
+      - name: Tests del servidor
+        run: |
+          cd gimnastica/servidor
+          mkdir -p web/icons && cp ../index.html web/index.html && cp ../icons/*.png web/icons/
+          go test ./...
+      - name: Compila
+        run: sh gimnastica/servidor/build.sh
+      - name: Publica a Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view notesgim-servidor >/dev/null 2>&1 || \
+            gh release create notesgim-servidor --latest=false --title "NotesGim (app i programa per a les tutores)" \
+              --notes "NotesGim.exe: l'app per a Windows (doble clic; s'obre en una finestra pròpia, sense internet, i les tutores poden entrar notes des del mòbil per la Wi-Fi). NotesGim-mac-* i NotesGim-linux: el mateix per a Mac i Linux. index.html: l'app en un sol fitxer. Es torna a generar sol a cada canvi."
+          gh release upload notesgim-servidor gimnastica/servidor/dist/* gimnastica/index.html --clobber

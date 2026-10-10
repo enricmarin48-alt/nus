@@ -8,6 +8,12 @@ una app, amb icona pròpia, a pantalla completa i **funciona sense cobertura**.
 El joc és un sol fitxer (`index.html`) sense dependències ni compilació. La resta són les
 peces que el fan instal·lable.
 
+## També en aquest repositori
+
+- [`gimnastica/`](gimnastica/) — **NotesGim**, notes i classificacions de gimnàstica artística
+  (individual, per aparells i per equips). Un sol fitxer que funciona sense internet. Un cop a
+  `main`: https://enricmarin48-alt.github.io/nus/gimnastica/
+
 ## Com es juga
 
 Arrossegues el dit d'una bola a una altra i queden **lligades**. Quan has gastat totes

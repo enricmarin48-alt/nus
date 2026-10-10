@@ -1,6 +1,6 @@
 // Service worker de NUS: desa el joc al telèfon perquè funcioni sense cobertura.
 // Puja la versió cada cop que canviïs index.html i el telèfon es descarregarà el nou.
-const VERSION = 'nus-v4';
+const VERSION = 'nus-v5';
 const SHELL = [
   './',
   './index.html',
@@ -21,15 +21,21 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+      // només les nostres: al mateix domini hi ha altres apps (gimnastica/) amb la seva memòria cau
+      .then(keys => Promise.all(keys.filter(k => k.startsWith('nus-') && k !== VERSION).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
+  // NotesGim (gimnastica/) té el seu propi service worker i la seva memòria: no la toquem
+  const path = new URL(e.request.url).pathname;
+  if (path.includes('/gimnastica/')) return;
+  // l'adreça de NotesGim escrita sense la barra final: cap a la bona (també sense internet)
+  if (e.request.mode === 'navigate' && path.endsWith('/gimnastica')) { e.respondWith(Response.redirect(new URL('gimnastica/', self.registration.scope).href, 302)); return; }
   e.respondWith(
-    caches.match(e.request).then(hit => {
+    caches.open(VERSION).then(c => c.match(e.request)).then(hit => {
       if (hit) {
         // el tenim: el servim de seguida i mirem si n'hi ha un de nou per a la pròxima
         fetch(e.request)
@@ -45,7 +51,7 @@ self.addEventListener('fetch', e => {
           }
           return res;
         })
-        .catch(() => caches.match('./index.html'));
+        .catch(() => caches.open(VERSION).then(c => c.match('./index.html')));
     })
   );
 });

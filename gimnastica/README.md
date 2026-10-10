@@ -65,8 +65,11 @@ internet.
    triar un equip, crear-ne un de nou o posar *Només individual*. *Gimnastes → Equips* els mostra
    tots.
 3. **Competicions → Nova competició**: nom, data i lloc. De la segona jornada en endavant proposa
-   copiar les gimnastes de l'anterior (amb la categoria i l'equip de la fitxa d'ara). A
-   *Inscripcions* hi apuntes les gimnastes (o una entitat sencera) i cadascuna va al seu equip.
+   copiar les gimnastes de l'anterior (amb la categoria i l'equip de la fitxa d'ara). El nom que proposa
+   (també amb **Jornada següent**) és el de l'anterior amb el número de la fase o de la jornada un més
+   («1a Fase comarcal 2026-2027» → «2a Fase comarcal 2026-2027», «Jornada 3» → «Jornada 4»); l'any i el
+   curs no es toquen. Si el nom no té cap número així («Final comarcal»), surt seleccionat per escriure'n
+   un altre. A *Inscripcions* hi apuntes les gimnastes (o una entitat sencera) i cadascuna va al seu equip.
 4. **Notes**: tria el grup i escriu la nota final de cada aparell; **Intro** baixa a la següent i, al
    final de la columna, passa a l'aparell següent (val coma, punt o apòstrof). Una nota impossible
    (per exemple 835 amb el màxim de 20) no es desa: proposa «Volies dir 8,35?». **NP** escrit a la
@@ -80,7 +83,12 @@ internet.
    fulls de jutge en blanc). Si encara falten notes, s'avisa abans d'imprimir.
 6. **Rànquing**: suma les jornades del curs (les que marquis), individual i per equips. Si un equip
    canvia de gimnastes d'una jornada a l'altra, surt l'avís (qui entra i qui en surt) al rànquing i a la
-   classificació per equips de la competició, i l'equip continua sumant igual.
+   classificació per equips de la competició, i l'equip continua sumant igual. Un equip és el mateix
+   encara que li canviïs el nom; un equip que s'esborra i després es torna a fer igual (mateix nom i
+   entitat), també. Dos equips que han competit alguna vegada a la mateixa jornada, o que el dia d'una
+   jornada existien tots dos (p. ex. un de reanomenat i un de nou amb el nom d'abans), no s'ajunten mai.
+   El total de cada fila és sempre la suma de les seves jornades, i el rànquing d'un curs ja acabat no
+   canvia quan es passa al curs següent (ni quan després s'esborren equips).
 
 7. **Rotacions i horari** (pestanya de cada competició): vegeu més avall.
 
@@ -141,6 +149,19 @@ Benjamí 2017-2018, Aleví 2015-2016, Infantil 2013-2014, Cadet 2011-2012, Juven
 Sènior 2008 i abans. A *Configuració → Categories* es poden canviar els noms i els anys, i cada
 estiu el botó **Passa al curs següent (+1 any)** ho avança tot i actualitza la categoria de
 cada gimnasta que té l'any de naixement (de les que no en tenen, avisa perquè es revisin a mà). Les competicions ja fetes conserven la categoria d'aquell dia.
+
+- Abans de canviar res, diu qui canvia de categoria, quins equips es desfan (hi quedarien menys del
+  mínim; també els que va dir l'entitat al full d'inscripció, i qui s'hi quedaria) i a quines
+  competicions que vénen canvien inscripcions i equips. Es pot triar *Actualitza-les* o *Només els anys
+  de les categories*. Tot plegat és un sol canvi: el **Desfés** de l'avís ho torna tot com era.
+- Si encara hi ha competicions del curs per fer (a mig curs), primer pregunta si de debò es vol passar
+  al curs següent ara (segurament és un clic sense voler).
+- **Desfés un curs (−1)** just després del +1, sense cap altre canvi entremig, ho deixa tot exactament
+  com era abans del +1: categories, gimnastes i equips (també els que havia dit l'entitat al full). Si
+  després s'ha canviat alguna cosa, ho avisa abans i diu a quines competicions es tornen a fer els equips.
+- A *Gimnastes* (i a *Configuració → Categories*), si alguna gimnasta no té la categoria que li toca per
+  l'any, **Posa a tothom la categoria que li toca** pregunta sempre abans (amb qui canvia i quins equips
+  es desfan) i l'avís diu quins equips han canviat i qui s'ha quedat sense equip.
 
 ## Regles que aplica
 

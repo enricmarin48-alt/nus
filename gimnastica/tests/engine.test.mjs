@@ -472,6 +472,67 @@ test('rànquing de jornades: un equip esborrat i tornat a fer igual (mateix nom 
   // si l'equip de J1 ja no existeix, és el mateix que el nou
   const [g] = E.seasonRanking([j1, j2], S, { nameOf, teamGone: id => id === 'T1' });
   assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X', 2]]);
+  // (teamGone rep també la jornada: si l'equip es va esborrar després d'aquella jornada, encara hi era)
+  const seen = [];
+  E.seasonRanking([j1, j2], S, { nameOf, teamGone: (id, c) => { seen.push(id + '@' + c.id); return false; } });
+  assert.deepEqual(plain(seen), ['T1@j2']);
+});
+
+// totals i jornades de cada fila: el total és la suma de les caselles i Jorn. no passa mai del nombre de jornades
+const sane = (g, comps) => {
+  for (const r of [...g.rows, ...g.teams]) {
+    const vals = comps.map(c => r.per[c.id]).filter(v => typeof v === 'number');
+    assert.equal(r.total, vals.reduce((a, b) => a + b, 0), r.name);
+    assert.equal(r.n, vals.length, r.name);
+    assert.ok(r.n <= comps.length, r.name);
+  }
+  // (cada equip classificat d'una jornada, a una sola fila)
+  for (const c of comps) assert.equal(g.teams.filter(t => t.per[c.id] !== undefined).length, E.teamRanking(c, g).rows.filter(r => r.total !== null).length, c.id);
+};
+const mkTeams = (id, teams) => {
+  const c = comp({ id });
+  teams.forEach(([tid, name, src, gid, s]) => {
+    c.teams.push({ id: tid, name, clubId: 'cx', category: 'Aleví', level: 'A', sourceTeamId: src });
+    for (let k = 0; k < 3; k++) c.entries.push(entry(name + k, { salt: s, barra: s, terra: s }, { gymnastId: gid + k, teamId: tid }));
+  });
+  return c;
+};
+
+test('rànquing de jornades: un equip reanomenat i un de nou amb el nom d’abans, tots dos esborrats després, no es barregen', () => {
+  // J1 i J2: T1 «Club X». J3: T1 ja es diu «Club X Groc» i T2, nou, es diu «Club X» (el primer o l'últim de la jornada).
+  // Després (en passar de curs) s'esborren tots dos de la llista general
+  const S = { categories: CATS, levels: ['A'] };
+  for (const sT2 of [9, 7]) {
+    const j1 = mkTeams('j1', [['a', 'Club X', 'T1', 'g', 8]]), j2 = mkTeams('j2', [['b', 'Club X', 'T1', 'g', 8]]);
+    const j3 = mkTeams('j3', [['c', 'Club X Groc', 'T1', 'g', 8], ['d', 'Club X', 'T2', 'h', sT2]]);
+    const [g] = E.seasonRanking([j1, j2, j3], S, { nameOf, teamGone: () => true });
+    assert.deepEqual(plain(g.teams.map(t => [t.name, t.n, t.total])).sort(), [['Club X', 1, 3 * 3 * sT2 * 1000], ['Club X Groc', 3, 3 * 3 * 3 * 8000]].sort(), 'J3 de T2: ' + sT2);
+    sane(g, [j1, j2, j3]);
+  }
+});
+
+test('rànquing de jornades: dos equips que han competit alguna vegada alhora no s’ajunten pel nom', () => {
+  // J1: T1 «Club X». J2: T2 «Club X» (T1 no hi va). J3: tots dos. T1 i T2 ja no existeixen
+  const S = { categories: CATS, levels: ['A'] };
+  const j1 = mkTeams('j1', [['a', 'Club X', 'T1', 'g', 8]]), j2 = mkTeams('j2', [['b', 'Club X', 'T2', 'h', 7]]);
+  const j3 = mkTeams('j3', [['c', 'Club X A', 'T1', 'g', 8], ['d', 'Club X', 'T2', 'h', 7]]);
+  const [g] = E.seasonRanking([j1, j2, j3], S, { nameOf, teamGone: () => true });
+  assert.deepEqual(plain(g.teams.map(t => [t.name, t.n])), [['Club X A', 2], ['Club X', 2]]);
+  sane(g, [j1, j2, j3]);
+  // i dues còpies del mateix equip a la mateixa jornada (dades estranyes): cadascuna a la seva fila
+  const j4 = mkTeams('j4', [['e', 'Club X', 'T1', 'g', 8], ['f', 'Club X bis', 'T1', 'k', 6]]);
+  const [g4] = E.seasonRanking([j1, j4], S, { nameOf });
+  assert.equal(g4.teams.length, 2);
+  sane(g4, [j1, j4]);
+});
+
+test('rànquing de jornades: una gimnasta inscrita dues vegades a la mateixa jornada només hi suma un cop', () => {
+  const c = comp({ id: 'j1' });
+  c.entries.push(entry('Anna', { salt: 8 }, { gymnastId: 'g1' }), entry('Anna', { salt: 9 }, { gymnastId: 'g1' }));
+  const [g] = E.seasonRanking([c], { categories: CATS, levels: ['A'] }, { nameOf });
+  assert.equal(g.rows.length, 1);
+  assert.equal(g.rows[0].n, 1);
+  sane(g, [c]);
 });
 
 test('rànquing de jornades: si un equip canvia de gimnastes, es diu qui entra i qui en surt, i continua sumant', () => {

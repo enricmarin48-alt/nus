@@ -875,6 +875,17 @@ const Engine = (() => {
       if (!groups.has(key)) groups.set(key, { key, category, gender, level, people: new Map(), teams: new Map() });
       return groups.get(key);
     };
+    // equips de la llista general que han competit alhora en alguna d'aquestes jornades (al mateix grup): són equips
+    // diferents, encara que després se n'hagi esborrat un i l'altre tingui el nom que tenia
+    const along = new Map();
+    for (const c of comps) for (const t of c.teams || []) {
+      if (!t.sourceTeamId || !(c.entries || []).some(e => e.teamId === t.id)) continue;
+      const k = groupKey(t.category, genderOf(t), t.level) + '|' + t.sourceTeamId;
+      if (!along.has(k)) along.set(k, new Set());
+      along.get(k).add(c.id);
+    }
+    const together = (gk, a, b) => { const x = along.get(gk + '|' + a), y = b && along.get(gk + '|' + b); return !!(x && y && [...x].some(id => y.has(id))); };
+    const inComp = (gk, a, cid) => { const x = along.get(gk + '|' + a); return !!x && x.has(cid); };
     for (const c of comps) {
       for (const g of groupsOf(c, settings)) {
         const S = grp(g.category, g.gender, g.level);
@@ -882,20 +893,29 @@ const Engine = (() => {
           const id = r.entry.gymnastId;
           if (!S.people.has(id)) S.people.set(id, { gymnastId: id, name: r.name, entry: r.entry, per: {}, sum: 0, n: 0 });
           const p = S.people.get(id);
+          if (p.per[c.id] !== undefined) continue;   // (dues inscripcions seves a la mateixa jornada: compta la primera)
           p.entry = r.entry; p.name = r.name;
           if (r.total !== null) { p.per[c.id] = r.total; p.sum += r.total; p.n++; } else if (r.np) p.per[c.id] = 'np';
         }
+        const used = new Set();   // (les files que ja tenen un equip d'aquesta jornada)
         for (const r of teamRanking(c, g).rows) {
           // el mateix equip a totes les jornades: per l'equip de la llista general del qual és còpia
           // (sourceTeamId) i, per a dades antigues sense, pel nom i l'entitat. Pel nom també si l'equip d'abans ja
-          // no existeix (s'ha esborrat i s'ha tornat a fer igual): opts.teamGone(id)
+          // no existeix (s'ha esborrat i s'ha tornat a fer igual): opts.teamGone(id, jornada). Mai, però, a la fila
+          // d'un equip que ja té nota en aquesta jornada ni a la d'un que ha competit alguna vegada alhora amb aquest
           const kS = r.team.sourceTeamId ? 's:' + r.team.sourceTeamId : null;
           const kN = 'n:' + norm(r.team.name) + '|' + (r.team.clubId || '');
           const old = S.teams.get(kN);
-          const oldGone = !!(old && old.src && opts.teamGone && (old.srcIds || []).every(opts.teamGone));
-          let t = (kS && S.teams.get(kS)) || (old && (!kS || !old.src || oldGone) ? old : null);
-          if (!t) { t = { id: kS || kN, src: !!kS, name: r.team.name, team: r.team, per: {}, sum: 0, n: 0, mem: {} }; }
-          if (kS) { S.teams.set(kS, t); t.src = true; t.srcIds = t.srcIds || []; if (!t.srcIds.includes(r.team.sourceTeamId)) t.srcIds.push(r.team.sourceTeamId); }
+          const free = !!old && !used.has(old) && !(old.srcIds || []).some(id => inComp(S.key, id, c.id) || together(S.key, id, r.team.sourceTeamId));
+          const oldGone = !!(free && old.src && opts.teamGone && (old.srcIds || []).every(id => opts.teamGone(id, c)));
+          let t = (kS && S.teams.get(kS)) || (free && (!kS || !old.src || oldGone) ? old : null);
+          // (dues còpies del mateix equip a la mateixa jornada, de dades estranyes: cadascuna a la seva fila)
+          const twice = !!t && used.has(t);
+          if (twice) t = null;
+          if (!t) { t = { id: (kS || kN) + (twice ? '|' + r.team.id : ''), src: !!kS, name: r.team.name, team: r.team, per: {}, sum: 0, n: 0, mem: {} }; }
+          used.add(t);
+          if (twice) S.teams.set(t.id, t);
+          else if (kS) { S.teams.set(kS, t); t.src = true; t.srcIds = t.srcIds || []; if (!t.srcIds.includes(r.team.sourceTeamId)) t.srcIds.push(r.team.sourceTeamId); }
           if (!S.teams.has(kN)) S.teams.set(kN, t);
           t.name = r.team.name; t.team = r.team;   // el nom de l'última jornada
           if (r.total !== null) { t.per[c.id] = r.total; t.sum += r.total; t.n++; }
@@ -1773,6 +1793,12 @@ function sanitize(d) {
       e.scores = sc;
     }
     if ('rot' in c) { const r = sanitizeRot(c.rot, { fix, objs, str, iso }); if (r) c.rot = r; else delete c.rot; }
+  }
+  // (equips esborrats de la llista general i el dia: vegeu markTeamsGone)
+  if ('goneTeams' in d) {
+    const gt = {};
+    if (d.goneTeams && typeof d.goneTeams === 'object' && !Array.isArray(d.goneTeams)) for (const [k, v] of Object.entries(d.goneTeams)) { const id = fix(k); if (id && date(v)) gt[id] = v; }
+    if (Object.keys(gt).length) d.goneTeams = gt; else delete d.goneTeams;
   }
   const s = d.settings || {};
   for (const k of ['logoL', 'logoR']) if (s[k] && !/^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/.test(s[k])) s[k] = null;
@@ -3468,9 +3494,27 @@ views.competicions = () => {
     }).join('')}</div>` : `<div class="empty">Encara no hi ha cap competició.<br><br><button class="btn primary" data-act="newComp">＋ Crea la primera competició</button></div>`}
   </section>`;
 };
-// nom de la jornada següent: si el nom acaba amb un número, el següent («Jornada 2» → «Jornada 3»)
-const nextCompName = name => { const m = /^(.*?)(\d+)(\D*)$/.exec(name || ''); return m ? m[1] + (+m[2] + 1) + m[3] : (name || S().compName); };
+// nom de la jornada següent: el primer número d'ordre o de fase, un més («1a Fase» → «2a Fase», «Fase 1» → «Fase 2»,
+// «Jornada 3» → «Jornada 4», «3r Trofeu» → «4t Trofeu»), mai un any («2027») ni un curs o una data («2026-2027»,
+// «2026-27», «21/11»). Si no n'hi ha cap, el mateix nom (al formulari surt seleccionat, per escriure'n un altre)
+const nextCompName = name => {
+  const s = name || '';
+  const nums = [...s.matchAll(/\d+/g)].map(m => ({ i: m.index, t: m[0], pre: s.slice(0, m.index), post: s.slice(m.index + m[0].length) }))
+    .filter(x => x.t.length < 4 && !/\d[-/.:]$/.test(x.pre) && !/^[-/.:]\d/.test(x.post));
+  // (ordinal: 1a, 2ª, 1r, 2n, 3r, 4t, 5è; de fase: «Fase 1», «Jornada 3», «J3»)
+  const ord = x => /^(a|ª|º|o|r|n|t|è)(?![\p{L}\d])/iu.exec(x.post);
+  const phase = x => /(?:^|[^\p{L}])(fase|jornada|j|prova|etapa|trobada|ronda|tanda|sessió|núm|n)\.?º?\s*$/iu.test(x.pre);
+  const x = nums.find(y => ord(y) || phase(y)) || nums.find(y => !/\p{L}$/u.test(y.pre) && !/^\p{L}/u.test(y.post));
+  if (!x) return s || S().compName;
+  const n = +x.t + 1, o = ord(x);
+  let suf = o ? o[0] : '';
+  // (els masculins canvien: 1r, 2n, 3r, 4t, 5è…)
+  if (o && /^[rntè]$/i.test(suf)) { const m = n === 1 || n === 3 ? 'r' : n === 2 ? 'n' : n === 4 ? 't' : 'è'; suf = suf === suf.toUpperCase() ? m.toUpperCase() : m; }
+  return x.pre + n + suf + x.post.slice(o ? o[0].length : 0);
+};
 
+// (no s'ha pogut saber el nom de la jornada següent: el nom surt seleccionat, i el que s'escrigui el substitueix)
+const selectCompName = () => { const i = $('#dlg form[data-form=comp] input[name=name]'); if (i && !win.paused) { i.focus(); i.select(); } };
 function compForm(c, { isNew = false, copyFrom = '' } = {}) {
   const others = [...db.competitions].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   return `<form data-form="comp" data-id="${c.id || ''}"><h2>${isNew ? 'Nova competició' : 'Dades de la competició'}</h2>
@@ -4364,6 +4408,19 @@ const teamWhy = (c, r) => r.undersize ? `no classifica: ${plural(r.size, 'gimnas
   : r.oversize ? `no classifica: ${r.size} gimnastes (màxim ${c.teamMax})` : '';
 // equips anul·lats: menys del mínim de gimnastes que hagin competit (per exemple, per una NP)
 const cancelledNote = (c, list) => list.length ? `<p class="small ${''}">Equips anul·lats (menys de ${c.teamMin} gimnastes que hagin competit; les seves gimnastes compten com a individuals): ${list.map(r => `${h(r.team.name)} (${r.size})`).join(', ')}.</p>` : '';
+// equips esborrats de la llista general: db.goneTeams (id → el dia que es va esborrar; només els que tenen còpies a
+// alguna competició). Al rànquing del curs, un equip esborrat i un de nou amb el mateix nom i entitat són el mateix
+// equip, però només a les jornades d'aquell dia o de després: si s'ha esborrat més tard (p. ex. en passar al curs
+// següent), a les jornades d'abans eren dos equips diferents i ho continuen sent
+function markTeamsGone(ids) {
+  const used = new Set(db.competitions.flatMap(c => c.teams.map(t => t.sourceTeamId).filter(Boolean)));
+  const g = Object.assign({}, db.goneTeams);
+  for (const id of ids) if (used.has(id)) g[id] = today();
+  for (const id of Object.keys(g)) if (!used.has(id) || teamById(id)) delete g[id];
+  if (Object.keys(g).length) db.goneTeams = g; else delete db.goneTeams;
+}
+// l'equip de la llista general ja no hi era el dia de la competició c (de dades d'abans, sense el dia: ja no hi és)
+function teamGoneBy(id, c) { const d = (db.goneTeams || {})[id]; return !teamById(id) && !(d && c && c.date && d > c.date); }
 // l'equip a la jornada anterior del mateix curs on va competir (el mateix equip: per l'equip de la fitxa o, si no,
 // pel nom i l'entitat): qui hi entra i qui en surt. Només s'avisa: les notes i la puntuació no canvien
 function teamPrevChange(c, ct) {
@@ -4373,10 +4430,15 @@ function teamPrevChange(c, ct) {
   const all = db.competitions.filter(x => (x.season || Engine.seasonFor(x.date)) === season).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const prevs = all.slice(0, all.indexOf(c)).reverse();
   const now = new Set(c.entries.filter(e => e.teamId === ct.id).map(e => e.gymnastId).filter(Boolean));
+  // (pel nom, mai un equip de la llista general que és en aquesta jornada o que alguna vegada ha competit alhora amb
+  // aquest: és un altre equip, com al rànquing)
+  const inComp = (x, src) => x.teams.some(t => t.sourceTeamId === src && sameGroup(t, ct) && x.entries.some(e => e.teamId === t.id));
+  const apart = src => !inComp(c, src) && !(ct.sourceTeamId && all.some(x => inComp(x, src) && inComp(x, ct.sourceTeamId)));
   for (const p of prevs) {
-    // (pel nom només si un dels dos no és enllaçat a la fitxa o l'equip d'abans ja no hi és, com fa el rànquing)
+    // (pel nom només si un dels dos no és enllaçat a la fitxa o l'equip d'abans ja no hi era, com fa el rànquing)
     const pt = (ct.sourceTeamId && p.teams.find(t => t.sourceTeamId === ct.sourceTeamId && sameGroup(t, ct)))
-      || p.teams.find(t => sameGroup(t, ct) && norm(t.name) === norm(ct.name) && (t.clubId || null) === (ct.clubId || null) && (!ct.sourceTeamId || !t.sourceTeamId || !teamById(t.sourceTeamId)));
+      || p.teams.find(t => sameGroup(t, ct) && norm(t.name) === norm(ct.name) && (t.clubId || null) === (ct.clubId || null)
+        && (!t.sourceTeamId || (apart(t.sourceTeamId) && (!ct.sourceTeamId || teamGoneBy(t.sourceTeamId, c)))));
     if (!pt) continue;
     const before = new Set(p.entries.filter(e => e.teamId === pt.id).map(e => e.gymnastId).filter(Boolean));
     if (!before.size) continue;
@@ -4499,7 +4561,7 @@ function rankingData() {
   ui.rkOff = ui.rkOff || {};
   const all = db.competitions.filter(c => c.season === ui.rkSeason).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const comps = all.filter(c => !ui.rkOff[c.id]);
-  return { seasons, all, comps, groups: Engine.seasonRanking(comps, S(), { nameOf: entryName, teamGone: id => !teamById(id) }) };
+  return { seasons, all, comps, groups: Engine.seasonRanking(comps, S(), { nameOf: entryName, teamGone: teamGoneBy }) };
 }
 const jLabel = (comps, c) => 'J' + (comps.indexOf(c) + 1);
 const gymNames = ids => { const l = ids.map(id => gymName(gymById(id))); return l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} i ${l[l.length - 1]}`; };
@@ -6340,6 +6402,94 @@ function compWorkbook(c) {
   return sheets;
 }
 
+/* ═══════════════════════════════════════════ categoria per l'any de naixement
+   «Posa a tothom la categoria que li toca» i «Passa al curs següent» / «Desfés un curs». Les que canvien de categoria
+   surten del seu equip; un equip que es queda per sota del mínim es desfà. Abans es diu què passarà i, després, què ha
+   passat (amb els equips pel seu nom). */
+// moves: [{ g, to }] (la gimnasta i la categoria nova). Què passarà, sense canviar res: els equips de la llista general
+// que perden alguna gimnasta (gone: es desfan) i les competicions que vénen on canvien inscripcions i equips
+function catPlan(moves) {
+  const min = S().compDefaults.teamMin || 3;
+  const to = new Map(moves.map(m => [m.g.id, Object.assign({}, m.g, { category: m.to })]));
+  const leaves = (t, id) => to.has(id) && !sameGroup(t, to.get(id));
+  const teams = db.teams.filter(t => t.memberIds.some(id => leaves(t, id))).map(t => {
+    const stay = t.memberIds.filter(id => !leaves(t, id));
+    return { t, out: t.memberIds.filter(id => leaves(t, id)), stay, gone: stay.length < min, declared: t.form === true };
+  });
+  const gone = new Set(teams.filter(x => x.gone).map(x => x.t.id));
+  const comps = db.competitions.filter(c => !c.locked && isUpcoming(c)).map(c => ({ c, n: c.entries.filter(e => !hasScores(e)
+    && ((to.has(e.gymnastId) && !sameGroup(e, to.get(e.gymnastId))) || (e.teamId && gone.has((c.teams.find(x => x.id === e.teamId) || {}).sourceTeamId)))).length }))
+    .filter(x => x.n).sort((a, b) => (a.c.date || '').localeCompare(b.c.date || ''));
+  return { teams, comps, min };
+}
+// «A», «B» i 3 més
+const catList = (l, max = 4) => l.length > max ? `${l.slice(0, max).join(', ')} i ${l.length - max} més` : l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} i ${l[l.length - 1]}`;
+const catTeamName = t => `«${t.name}» (${t.category} ${t.level})`;
+// el que se'n diu a la confirmació (HTML)
+function catPlanHtml(p) {
+  const out = [], gone = p.teams.filter(x => x.gone), less = p.teams.filter(x => !x.gone);
+  if (gone.length) out.push(`<b>${gone.length === 1 ? 'Es desfà aquest equip' : `Es desfan aquests ${gone.length} equips`}</b> (${gone.length === 1 ? 'li quedarien' : 'els quedarien'} menys ${deQ(p.min, 'gimnasta', 'gimnastes')}):<br>`
+    + gone.slice(0, 8).map(x => `${h(catTeamName(x.t))}${x.declared ? ', el va dir l’entitat al full d’inscripció' : ''}${x.stay.length ? `: hi ${x.stay.length === 1 ? 'quedaria' : 'quedarien'} ${h(gymNames(x.stay))}` : ''}`).join('<br>') + (gone.length > 8 ? '<br>…' : '')
+    + (gone.some(x => x.stay.length && clubDeclared(null, x.t.clubId, x.t)) ? '<br><span class="small muted">Les que es queden sense equip es tornen a agrupar per entitat; si la seva entitat ha dit els seus equips al full d’inscripció, van com a individuals.</span>' : ''));
+  if (less.length) out.push(`<b>${less.length === 1 ? 'Aquest equip perd' : 'Aquests equips perden'} alguna gimnasta</b>:<br>`
+    + less.slice(0, 8).map(x => `${h(catTeamName(x.t))}: en ${x.out.length === 1 ? 'surt' : 'surten'} ${h(gymNames(x.out))}`).join('<br>') + (less.length > 8 ? '<br>…' : ''));
+  if (p.comps.length) out.push(`<b>${p.comps.length === 1 ? 'Competició que ve on canvien' : 'Competicions que vénen on canvien'} inscripcions i equips</b>: ${h(catList(p.comps.map(x => `«${x.c.name}» (${x.c.date ? fmtDate(x.c.date) + ': ' : ''}${plural(x.n, 'inscripció', 'inscripcions')})`), 6))}.`);
+  return out.length ? '<br><br>' + out.join('<br><br>') : '';
+}
+// posa a cada gimnasta de la llista la categoria que li toca per l'any (amb els anys de les categories d'ara) i, a les
+// competicions que vénen (sense notes), la inscripció i l'equip. Torna el que ha passat, per a l'avís (catMsg)
+function applyCatMoves(list) {
+  let upd = 0, kept = 0;
+  const before = new Set(db.teams.map(t => t.id));
+  for (const g of list) g.category = catMismatch(g);
+  // surten dels equips del grup d'abans (els que es queden buits s'esborren): quan s'inscriguin, es faran equips nous
+  const ids = new Set(list.map(g => g.id));
+  const emptied = db.teams.filter(t => t.memberIds.length && t.memberIds.every(id => ids.has(id) && !sameGroup(t, gymById(id))));
+  const lost = new Set(db.teams.filter(t => t.memberIds.some(id => ids.has(id) && !sameGroup(t, gymById(id)))).map(t => t.id));
+  const lostTeams = db.teams.filter(t => lost.has(t.id) && !emptied.includes(t));
+  for (const t of db.teams) t.memberIds = t.memberIds.filter(id => !ids.has(id) || sameGroup(t, gymById(id)));
+  // un equip que s'ha quedat per sota del mínim es desfà: les que s'hi queden es tornen a agrupar soles
+  // (si no, quedarien en equips de 1 o 2 que no compten)
+  const weak = db.teams.filter(t => lost.has(t.id) && t.memberIds.length && t.memberIds.length < (S().compDefaults.teamMin || 3));
+  const stayed = weak.flatMap(t => t.memberIds);
+  db.teams = db.teams.filter(t => !emptied.includes(t) && !weak.includes(t));
+  const gone = new Set(emptied.concat(weak).map(t => t.id));
+  // les competicions que vénen també: cadascuna al grup nou i al seu equip (si encara no hi té notes)
+  for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
+    const moved = [];
+    for (const g of list) {
+      const e = c.entries.find(x => x.gymnastId === g.id);
+      if (!e || sameGroup(e, g)) continue;
+      if (hasScores(e)) { kept++; continue; }
+      e.category = g.category; e.gender = genderOf(g); e.level = g.level; e.teamId = null; delete e.noAuto;
+      moved.push(e);
+    }
+    // les d'un equip desfet que no canvien de categoria: també es tornen a agrupar (si encara no tenen notes)
+    for (const e of c.entries) {
+      const ct = e.teamId && c.teams.find(x => x.id === e.teamId);
+      if (ct && gone.has(ct.sourceTeamId) && !hasScores(e)) { e.teamId = null; delete e.noAuto; moved.push(e); }
+    }
+    // (abans, fora les còpies que s'han quedat buides: si no, s'hi tornarien a posar gimnastes d'un equip esborrat)
+    if (moved.length) { pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, moved); else autoAssignTeams(c, moved); pruneAutoTeams(c); upd += moved.length; }
+  }
+  // (les competicions passades continuen enllaçades amb els equips desfets: vegeu markTeamsGone)
+  markTeamsGone(gone);
+  const inTeam = new Set(db.teams.flatMap(t => t.memberIds));
+  return { n: list.length, upd, kept, gone: emptied.concat(weak), lost: lostTeams.filter(t => !gone.has(t.id)), made: db.teams.filter(t => !before.has(t.id)),
+    alone: [...new Set(stayed)].filter(id => !inTeam.has(id)) };
+}
+// l'avís del que ha passat (amb els equips pel seu nom)
+function catMsg(r) {
+  return `${plural(r.n, 'gimnasta ha', 'gimnastes han')} canviat de categoria.${r.upd ? ` A les competicions que vénen: ${plural(r.upd, 'inscripció posada', 'inscripcions posades')} al dia.` : ''}${r.kept ? ` ${plural(r.kept, 'inscripció ja tenia', 'inscripcions ja tenien')} notes i no s’${r.kept === 1 ? 'ha' : 'han'} tocat.` : ''}`
+    + (r.gone.length ? ` ${r.gone.length === 1 ? 'Equip desfet' : 'Equips desfets'}: ${catList(r.gone.map(catTeamName))}.` : '')
+    + (r.alone.length ? ` ${r.alone.length === 1 ? 'Es queda' : 'Es queden'} sense equip: ${catList(r.alone.map(id => gymName(gymById(id))), 5)}.` : '')
+    + (r.lost.length ? ` ${r.lost.length === 1 ? 'Equip que perd' : 'Equips que perden'} alguna gimnasta: ${catList(r.lost.map(catTeamName))}.` : '')
+    + (r.made.length ? ` ${r.made.length === 1 ? 'Equip nou' : 'Equips nous'}: ${catList(r.made.map(catTeamName))}.` : '');
+}
+// l'últim «Passa al curs següent» (snap: les dades d'abans; cats: els anys d'abans; stamp: la versió just després).
+// «Desfés un curs» just després, sense cap altre canvi, hi torna tal qual (com el «Desfés» de l'avís)
+let shiftUndo = null;
+
 /* ═══════════════════════════════════════════ accions (clics) */
 const actions = {
   closeDlg: () => closeDialog(),
@@ -6358,12 +6508,15 @@ const actions = {
   newComp: () => {
     const last = [...db.competitions].sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
     const same = last && (last.season || Engine.seasonFor(last.date)) === Engine.seasonFor(today()) ? last : null;
-    openDialog(compForm({ name: same ? nextCompName(same.name) : S().compName, date: today(), place: last ? last.place : S().place, season: '' }, { isNew: true, copyFrom: same ? same.id : '' }));
+    const name = same ? nextCompName(same.name) : S().compName;
+    openDialog(compForm({ name, date: today(), place: last ? last.place : S().place, season: '' }, { isNew: true, copyFrom: same ? same.id : '' }));
+    if (same && name === same.name) selectCompName();
   },
   editComp: () => openDialog(compForm(curComp())),
   dupComp: el => {
-    const src = compById(el.dataset.id);
-    openDialog(compForm({ name: nextCompName(src.name), date: today(), place: src.place, season: '' }, { isNew: true, copyFrom: src.id }));
+    const src = compById(el.dataset.id), name = nextCompName(src.name);
+    openDialog(compForm({ name, date: today(), place: src.place, season: '' }, { isNew: true, copyFrom: src.id }));
+    if (name === src.name) selectCompName();
   },
   openCls: el => { ui.clsType = el.dataset.t || 'general'; ui.clsGroup = null; go(`#/competicio/${el.dataset.id}/classificacions`); },
   goRanking: el => { if (el.dataset.season) ui.rkSeason = el.dataset.season; ui.rkGroup = ui.clsGroup && ui.clsGroup !== 'all' ? ui.clsGroup : ui.group; go('#/ranquing'); },
@@ -6394,7 +6547,7 @@ const actions = {
   enrollGyms: el => {
     const c = curComp();
     // (tornant de «＋ Gimnasta nova», les que s'havien marcat continuen marcades)
-    ui.pick = { q: '', club: '', gender: '', cat: '', level: '', checked: el && el.back && ui.pick ? (ui.pick.checked || []) : [] };
+    ui.pick = { q: '', club: '', gender: '', cat: '', level: '', checked: el && el.back === true && ui.pick ? (ui.pick.checked || []) : [] };
     openDialog(`<form data-form="enrollGyms"><h2>Inscriu gimnastes</h2>
       <div class="toolbar"><input type="search" class="grow" placeholder="Cerca…" data-inp="pickFilter" data-k="q" autofocus aria-label="Cerca">
         <select data-chg="pickFilter" data-k="club" aria-label="Entitat"><option value="">Totes les entitats</option>${[...db.clubs].sort((a, b) => coll(a.name, b.name)).map(cl => `<option value="${cl.id}">${h(cl.name)}</option>`).join('')}</select>
@@ -6687,9 +6840,10 @@ const actions = {
   },
   importGyms: () => { ui.import = null; openDialog(importDialog(), { wide: true }); },
   // fulls d'inscripció dels clubs (.xlsx)
+  // (files: els fitxers deixats anar a la finestra; amb un clic, el segon paràmetre és el clic i no compta)
   inscOpen: async (el, files) => {
     ui.insc = { files: [], compId: ui.view === 'competicio' && curComp() && !curComp().locked ? ui.compId : null };
-    if (files && files.length) await inscAddFiles(files);
+    if (Array.isArray(files) && files.length) await inscAddFiles(files);
     openDialog(inscDialog(), { wide: true });
   },
   inscDo: () => {
@@ -6881,6 +7035,7 @@ const actions = {
         if (pick === 'auto' && c.autoTeams) autoCompTeams(c, freed);
         pruneAutoTeams(c);
       }
+      markTeamsGone([t.id]);
     });
   },
   pickTCat: el => { ui.tCat = el.dataset.c; render(); },
@@ -6924,52 +7079,61 @@ const actions = {
     commit(); render();
     const again = $('#add-' + key); if (again) again.focus();
   },
+  // «Passa al curs següent» (+1) i «Desfés un curs» (−1): els anys de totes les categories i, si es vol, la categoria de
+  // cada gimnasta (i les inscripcions i els equips de les competicions que vénen), tot d'un cop (un sol «Desfés»)
   shiftYears: async el => {
     const d = +el.dataset.d;
-    withUndo(d > 0 ? 'Anys de les categories avançats un curs.' : 'Anys de les categories endarrerits un curs.', () => {
+    // −1 just després d'un +1, sense cap altre canvi: tot torna a ser com abans del +1, també els equips que havien
+    // dit les entitats (com el «Desfés» de l'avís; les notes que han arribat després de les tutores es queden)
+    if (d < 0 && shiftUndo && shiftUndo.stamp === db.meta.updated) {
+      const { snap, stamp } = shiftUndo;
+      shiftUndo = null;
+      withUndo('Tot torna a estar com abans de «Passa al curs següent»: els anys de les categories, la categoria de cada gimnasta i els equips.', () => {
+        const cur = db;
+        db = migrate(JSON.parse(snap));
+        Engine.mergeScores(db, cur, { since: Date.parse(stamp) || 0 });
+      });
+      return;
+    }
+    // (si el +1 ja s'ha desfet amb el «Desfés» de l'avís, els anys ja són els d'abans: això és un −1 de debò)
+    if (shiftUndo && shiftUndo.cats === JSON.stringify(S().categories)) shiftUndo = null;
+    const lead = d < 0 && shiftUndo ? 'Ja no es pot tornar exactament a com estava abans de «Passa al curs següent»: després s’hi han fet altres canvis.<br><br>' : '';
+    // +1 a mig curs (encara hi ha competicions d'aquest curs per fer): segur que no és un clic sense voler?
+    const season = Engine.seasonFor(today());
+    const soon = d > 0 ? db.competitions.filter(c => isUpcoming(c) && (c.season || Engine.seasonFor(c.date)) === season).sort((a, b) => (a.date || '').localeCompare(b.date || '')) : [];
+    if (soon.length && !(await confirmBox(`<b>${soon.length === 1 ? 'Hi ha una competició' : `Hi ha ${soon.length} competicions`} d’aquest curs (${h(season)}) per fer</b>: ${h(catList(soon.map(c => `«${c.name}»${c.date ? ', ' + fmtDate(c.date) : ''}`)))}.<br><br>
+      «Passa al curs següent» es fa un cop l’any, a l’estiu, abans de la primera competició del curs nou: suma 1 any a totes les categories, i les gimnastes que canvien de categoria surten dels seus equips, també a les competicions que vénen. Si ja es va fer aquest estiu, ara les gimnastes canviarien de categoria abans d’hora.<br><br>Segur que vols passar al curs següent ara?`, { ok: 'Sí, passa al curs següent', danger: true }))) return;
+    // amb els anys nous, qui canvia de categoria (encara no es canvia res)
+    const cats = S().categories.map(c => Object.assign({}, c, { from: c.from === null ? null : c.from + d, to: c.to === null ? null : c.to + d }));
+    const moves = db.gymnasts.filter(g => !g.archived && g.birthYear).map(g => ({ g, to: Engine.categoryForYear(cats, g.birthYear) })).filter(m => m.to && m.to !== m.g.category);
+    const n = moves.length;
+    let pick = 'years';
+    if (n) {
+      pick = await choiceBox(`${lead}Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">${moves.slice(0, 8).map(m => `${h(gymName(m.g))}: ${h(m.g.category || '—')} → ${h(m.to)}`).join('<br>')}${n > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi tenen notes).${catPlanHtml(catPlan(moves))}`,
+        [{ value: 'ok', label: n === 1 ? 'Actualitza-la' : 'Actualitza-les', cls: 'primary' }, { value: 'years', label: 'Només els anys de les categories' }]);
+      if (!pick) return;
+    }
+    const pre = JSON.stringify(db), cats0 = JSON.stringify(S().categories);
+    let res = null;
+    withUndo(() => ({ msg: `${d > 0 ? 'Anys de les categories avançats un curs.' : 'Anys de les categories endarrerits un curs.'}${res ? ' ' + catMsg(res) : ''}`, type: res && res.alone.length ? 'bad' : 'ok' }), () => {
       for (const c of S().categories) { if (c.from !== null) c.from += d; if (c.to !== null) c.to += d; }
+      if (pick === 'ok') res = applyCatMoves(moves.map(m => m.g).filter(catMismatch));
     });
+    shiftUndo = d > 0 ? { snap: pre, stamp: db.meta.updated, cats: cats0 } : null;
     const noYear = d > 0 ? db.gymnasts.filter(g => !g.archived && !g.birthYear).length : 0;
     if (noYear) toast(`${plural(noYear, 'gimnasta no té', 'gimnastes no tenen')} any de naixement: no se’n pot canviar la categoria sola. Revisa-la a Gimnastes (o posa’ls l’any).`, 'bad');
-    const n = db.gymnasts.filter(g => !g.archived && catMismatch(g)).length;
-    if (n && await confirmBox(`Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi tenen notes).</span>`, { ok: 'Actualitza-les' })) actions.recalcCats(null, true);
   },
-  recalcCats: async (el, already) => {
+  // (els botons ho criden amb el clic: cap altre paràmetre)
+  recalcCats: async () => {
     const list = db.gymnasts.filter(g => !g.archived && catMismatch(g));
     if (!list.length) { toast('Totes les gimnastes ja tenen la categoria que els toca.'); return; }
-    if (!already && !(await confirmBox(`Canviar la categoria de ${plural(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; a les que vénen, també es canvien (si encara no hi tenen notes). Les que canvien de categoria surten del seu equip i se’n fan d’equips nous per entitat.`, { ok: 'Canvia-les' }))) return;
-    let upd = 0, kept = 0;
-    withUndo(() => `${plural(list.length, 'gimnasta ha', 'gimnastes han')} canviat de categoria.${upd ? ` A les competicions que vénen: ${plural(upd, 'inscripció posada', 'inscripcions posades')} al dia.` : ''}${kept ? ` ${plural(kept, 'inscripció ja tenia', 'inscripcions ja tenien')} notes i no s’ha tocat.` : ''}`, () => {
-      for (const g of list) g.category = catMismatch(g);
-      // surten dels equips del grup d'abans (els que es queden buits s'esborren): quan s'inscriguin, es faran equips nous
-      const ids = new Set(list.map(g => g.id));
-      const emptied = db.teams.filter(t => t.memberIds.length && t.memberIds.every(id => ids.has(id) && !sameGroup(t, gymById(id))));
-      const lost = new Set(db.teams.filter(t => t.memberIds.some(id => ids.has(id) && !sameGroup(t, gymById(id)))).map(t => t.id));
-      for (const t of db.teams) t.memberIds = t.memberIds.filter(id => !ids.has(id) || sameGroup(t, gymById(id)));
-      // un equip que s'ha quedat per sota del mínim es desfà: les que s'hi queden es tornen a agrupar soles
-      // (si no, quedarien en equips de 1 o 2 que no compten)
-      const weak = db.teams.filter(t => lost.has(t.id) && t.memberIds.length && t.memberIds.length < (S().compDefaults.teamMin || 3));
-      db.teams = db.teams.filter(t => !emptied.includes(t) && !weak.includes(t));
-      const gone = new Set(emptied.concat(weak).map(t => t.id));
-      // les competicions que vénen també: cadascuna al grup nou i al seu equip (si encara no hi té notes)
-      for (const c of db.competitions.filter(c => !c.locked && isUpcoming(c))) {
-        const moved = [];
-        for (const g of list) {
-          const e = c.entries.find(x => x.gymnastId === g.id);
-          if (!e || sameGroup(e, g)) continue;
-          if (hasScores(e)) { kept++; continue; }
-          e.category = g.category; e.gender = genderOf(g); e.level = g.level; e.teamId = null; delete e.noAuto;
-          moved.push(e);
-        }
-        // les d'un equip desfet que no canvien de categoria: també es tornen a agrupar (si encara no tenen notes)
-        for (const e of c.entries) {
-          const ct = e.teamId && c.teams.find(x => x.id === e.teamId);
-          if (ct && gone.has(ct.sourceTeamId) && !hasScores(e)) { e.teamId = null; delete e.noAuto; moved.push(e); }
-        }
-        // (abans, fora les còpies que s'han quedat buides: si no, s'hi tornarien a posar gimnastes d'un equip esborrat)
-        if (moved.length) { pruneAutoTeams(c); if (c.autoTeams) autoCompTeams(c, moved); else autoAssignTeams(c, moved); pruneAutoTeams(c); upd += moved.length; }
-      }
-    });
+    const plan = catPlan(list.map(g => ({ g, to: catMismatch(g) })));
+    if (!(await confirmBox(`Canviar la categoria ${deQ(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; a les que vénen, també es canvien (si encara no hi tenen notes). Les que canvien de categoria surten del seu equip i se’n fan d’equips nous per entitat.${catPlanHtml(plan)}`, { ok: list.length === 1 ? 'Canvia-la' : 'Canvia-les' }))) return;
+    // (mentre la confirmació era oberta pot haver canviat alguna cosa: es torna a mirar qui no té la categoria que li toca)
+    const now = db.gymnasts.filter(g => !g.archived && catMismatch(g));
+    if (!now.length) return;
+    let res = null;
+    withUndo(() => ({ msg: catMsg(res), type: res.alone.length ? 'bad' : 'ok' }), () => { res = applyCatMoves(now); });
   },
   toggleWrong: () => { ui.gWrong = !ui.gWrong; render(); },
   listMove: el => {
@@ -7909,6 +8073,7 @@ Object.assign(actions, {
         if (again.length && c.autoTeams) autoCompTeams(c, again);
         pruneAutoTeams(c);
       }
+      markTeamsGone(set);
       selClear('teams');
     });
   },

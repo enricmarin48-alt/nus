@@ -411,6 +411,150 @@ try {
     assert.ok(await pg.locator('.note.warn:has-text("continua sumant igual")').count());
   });
 
+  // ─── setena revisió: el curs. Categories per l'any (els botons sempre pregunten i diuen quins equips es desfan),
+  // «Passa al curs següent» per error a mig curs i «Desfés un curs», el rànquing del curs després de passar de curs
+  // i el nom de la jornada següent. Amb el rellotge al 10/11/2026 (la 2a Fase, del 21/11, encara no s'ha fet)
+  const ctx7 = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES', timezoneId: 'Europe/Madrid' });
+  await ctx7.clock.install({ time: new Date('2026-11-10T10:00:00+01:00') });
+  const p7 = await ctx7.newPage();
+  p7.on('pageerror', e => errors.push('pageerror (7a revisió): ' + e.message));
+  p7.on('console', m => { if (m.type() === 'error') errors.push('console (7a revisió): ' + m.text()); });
+  await p7.goto(url);
+  // CG Lleida: «CG Lleida» (Anna i Berta, de 2015; Carla i Dana, de 2016) i «CG Lleida 2» (Laia, de 2017, que per l'any
+  // és benjamí; Gina i Helena), tots dos dits per l'entitat al full; la 1a Fase ja s'ha fet i la 2a encara no
+  const season7 = () => {
+    const g = (id, name, year) => ({ id, name, surname: 'Prova', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', birthYear: String(year), notes: '', archived: false });
+    const gyms = [g('a1', 'Anna', 2015), g('a2', 'Berta', 2015), g('a3', 'Carla', 2016), g('a4', 'Dana', 2016), g('b1', 'Laia', 2017), g('b2', 'Gina', 2016), g('b3', 'Helena', 2016)];
+    const T = { T1: ['a1', 'a2', 'a3', 'a4'], T2: ['b1', 'b2', 'b3'] };
+    const mk = (id, name, date, scored) => ({ id, name, date, place: 'Lleida', season: '', locked: false, autoTeams: true,
+      teams: [{ id: id + 'T1', name: 'CG Lleida', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', sourceTeamId: 'T1', form: true },
+        { id: id + 'T2', name: 'CG Lleida 2', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', sourceTeamId: 'T2', form: true }],
+      entries: gyms.map((x, i) => ({ id: id + x.id, gymnastId: x.id, clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', bib: i + 1, status: '',
+        teamId: id + (T.T1.includes(x.id) ? 'T1' : 'T2'), scores: scored ? { salt: [{ v: 8 + i / 10, at: 1 }], barra: [{ v: 8, at: 1 }], terra: [{ v: 8, at: 1 }] } : {} })) });
+    return { app: 'notesgim', version: 1, settings: { org: 'PROVA', levels: ['A', 'B'], rev: 4 }, clubs: [{ id: 'c1', name: 'CG Lleida' }], gymnasts: gyms,
+      teams: [{ id: 'T1', name: 'CG Lleida', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', memberIds: T.T1, form: true },
+        { id: 'T2', name: 'CG Lleida 2', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', memberIds: T.T2, form: true }],
+      competitions: [mk('k1', '1a Fase comarcal', '2026-10-24', true), mk('k2', '2a Fase comarcal', '2026-11-21', false)],
+      meta: { created: '2026-09-01T10:00:00.000Z', updated: '2026-11-01T10:00:00.000Z', dbId: 'curs7' } };
+  };
+  const load7 = (d, hash) => p7.evaluate(([r, hash]) => {
+    if ($('#confirm').open) $('#confirm').close(); if ($('#dlg').open) closeDialog(); $$('.toast').forEach(t => t.remove());
+    db = migrate(JSON.parse(r)); commit(); go(hash);
+  }, [JSON.stringify(d), hash]).then(() => p7.waitForTimeout(150));
+  const state7 = () => p7.evaluate(() => JSON.stringify({ g: db.gymnasts, t: db.teams, c: db.competitions, s: db.settings.categories }));
+  const teams7 = cid => p7.evaluate(cid => { const c = compById(cid); return Object.fromEntries(c.teams.map(t => [t.name, c.entries.filter(e => e.teamId === t.id).map(e => gymById(e.gymnastId).name).sort().join(',')]).filter(x => x[1])); }, cid);
+  const confirm7 = async () => { await p7.waitForSelector('#confirm[open]'); return p7.locator('#confirm').textContent(); };
+  const lastToast7 = () => p7.locator('.toast').last().textContent();
+
+  await step('«Posa a tothom la categoria que li toca» (a Gimnastes i a Configuració) sempre pregunta abans, amb els equips que es desfan; l’avís diu quins equips han canviat', async () => {
+    await load7(season7(), '#/gimnastes');
+    const before = await state7();
+    for (const hash of ['#/gimnastes', '#/configuracio']) {
+      await p7.evaluate(h => go(h), hash); await p7.waitForTimeout(150);
+      await p7.locator('button[data-act=recalcCats]').first().click();
+      const t = await confirm7();
+      assert.ok(t.includes('Laia Prova: Aleví → Benjamí') && t.includes('«CG Lleida 2» (Aleví A), el va dir l’entitat al full d’inscripció: hi quedarien Gina Prova i Helena Prova'), t);
+      assert.ok(t.includes('«2a Fase comarcal» (21/11/2026: 3 inscripcions)'), t);
+      await p7.click('#confirm button[value=no]'); await p7.waitForTimeout(150);
+      assert.equal(await state7(), before, 'Cancel·la: res no canvia (' + hash + ')');
+    }
+    await p7.locator('button[data-act=recalcCats]').first().click(); await confirm7();
+    await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
+    const toast = await lastToast7();
+    assert.ok(toast.includes('Equip desfet: «CG Lleida 2» (Aleví A)') && toast.includes('Es queden sense equip: Gina Prova i Helena Prova'), toast);
+    // (a la 2a Fase, la Laia ja és benjamí; la Gina i l'Helena, individuals: l'entitat ja ha dit els seus equips)
+    assert.deepEqual(await teams7('k2'), { 'CG Lleida': 'Anna,Berta,Carla,Dana' });
+    // els botons que obren els fulls d'inscripció, amb un clic: el diàleg, sense cap fitxer
+    for (const hash of ['#/gimnastes', '#/competicio/k2/inscripcions']) {
+      await p7.evaluate(h => { closeDialog(); go(h); }, hash); await p7.waitForTimeout(150);
+      await p7.locator('button[data-act=inscOpen] >> visible=true').first().click();
+      await p7.waitForSelector('#dlg[open] #inscfile');
+      assert.equal(await p7.evaluate(() => ui.insc.files.length), 0, hash);
+    }
+    await p7.evaluate(() => closeDialog());
+  });
+
+  await step('«Passa al curs següent» a mig curs pregunta abans; «Desfés un curs» just després ho deixa tot com era (també els equips del full); si després s’ha canviat res, avisa abans', async () => {
+    await load7(season7(), '#/configuracio');
+    const before = await state7();
+    const shift7 = d => p7.click(`button[data-act=shiftYears][data-d="${d}"]`);
+    await shift7(1);
+    let t = await confirm7();
+    assert.ok(t.includes('Hi ha una competició d’aquest curs (2026-2027) per fer') && t.includes('«2a Fase comarcal», 21/11/2026'), t);
+    await p7.click('#confirm button[value=no]'); await p7.waitForTimeout(150);
+    assert.equal(await state7(), before, 'Cancel·la: res no canvia');
+    await shift7(1); await confirm7(); await p7.click('#confirm button[value=ok]');
+    await p7.waitForSelector('#confirm[open] >> text=Amb els anys nous');
+    t = await p7.locator('#confirm').textContent();
+    assert.ok(t.includes('Anna Prova: Aleví → Infantil') && t.includes('«CG Lleida» (Aleví A), el va dir l’entitat al full d’inscripció: hi quedarien Carla Prova i Dana Prova'), t);
+    await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
+    assert.ok((await lastToast7()).includes('Equip desfet: «CG Lleida» (Aleví A)'));
+    assert.notEqual(await state7(), before);
+    // «Desfés un curs (−1)» tot seguit: com abans del +1 (sense preguntar res)
+    await shift7(-1); await p7.waitForTimeout(250);
+    assert.equal(await p7.locator('#confirm[open]').count(), 0);
+    assert.ok((await lastToast7()).includes('Tot torna a estar com abans de «Passa al curs següent»'));
+    assert.equal(await state7(), before, '+1 i −1: tot com era');
+    // +1, un altre canvi (un dorsal) i −1: no es pot tornar exactament; s'avisa abans, amb la competició que canvia
+    await shift7(1); await confirm7(); await p7.click('#confirm button[value=ok]');
+    await p7.waitForSelector('#confirm[open] >> text=Amb els anys nous'); await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
+    await p7.evaluate(() => { compById('k2').entries[0].bib = 99; commit(); });
+    const mid = await state7();
+    await shift7(-1);
+    t = await confirm7();
+    assert.ok(t.includes('Ja no es pot tornar exactament a com estava abans de «Passa al curs següent»') && t.includes('«2a Fase comarcal» (21/11/2026'), t);
+    await p7.click('#confirm button[value=""]'); await p7.waitForTimeout(150);
+    assert.equal(await state7(), mid, 'Cancel·la: res no canvia');
+  });
+
+  await step('rànquing del curs: un equip reanomenat i un de nou amb el nom d’abans no es barregen, tampoc després de «Passa al curs següent»', async () => {
+    // 1a i 2a Fase amb «CG Lleida»; a la Final ja es diu «CG Lleida Groc» i n'hi ha un de nou, «CG Lleida» (Laia,
+    // Gina i Helena, de «CG Lleida 2»). Al juliol, el +1 desfà tots dos equips de la llista
+    const d = season7();
+    d.competitions[1].date = '2026-11-21';
+    for (const e of d.competitions[1].entries) e.scores = { salt: [{ v: 7.5, at: 1 }], barra: [{ v: 7.5, at: 1 }], terra: [{ v: 7.5, at: 1 }] };
+    d.teams[0].name = 'CG Lleida Groc';
+    d.teams[1] = { id: 'T3', name: 'CG Lleida', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', memberIds: ['b1', 'b2', 'b3'] };
+    for (const g of d.gymnasts) if (g.id === 'b2' || g.id === 'b3') g.birthYear = '2015';
+    const f = JSON.parse(JSON.stringify(d.competitions[1]));
+    f.id = 'k3'; f.name = 'Final comarcal'; f.date = '2027-01-30';
+    f.teams = [{ id: 'k3T1', name: 'CG Lleida Groc', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', sourceTeamId: 'T1' },
+      { id: 'k3T3', name: 'CG Lleida', clubId: 'c1', gender: 'F', category: 'Aleví', level: 'A', sourceTeamId: 'T3' }];
+    f.entries.forEach(e => { e.id = 'k3' + e.gymnastId; e.teamId = ['b1', 'b2', 'b3'].includes(e.gymnastId) ? 'k3T3' : 'k3T1'; e.scores = { salt: [{ v: 9, at: 1 }], barra: [{ v: 9, at: 1 }], terra: [{ v: 9, at: 1 }] }; });
+    d.competitions.push(f);
+    await ctx7.clock.setSystemTime(new Date('2027-07-15T10:00:00+02:00'));
+    await load7(d, '#/ranquing');
+    const rank = () => p7.evaluate(() => { ui.rkSeason = '2026-2027'; ui.rkType = 'teams'; ui.rkGroup = 'all'; ui.rkOff = {}; render();
+      return [...document.querySelectorAll('section .card tbody tr')].map(tr => [...tr.children].map(td => td.innerText.split('\n')[0].trim()).filter((x, i) => i !== 2).join(' | ')); });
+    const notes = () => p7.evaluate(() => { ui.clsType = 'teams'; ui.clsGroup = 'Aleví||F||A'; go('#/competicio/k3/classificacions'); return [...document.querySelectorAll('tr.team-row')].map(r => r.children[1].innerText.replace(/\s+/g, ' ').trim()); });
+    const r0 = await rank();
+    assert.deepEqual(r0, ['1 | CG Lleida Groc | 72,60 | 67,50 | 81,00 | 221,10 | 3', '2 | CG Lleida 2 | 73,50 | 67,50 | — | 141,00 | 2', '3 | CG Lleida | — | — | 81,00 | 81,00 | 1'], JSON.stringify(r0));
+    const n0 = await notes(); await p7.waitForTimeout(100);
+    await p7.evaluate(() => go('#/configuracio')); await p7.waitForTimeout(150);
+    await p7.click('button[data-act=shiftYears][data-d="1"]');
+    await p7.waitForSelector('#confirm[open] >> text=Amb els anys nous'); await p7.click('#confirm button[value=ok]'); await p7.waitForTimeout(200);
+    assert.equal(await p7.evaluate(() => db.teams.length), 0, 'el +1 ha desfet els equips de la llista');
+    await p7.evaluate(() => go('#/ranquing')); await p7.waitForTimeout(150);
+    assert.deepEqual(await rank(), r0, 'el rànquing del curs passat no canvia');
+    assert.deepEqual(await notes(), n0, 'ni els avisos de la Final');
+    assert.ok(!n0.some(x => /^CG Lleida ▸.*Canvis/.test(x)), n0.join(' / '));
+    await ctx7.clock.setSystemTime(new Date('2026-11-10T10:00:00+01:00'));
+  });
+
+  await step('«Jornada següent»: el número de la fase o de la jornada, mai l’any ni el curs; si no n’hi ha, el nom surt seleccionat', async () => {
+    const names = await p7.evaluate(() => ['1a Fase comarcal 2026-2027', 'Fase comarcal 1 · curs 2026-27', '2a FASE JEEC 2027', 'Jornada 3 (Alpicat)', '3r Trofeu', 'Final comarcal'].map(nextCompName));
+    assert.deepEqual(names, ['2a Fase comarcal 2026-2027', 'Fase comarcal 2 · curs 2026-27', '3a FASE JEEC 2027', 'Jornada 4 (Alpicat)', '4t Trofeu', 'Final comarcal']);
+    const d = season7(); d.competitions[1].name = 'Final comarcal';
+    await load7(d, '#/competicions');
+    await p7.click('button[data-act=dupComp][data-id=k2]');
+    await p7.waitForSelector('#dlg[open] form[data-form=comp]');
+    assert.deepEqual(await p7.evaluate(() => { const i = $('#dlg input[name=name]'); return [i.value, document.activeElement === i, i.selectionStart, i.selectionEnd]; }), ['Final comarcal', true, 0, 14]);
+    await p7.keyboard.type('Final comarcal 2');
+    assert.equal(await p7.inputValue('#dlg input[name=name]'), 'Final comarcal 2');
+    await p7.evaluate(() => closeDialog());
+  });
+  await ctx7.close();
+
   // ─── tercera revisió: res es torna a pintar a mig clic, a mitja tecla, amb un menú obert ni a sobre del que
   // s'escriu; el focus, el cursor i la graella es queden on eren (amb les dades de la 3a fase del 18/04/2026)
   const ctx3 = await browser.newContext({ viewport: { width: 1366, height: 900 }, locale: 'ca-ES' });

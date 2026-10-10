@@ -396,7 +396,13 @@ await step('passar de curs: +1 any i les gimnastes canvien de categoria', async 
   await page.goto(url + '#/configuracio');
   await page.click('button[data-act=shiftYears][data-d="1"]');
   await page.waitForSelector('#confirm[open]');
+  // (si encara hi ha competicions d'aquest curs per fer, primer es pregunta si és un clic sense voler)
+  if ((await page.locator('#confirm').textContent()).includes('per fer')) {
+    await page.click('#confirm button[value=ok]');
+    await page.waitForSelector('#confirm[open] >> text=Amb els anys nous');
+  }
   await page.click('#confirm button[value=ok]');
+  await page.waitForSelector('.toast:has-text("Anys de les categories avançats un curs")');
   await page.goto(url + '#/gimnastes');
   await page.waitForSelector('#gymtable');
   // nascudes el 2015 → Infantil; 2016 → segueixen a Aleví

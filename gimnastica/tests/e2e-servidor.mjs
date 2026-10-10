@@ -1578,17 +1578,32 @@ try {
           assert.deepEqual(await P.$$eval('#scoregrid tbody tr[data-row]', l => l.map(r => r.dataset.row)), S7.seq.map(x => x.id));
           assert.deepEqual(await P.$$eval('#scoregrid tr.tut-rb', l => l.map(r => r.textContent.trim())), S7.heads);
           await P.tap('button[data-act=tutToggleList]'); await P.waitForSelector('#qe');
-          // «Per categoria»: com sempre (el grup i per dorsal); i es torna a l'ordre de les rotacions
+          // «Per categoria»: com sempre (el grup i per dorsal), el de la gimnasta de la targeta (no el primer) i amb ella a la
+          // targeta; i es torna a l'ordre de les rotacions, també amb ella
+          const other = S7.seq.find(x => !x.np && x.cat !== S7.seq[0].cat);
+          await P.tap(`.qe-strip button[data-id="${other.id}"]`); await P.waitForFunction(id => qe.entryId === id, other.id);
+          const grpOf = id => P.evaluate(i => (Engine.groupsOf(tutComp(), S()).find(x => x.entries.some(e => e.id === i)) || {}).key, id);
           await P.tap('button[data-act=tutBy]'); await P.waitForFunction(() => tut.byCat && !!document.querySelector('#qe'));
+          assert.deepEqual(await P.evaluate(() => [tut.group, qe.entryId]), [await grpOf(other.id), other.id], 'el grup de la que puntuava, i ella');
+          assert.equal(await P.$eval('.qe-strip button.cur', b => b.dataset.id), other.id);
           const ids = await P.$$eval('.qe-strip button', l => l.map(b => b.dataset.id));
           const g = await P.evaluate(() => Engine.groupsOf(tutComp(), S()).find(x => x.key === tut.group).entries.slice().sort((a, b) => a.bib - b.bib).map(e => e.id));
           assert.deepEqual(ids, g);
           assert.equal(await P.locator('.qe-strip .qe-rb').count(), 0);
           await P.tap('button[data-act=tutBy]'); await P.waitForFunction(id => !tut.byCat && tut.sub === id, S7.id);
-          // la taula esborra les rotacions: per categoria, i l'aparell es torna a triar (l'ordre ja no és el mateix)
+          assert.equal(await P.evaluate(() => qe.entryId), other.id);
+          // la taula li canvia la categoria i passa a una altra subdivisió: el mòbil diu a quina («ara és a la 2a subdivisió · …»)
+          const to = await T.evaluate(id => { const c = curComp(), e = c.entries.find(x => x.id === id); Object.assign(e, { category: 'Benjamí', level: 'A', teamId: null }); commit();
+            const v = rotViewOf(c), sv = v.subs.find(x => x.id === v.place.get(e).subId); return `${sv.idx}a subdivisió · ${sv.label}`; }, other.id);
+          await P.waitForFunction(t => ((document.querySelector('.qe-saved') || {}).textContent || '').includes(t), `Ha canviat de subdivisió: ara és a la ${to}`, { timeout: 15000 });
+          // la taula esborra les rotacions: per categoria, i l'aparell es torna a triar (l'ordre ja no és el mateix); el grup és
+          // el de la gimnasta que puntuava, i amb el mateix aparell, ella a la targeta
           await T.evaluate(() => { delete curComp().rot; commit(); });
           await P.waitForSelector('text=Quin aparell puntues?', { timeout: 15000 });
           assert.equal(await P.locator('.tut-by').count(), 0);
+          assert.equal(await P.evaluate(() => tut.group), await grpOf(other.id));
+          await P.tap('button[data-act=tutApp][data-a=barra]'); await P.waitForSelector('#qe');
+          assert.deepEqual(await P.evaluate(() => [tut.group, qe.entryId]), [await grpOf(other.id), other.id]);
         } finally { await ctx.close(); await T.context().close(); await kill(p); }
       });
     }

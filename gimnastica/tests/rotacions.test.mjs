@@ -615,6 +615,29 @@ test('el que s’ha imprès: els grups, l’ordre dels fulls i les hores de l’
   assert.ok(p.hor.length && p.hor.every(d => d.k === 'warm' && d.was && d.now && d.was.f === d.now.f && d.was.x !== d.now.x), JSON.stringify(p.hor[0]));
 });
 
+test('dues exhibicions amb el mateix text a la mateixa subdivisió: just després d’imprimir l’horari no ha canviat res, i si se’n treu una es diu quina', () => {
+  const c = fixture(); make(c);
+  c.rot.subs[1].extras = [{ id: 'x1', text: 'EXHIBICIÓ', min: 15, when: 'abans' }, { id: 'x2', text: 'EXHIBICIÓ', min: 15, when: 'abans' }];
+  const v = E.rotView(c, settings, CTX), rows = E.rotHorRows(E.rotSchedule(v, c.rot));
+  assert.deepEqual(plain(rows.filter(r => r.k === 'extra').map(r => r.id)), ['x1', 'x2']);
+  assert.ok(rows.filter(r => r.k !== 'extra').every(r => !('id' in r)));
+  const pr = () => E.rotView(c, settings, CTX).issues.find(i => i.t === 'printed');
+  c.rot.printed = { sig: v.sig, ord: v.ord, at: null, hor: { at: null, rows } };
+  assert.equal(pr(), undefined);
+  assert.deepEqual(plain(E.rotHorDiff(rows, rows)), []);
+  // sense id (fet amb una altra versió): pel text i per quina és de les que el tenen
+  const noId = rows.map(({ id, ...r }) => r);
+  assert.deepEqual(plain(E.rotHorDiff(noId, noId)), []);
+  // se'n treu la primera: la segona passa a l'hora de la primera, i la primera ja no hi és
+  c.rot.subs[1].extras = c.rot.subs[1].extras.slice(1);
+  const p = pr(), ex = p.hor.filter(d => d.k === 'extra');
+  assert.equal(ex.length, 2, JSON.stringify(ex));
+  const x1 = rows.find(r => r.id === 'x1'), x2 = rows.find(r => r.id === 'x2');
+  assert.ok(ex.some(d => d.was && d.was.id === 'x2' && d.now && d.now.f === x1.f && d.now.t === x1.t));
+  assert.ok(ex.some(d => d.was && d.was.id === 'x1' && !d.now));
+  assert.ok(x2.f === x1.t);
+});
+
 test('una gimnasta que canvia de subdivisió (se li corregeix el nivell) no és «nova»: es diu d’on a on ha passat', () => {
   const c = fixture(); make(c);
   const v0 = E.rotView(c, settings, CTX), e = c.entries.find(x => x.category === 'Benjamí' && x.level === 'A' && x.teamId);

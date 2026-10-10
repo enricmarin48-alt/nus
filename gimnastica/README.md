@@ -75,7 +75,9 @@ internet.
    (per exemple 835 amb el màxim de 20) no es desa: proposa «Volies dir 8,35?». **NP** escrit a la
    casella marca la gimnasta com a no presentada. *Dorsal o nom…* hi va directament. Al mòbil o la
    tauleta, **Entrada ràpida**: una gimnasta cada vegada amb un teclat gran, i passa sola a la
-   següent sense nota. Tot es desa sol. Un canvi d'equip el mateix dia (des de la graella o
+   següent sense nota. Tot es desa sol. Amb les rotacions fetes, si tries un aparell les gimnastes surten en
+   l'ordre del full de jutge (el de pas per aquell aparell, amb una fila a sobre de cada rotació): el full es copia
+   de dalt a baix amb Intro. Amb «Totes les notes», per dorsal. Un canvi d'equip el mateix dia (des de la graella o
    *Inscripcions*) només val per a aquella competició; el botó «També a la fitxa» el fa fix.
 5. **Classificacions**: surten soles (general individual, per aparells, per equips i **podi**
    per a les medalles, amb el desplegable de les gimnastes de cada equip). *Imprimeix / PDF* i
@@ -134,7 +136,7 @@ els grups, i en calcula l'horari. Després tot es pot canviar.
   Inscripcions, a la seva fitxa, a la llista d'equips o amb un full d'inscripció) es queda on era i
   l'avís ho diu («Mou-la amb l'equip»; a la pestanya, «Ajunta-les»). Si se li corregeix el nivell o la categoria i
   passa a una altra subdivisió, no surt com a nova: es diu d'on a on ha passat, amb l'hora («Gina Jové Gil ha passat
-  de la 2a subdivisió (9:25) a la 3a (10:25)»), també en desar la inscripció.
+  de la 2a subdivisió (9:25) a la 3a (10:25)»), també en desar la inscripció o la fitxa.
 - **Aparells i ordre…**: l'ordre de les rotacions per a noies i nois, i els aparells que es fan «tots
   junts al final». Als nois, **＋ Afegeix la barra fixa** la posa com al model del Consell.
 - **Horari**: comença a les 8:30, amb 30 minuts d'escalfament general abans de cada subdivisió.
@@ -226,7 +228,8 @@ Amb el programa **NotesGim.exe** (un sol fitxer, no cal instal·lar res; porta l
    triada la primera on encara falten notes del seu aparell) i les gimnastes surten en l'ordre en què passen per
    l'aparell, com al full de rotacions: la rotació 1 (el grup que hi comença), la 2…, i la categoria canvia sola (a
    cada gimnasta hi diu la seva categoria i nivell). En acabar una subdivisió, «Passa a la 3a subdivisió». «Per
-   categoria» torna a la manera de sempre (un grup per categoria i nivell, per dorsal). **No cal internet**: n'hi ha
+   categoria» torna a la manera de sempre (un grup per categoria i nivell, per dorsal), al grup de la gimnasta que
+   puntuava i amb ella a la pantalla. **No cal internet**: n'hi ha
    prou amb una Wi-Fi qualsevol (la del pavelló, un router sense internet o la zona Wi-Fi d'un mòbil encara que no
    tingui dades).
 4. A l'ordinador les notes surten al moment amb fons groc (per revisar) i les classificacions

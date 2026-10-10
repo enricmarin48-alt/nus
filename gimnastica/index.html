@@ -5587,7 +5587,7 @@ function importDialog() {
         <td class="small nowrap">${h(p.name)} ${h(p.surname)} · ${p.genderUnknown ? `<span class="badge warn" title="«${h(p.genderRaw)}» no s’entén: es posa el gènere per defecte">${genderShort(p.gender)}?</span>` : genderShort(p.gender)} · ${p.category ? h(p.category) : '<span class="badge warn">sense categoria</span>'} · ${p.level ? h(p.level) : '<span class="badge warn">sense nivell</span>'}</td></tr>`; }).join('')}</tbody></table></div>
       ${ok.filter(p => p.genderUnknown).length ? `<div class="note warn">${plural(ok.filter(p => p.genderUnknown).length, 'fila té', 'files tenen')} un gènere que no s’entén (${h([...new Set(ok.filter(p => p.genderUnknown).map(p => p.genderRaw))].slice(0, 5).join(', '))}): es posarà «${genderShort(imp.defGender || 'F')}». Canvia «Gènere si no n’hi ha» o corregeix-ho a l’Excel.</div>` : ''}
       ${ok.filter(p => !p.category || !p.level).length ? `<div class="note warn">${plural(ok.filter(p => !p.category || !p.level).length, 'fitxa es guardaria', 'fitxes es guardarien')} sense categoria o sense nivell. Tria «Categoria / Nivell si no n’hi ha» a dalt, o afegeix una columna d’any de naixement.</div>` : ''}
-      <p class="small">${plural(ok.length, 'fitxa nova', 'fitxes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} s’ometran` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · categories noves: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · nivells nous: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
+      <p class="small">${plural(ok.length, 'fitxa nova', 'fitxes noves')} per importar${preview.length - ok.length ? ` · ${preview.length - ok.length} ${preview.length - ok.length === 1 ? 's’ometrà' : 's’ometran'}` : ''}${newClubs.length ? ` · ${plural(newClubs.length, 'entitat nova', 'entitats noves')}` : ''}${newCats.length ? ` · ${newCats.length === 1 ? 'categoria nova' : 'categories noves'}: ${h(newCats.join(', '))}` : ''}${newLevels.length ? ` · ${newLevels.length === 1 ? 'nivell nou' : 'nivells nous'}: ${h(newLevels.join(', '))}` : ''}${ok.some(p => p.team) ? ' · es crearan o ompliran els equips de la columna «Equip»' : ''}</p>` : ''}
     <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button>
       <button class="btn primary" data-act="impDo" ${ok.length ? '' : 'disabled'}>Importa ${ok.length || ''}</button></div>`;
 }
@@ -5765,9 +5765,9 @@ async function offlineStatus() {
     }
   } catch (_) {}
   const bf = await idbGet('abansServidor');
-  if (bf && bf.raw) out.push(`Hi ha guardades les dades que tenia aquesta finestra abans de ${h(new Date(bf.at).toLocaleString('ca'))} (les van substituir les del programa o d’una altra finestra). <button class="btn sm" data-act="dlBefore">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore">Esborra-les</button>`);
+  if (bf && bf.raw) out.push(`Hi ha guardades les dades que tenia aquesta finestra quan les van substituir les del programa o les d’una altra finestra (${h(new Date(bf.at).toLocaleString('ca'))}). <button class="btn sm" data-act="dlBefore">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore">Esborra-les</button>`);
   // (i les d'abans d'aquestes, si n'hi ha)
-  if (bf && Array.isArray(bf.prev)) bf.prev.forEach((c, k) => { if (c && c.raw) out.push(`També les de ${h(new Date(c.at).toLocaleString('ca'))}. <button class="btn sm" data-act="dlBefore" data-i="${k + 1}">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore" data-i="${k + 1}">Esborra-les</button>`); });
+  if (bf && Array.isArray(bf.prev)) bf.prev.forEach((c, k) => { if (c && c.raw) out.push(`També les d’abans (${h(new Date(c.at).toLocaleString('ca'))}). <button class="btn sm" data-act="dlBefore" data-i="${k + 1}">Descarrega-les</button> <button class="btn sm ghost" data-act="dropBefore" data-i="${k + 1}">Esborra-les</button>`); });
   if ($('#offstat') === el) el.innerHTML = out.join('<br>');
 }
 
@@ -7929,7 +7929,7 @@ const forms = {
     const nToday = onlyHere && enrolled && team ? teamSize(ec, team) : 0, nRec = !onlyHere && r.team ? r.team.memberIds.length : 0;
     const warn = onlyHere && team ? ` A la fitxa, l’equip es queda amb ${full.memberIds.length}.${nToday > ec.teamMax ? ` En aquesta competició en té ${nToday} que es presenten i el màxim és ${ec.teamMax}: no classificarà fins que en tregueu o en marqueu una com a no presentada.` : ''}`
       : nRec > max ? ` Compte: l’equip ${r.team.name} ara en té ${nRec} a la fitxa i el màxim és ${max}; on se’n presentin més de ${max}, no classificarà.` : '';
-    toast(`${name} ${vals.surname}: desat${team ? ` a l’equip ${team.name}${onlyHere ? ' (només en aquesta competició)' : ''}` : ''}${enrolled ? ` · inscripció feta (dorsal ${enrolled.bib})` : ''}.${warn}${dup ? ' Compte: ja n’hi havia una fitxa amb el mateix nom.' : ''}`, dup || nRec > max || nToday > (ec ? ec.teamMax : max) ? 'bad' : 'ok');
+    toast(`${name} ${vals.surname}: desat${team ? ` a l’equip ${team.name}${onlyHere ? ' (només en aquesta competició)' : ''}` : ''}${enrolled ? ` · inscripció feta (dorsal ${enrolled.bib})` : ''}.${warn}${dup ? ' Compte: ja hi havia una fitxa amb el mateix nom.' : ''}`, dup || nRec > max || nToday > (ec ? ec.teamMax : max) ? 'bad' : 'ok');
     // (si s'ha obert des de «Inscriu gimnastes», s'hi torna amb les que ja hi havia marcades)
     const back = !!f.dataset.back;
     if (submitter && submitter.name === 'again') openDialog(gymForm(null, ui.lastGym, { compId: f.dataset.comp || '', back, enroll: !f.dataset.comp || fd.get('enroll') === 'on' }));
@@ -9373,7 +9373,7 @@ function rotSubCard(c, v, sv, row, gw = 0) {
       return `<div class="rot-u ${u.fresh || u.derived ? 'fresh' : ''} ${n === 0 ? 'np-all' : ''}">
         <details><summary><span class="nm">${h(name)}</span><span class="muted small">${h(rotKeyLabel(u, sv))}</span> <span class="badge">${n}</span>${np ? ` <span class="muted small">${n ? `+${np} NP` : '(totes NP)'}</span>` : ''}${u.pinned ? ' <span title="Fixat a mà">📌</span>' : ''}${u.fresh || u.derived ? ' <span class="badge warn">NOU</span>' : ''}${u.split ? ' <span class="badge warn">⚠ repartit</span>' : ''}</summary>
           <div class="small rot-mem">${sortEntries(here).map(e => `${e.bib ? h(e.bib) + ' · ' : ''}${h(entryName(e))}${e.status === 'np' ? ' (NP)' : ''}`).join('<br>')}</div></details>
-        <div class="rot-ua"><select data-chg="rotMove" data-s="${sv.id}" data-e="${h(u.handle)}" aria-label="Grup de ${h(name)}" ${dis}>${mv}</select>
+        <div class="rot-ua"><select data-chg="rotMove" data-s="${sv.id}" data-e="${h(u.handle)}" aria-label="Grup ${deN(h(name))}" ${dis}>${mv}</select>
           ${u.pinned ? `<button class="btn sm ghost" data-act="rotPin" data-s="${sv.id}" data-e="${h(u.handle)}" title="Fixat a mà: «Reequilibra» no el mourà. Clica per deixar-lo lliure." aria-label="Deixa’l lliure" ${dis}>📌</button>` : ''}</div></div>`;
     }).join('');
     return `<div class="rot-col"><div class="rot-gh"><b>Grup ${G.g + 1}</b> ${sv.P ? `<label class="small">comença a <select data-chg="rotStart" data-s="${sv.id}" data-g="${G.g}" aria-label="Aparell on comença el Grup ${G.g + 1}" ${dis}>${opts}</select></label>` : ''}

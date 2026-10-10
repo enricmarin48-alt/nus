@@ -224,7 +224,7 @@
   .gsel-pick select{position:absolute;inset:0;width:100%;height:100%;min-height:0;opacity:0;cursor:pointer}
   .gsel-txt{display:flex;flex-direction:column;min-width:0;line-height:1.2}
   .gsel-txt b{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .gsel.wrap .gsel-txt b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}
+  .gsel.wrap .gsel-txt b{white-space:normal;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow-wrap:anywhere}
   .gsel-txt small{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .seg{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
   .pill .ok{color:var(--ok);font-weight:800}
@@ -1634,7 +1634,7 @@ const Engine = (() => {
     const inSub = new Map(allSubs.map(s => [s, []]));
     for (const e of entries) inSub.get(subOf.get(e)).push(e);
     const place = new Map(), subs = [], derivedUnits = [], moved = [];
-    let idxN = 0, derivedN = 0;
+    let idxN = 0, derivedN = 0, freshN = 0;
     for (const s of allSubs) {
       const g = sg(s), keys = present.filter(k => owner.get(k) === s);
       if (!keys.length) continue;
@@ -1683,9 +1683,10 @@ const Engine = (() => {
         u.derived = u.entries.filter(e => gOf.get(e).derived).length;
         u.handle = String(u.entries[0].id);
         if (u.derived) { derivedN += u.derived; derivedUnits.push(u); }
-        // (no és nova: tenia lloc en una altra subdivisió —se n'ha canviat el nivell o la categoria—, i s'ha de dir que hi ha
-        // passat; back: l'havia portada a mà a una subdivisió que ja no hi és, i torna a la seva)
-        for (const e of u.entries) { const a = atOf(e); if (gOf.get(e).derived && a && a.s !== s.id && (back.has(e) || subsIn.some(x => x.id === a.s))) moved.push({ e, from: a.s, to: s.id, back: back.has(e) }); }
+        // (no és nova: tenia lloc en una altra subdivisió —se n'ha canviat el nivell o la categoria, o la d'on era ja no hi és
+        // o ja no hi competeix ningú, p. ex. perquè s'han ajuntat dos nivells—, i s'ha de dir que hi ha passat; back: l'havia
+        // portada a mà a una subdivisió que ja no hi és, i torna a la seva. Només és nova la que no tenia cap lloc desat: fresh)
+        for (const e of u.entries) { const a = atOf(e); if (!gOf.get(e).derived) continue; if (!a) freshN++; else if (a.s !== s.id) moved.push({ e, from: a.s, to: s.id, back: back.has(e) }); }
         for (const e of u.entries) {
           const x = gOf.get(e), G2 = groups[x.g];
           G2.entries.push(e); if (e.status === 'np') G2.np++; else G2.n++;
@@ -1706,13 +1707,16 @@ const Engine = (() => {
       // compLabel: el que hi competeix de debò (per als fulls, l'horari, la pantalla i el mòbil de les tutores): les seves
       // categories i nivells que hi tenen alguna gimnasta que no és NP —si ella les ha portat totes a una altra, ja no hi
       // surten— i les que ella hi ha portat d'una altra: «BENJAMÍ A (i C.G. Lleida 2 · Benjamí B)». El nom que ella hi ha
-      // posat es queda
+      // posat es queda. Si no hi competeix cap de les seves, només les que ella hi ha portat: el nom de les seves categories i
+      // nivells, com el de qualsevol altra, i qui són entre parèntesis: «MASCULINA – ALEVÍ (FEDAC Lleida)»
       const hereK = keys.filter(k2 => units.some(u => !u.guest && u.key === k2 && u.n > 0));
-      const base = (typeof s.name === 'string' && s.name.trim()) || (hereK.length === keys.length ? label : hereK.length ? rotSubLabel(hereK, comp, L) : '');
+      const named = typeof s.name === 'string' && s.name.trim();
+      const base = named || (hereK.length === keys.length ? label : hereK.length ? rotSubLabel(hereK, comp, L) : '');
       const uShort = u => (u.team ? u.team.name : u.clubId ? (ctx.clubName || (() => ''))(u.clubId) : (ctx.name || (e => String(e.name ?? '')))(u.entries[0]));
-      const gu = [...new Set(units.filter(u => u.guest && u.n > 0).map(u => { const p = kParts(info, u.key); return `${uShort(u)} · ${catTx(p.category)} ${lvlTx(p.level)}`; }))];
-      const gTxt = joinI(gu.length > 2 ? gu.slice(0, 2).concat(`${gu.length - 2} més`) : gu);
-      const compLabel = gu.length ? (base ? `${base} (i ${gTxt})` : gTxt) : base || label;
+      const gIn = units.filter(u => u.guest && u.n > 0), few = l => joinI(l.length > 2 ? l.slice(0, 2).concat(`${l.length - 2} més`) : l);
+      const gu = [...new Set(gIn.map(u => { const p = kParts(info, u.key); return `${uShort(u)} · ${catTx(p.category)} ${lvlTx(p.level)}`; }))];
+      const compLabel = !gu.length ? base || label : base ? `${base} (i ${few(gu)})`
+        : `${rotSubLabel([...new Set(gIn.map(u => u.key))].sort(cmp), comp, L)} (${few([...new Set(gIn.map(uShort))])})`;
       const sizes = groups.map(x => x.n), maxN = Math.max(...sizes), minN = Math.min(...sizes);
       const K = new Set(units.filter(u => u.n > 0).map(u => u.key)).size;
       // (guestKeys: les categories i nivells de les convidades que no són de la subdivisió)
@@ -1774,7 +1778,9 @@ const Engine = (() => {
       const L2 = lastOf.get(k), H = subs.find(x => x.sub === owner.get(k));
       if (L2 && H && subs.indexOf(L2) > subs.indexOf(H)) late.push({ key: k, home: H.id, last: L2.id, units: L2.units.filter(u => u.key === k && u.guest && u.n > 0) });
     }
-    if (derivedN) issues.unshift({ t: 'derived', n: derivedN, units: derivedUnits, moved });
+    // (n: totes les que surten «on aniria»; fresh: les noves de debò; moved: les que tenien lloc en una altra subdivisió; la
+    // resta, les que eren en un grup que ja no hi és)
+    if (derivedN) issues.unshift({ t: 'derived', n: derivedN, units: derivedUnits, moved, fresh: freshN });
     for (const G of ['F', 'M']) if (entries.some(e => genderOf(e) === G) && !enabledApps(comp, G).length) issues.push({ t: 'noApps', g: G });
     const view = { subs, issues, place, late, sig: '', ord: '' };
     view.sig = rotSig(view);
@@ -9575,9 +9581,44 @@ function rotBalance(c, sv) {
   rotBalMemo.set(key, res);
   return res;
 }
+// les entitats que, pel seu límit d'entrenadores, fan que els grups de la subdivisió s (la d'ara, o la que es proposa) no
+// puguin ser més igualats (o més petits que el màxim): «Torna a fer els grups» —amb les mateixes fixades (📌)— sense el seu
+// límit els faria més igualats que amb el límit. inp: rotBalanceInput de la subdivisió d'ara (els mateixos trossos).
+// → [{ clubId, L, n, es }] (només les que són al seu límit a s: si n'hi ha més d'una, les que sense el seu sol límit ja es
+// podria; si cap sola, totes)
+function rotCoachBind(c, s, inp) {
+  const cand = s.clubs.filter(x => x.limit && x.groups >= x.limit);
+  if (!cand.length || s.k < 2) return [];
+  // (es desa quines entitats; qui són les seves gimnastes, de la subdivisió d'ara)
+  const key = JSON.stringify(['coach', inp.units, inp.opts.pins, s.k, cand, c.rot.coaches, c.rot.mode, c.rot.maxGroup]);
+  const of = ids => cand.filter(x => ids.includes(x.clubId)).map(x => { const es = s.units.filter(u => u.clubId === x.clubId).flatMap(u => u.entries).filter(e => e.status !== 'np'); return { clubId: x.clubId, L: x.limit, n: es.length, es }; });
+  if (rotBalMemo.has(key)) return of(rotBalMemo.get(key));
+  const sizesOf = a => range(s.k).map(g => inp.pieces.filter(x => (x.pin >= 0 ? x.pin : rotHas(a, x.id) ? a[x.id] : x.g) === g).reduce((t, x) => t + x.n, 0));
+  const part = coaches => sizesOf(Engine.rotPartition(inp.units, rotOpts(c, s, { pins: inp.opts.pins, coaches })).assign);
+  // (comparat amb el mateix càlcul amb tots els límits: així només hi compta el límit, i no res més que es podria fer diferent)
+  const b = part(c.rot.coaches || {}), mx = l => Math.max(...l), mn = l => Math.min(...l), N = b.reduce((t, n) => t + n, 0), mg = Math.max(1, (c.rot.maxGroup | 0) || 15);
+  const bal = l => l.reduce((t, n) => t + (s.k * n - N) * (s.k * n - N), 0), cap = l => l.reduce((t, n) => t + Math.max(0, n - mg), 0);
+  const better = coaches => { const l = part(coaches); return cap(l) < cap(b) || mx(l) < mx(b) || (mx(l) <= mx(b) && mn(l) >= mn(b) && bal(l) < bal(b)); };
+  const without = l => { const o = Object.assign({}, c.rot.coaches); for (const x of l) delete o[x.clubId]; return o; };
+  let out = [];
+  if (better(without(cand))) { out = cand.length === 1 ? cand : cand.filter(x => better(without([x]))); if (!out.length) out = cand; }
+  if (rotBalMemo.size > 300) rotBalMemo.clear();
+  rotBalMemo.set(key, out.map(x => x.clubId));
+  return of(out.map(x => x.clubId));
+}
+// «C.G. Lleida té 1 entrenadora i les seves 22 gimnastes van en un sol grup» (l: rotCoachBind)
+const rotCoachTxt = l => rotJoin(l.map(x => `${clubName(x.clubId)} té ${x.L === 1 ? '1 entrenadora' : x.L + ' entrenadores'} i ${mf(x.es, 'els seus', 'les seves')} ${x.n} gimnastes ${x.L === 1 ? 'van en un sol grup' : `no poden anar en més de ${x.L} grups`}`));
+// «Si no vols un grup tan gran, amb «Mou…» pots portar un equip o unes gimnastes de C.G. Lleida a una altra subdivisió.» (només si
+// n'hi ha una altra del mateix gènere on competeix algú)
+function rotCoachMoveTxt(v, sv, l) {
+  if (!l.length || !v.subs.some(o => o.id !== sv.id && o.g === sv.g && o.N)) return '';
+  const x = l[0], team = sv.units.some(u => u.clubId === x.clubId && u.team && u.n > 0);
+  return `Si no vols un grup tan gran, amb «Mou…» pots portar ${team ? 'un equip o ' : ''}${mf(x.es, 'uns', 'unes')} gimnastes ${deN(clubName(x.clubId))} a una altra subdivisió.`;
+}
 // quan «Reequilibra» no pot millorar res, per què (per als textos): 'pins' —el que ella ha fixat a mà (📌): sense, es podria
-// repartir més bé—, 'cat' —cada categoria i nivell al seu grup: barrejant-les, es podria— o '' (cap equip no es parteix i
-// les gimnastes d'una entitat van juntes: més igualats no poden ser)
+// repartir més bé—, 'coach' —el límit d'entrenadores d'una entitat: rotCoachBind—, 'cat' —cada categoria i nivell al seu
+// grup: barrejant-les, es podria— o '' (cap equip no es parteix i les gimnastes d'una entitat van juntes: més igualats no
+// poden ser)
 function rotBalLimit(c, sv) {
   const inp = rotBalanceInput(c, sv), now = {};
   for (const x of inp.pieces) now[x.id] = x.g;
@@ -9594,6 +9635,8 @@ function rotBalLimit(c, sv) {
   let lim = '';
   // (sense fixar res: cada unitat sencera, també les que ella ha portat d'una altra subdivisió, que s'hi queden)
   if (inp.pieces.some(p => p.n > 0 && p.pin >= 0) && better(rotPieces(sv, false), rotOpts(c, sv))) lim = 'pins';
+  // (les entrenadores són la regla 2, abans que cada categoria al seu grup)
+  else if (rotCoachBind(c, sv, inp).length) lim = 'coach';
   else if (c.rot.mode !== 'bal' && better(inp.pieces, rotOpts(c, sv, { pins: inp.opts.pins, mode: 'bal' }))) lim = 'cat';
   if (rotBalMemo.size > 300) rotBalMemo.clear();
   rotBalMemo.set(key, lim);
@@ -9879,6 +9922,9 @@ function rotWarnHtml(c, sv, bal, v) {
   else if (sw) {
     const lim = bal ? rotBalLimit(c, sv) : '', u = sw.unit && !sw.unit.split && !sw.unit.xs ? sw.unit : null;
     if (lim === 'pins') out.unshift(`<span class="chip">ℹ Més igualats no poden ser sense moure el que has fixat a mà (📌).</span>`);
+    // (el límit d'entrenadores que ella ha posat: qui, i, si un grup passa del màxim, què pot fer)
+    else if (lim === 'coach') { const l = rotCoachBind(c, sv, rotBalanceInput(c, sv)), mt = sv.warnings.some(w => w.t === 'over') ? rotCoachMoveTxt(v, sv, l) : '';
+      out.unshift(`<span class="chip">ℹ Més igualats no poden ser perquè ${h(rotCoachTxt(l))}.${mt ? ' ' + h(mt) : ''}</span>`); }
     else if (lim === 'cat' && sw.t === 'spreadKey') out.unshift(`<span class="chip">ℹ El Grup ${sw.g + 1} (${h(sw.label)}, ${sw.n}) és més gran perquè cada categoria i nivell va al seu grup.</span>`);
     else if (lim === 'cat') out.unshift(`<span class="chip">ℹ Més igualats no poden ser sense barrejar categories o nivells en un grup (cada categoria i nivell va al seu grup: es pot canviar a «Com es fan els grups…»).</span>`);
     else if (u && u.team) out.unshift(`<span class="chip">ℹ L’equip ${h(u.team.name)} (${sw.n}) no es pot partir.</span>`);
@@ -9940,18 +9986,23 @@ function rotBanners(c, v) {
   }
   for (const i of v.issues) {
     if (i.t === 'derived') {
-      // (les que tenien lloc en una altra subdivisió no són noves: es diu d'on a on han passat, amb l'hora)
-      const one = i.n === 1, when = rotWhenMap(c, v), svOf = id => v.subs.find(s => s.id === id);
-      const mv = i.moved.filter(x => !x.back).map(x => ({ e: x.e, a: svOf(x.from), b: svOf(x.to) })).filter(m => m.a && m.a.idx && m.b && m.b.idx), who = [];
+      // (només són noves les que no tenien cap lloc desat —fresh—. Les que en tenien en una altra subdivisió no ho són: es diu
+      // a on han passat, amb l'hora, i d'on, si la d'on venen encara hi és i hi competeix algú —si s'hi ha corregit el nivell
+      // o la categoria de l'única de Juvenil, o s'han ajuntat dos nivells, ja no—)
+      const one = i.n === 1, when = rotWhenMap(c, v), svOf = id => v.subs.find(s => s.id === id), who = [];
+      const mv = i.moved.filter(x => !x.back).map(x => ({ e: x.e, a: svOf(x.from), b: svOf(x.to) })).filter(m => m.b);
       // (les que ella havia portat a una subdivisió que ja no hi és: tornen a la seva)
-      const bk = i.moved.filter(x => x.back).map(x => ({ e: x.e, b: svOf(x.to) })).filter(m => m.b && m.b.idx), nNew = i.n - mv.length - bk.length;
+      const bk = i.moved.filter(x => x.back).map(x => ({ e: x.e, b: svOf(x.to) })).filter(m => m.b);
+      const nNew = Number.isInteger(i.fresh) ? i.fresh : i.n - i.moved.length, nGr = Math.max(0, i.n - nNew - i.moved.length);
       // (si tots són nois: «l’he posat», «surt marcat», «deixa’l»; «els he posat»…)
-      const boys = [...v.place].every(([e, p]) => !p.derived || genderOf(e) === 'M'), more = mv.length - 5;
+      const boys = [...v.place].every(([e, p]) => !p.derived || genderOf(e) === 'M');
       if (nNew) who.push(`<b>${plural(nNew, boys ? 'gimnasta nou' : 'gimnasta nova', boys ? 'gimnastes nous' : 'gimnastes noves')}</b> des que vas fer les rotacions`);
       // (sense l'hora de la d'on ve: ara pot ser una altra —p. ex., la d'on ha sortit dura menys—, i ella no hi ha competit mai)
-      if (mv.length) who.push(rotJoin(mv.slice(0, 5).map(m => h(rotMovedTxt(entryName(m.e), m.a, m.b, null, when))).concat(more > 0 ? [`${more} més ${more === 1 ? 'ha' : 'han'} canviat de subdivisió`] : [])));
-      if (bk.length) { const nm = bk.slice(0, 5).map(m => entryName(m.e)).concat(bk.length > 5 ? [`${bk.length - 5} més`] : []), b1 = new Set(bk.map(m => m.b)).size === 1;
+      if (mv.length) who.push(h(rotMovedList(mv, when).join('; ')));
+      if (bk.length) { const nm = bk.slice(0, 5).map(m => entryName(m.e)).concat(bk.length > 5 ? [`${bk.length - 5} més`] : []), b1 = new Set(bk.map(m => m.b)).size === 1 && bk[0].b.idx;
         who.push(`${h(rotJoin(nm))} ${bk.length === 1 ? 'ha tornat' : 'han tornat'} a la seva subdivisió${b1 ? ` (la ${bk[0].b.idx}a)` : ''}, perquè la que havies triat ja no hi és`); }
+      // (i les que eren en un grup que ja no hi és, a la mateixa subdivisió)
+      if (nGr) who.push(`${plural(nGr, 'gimnasta', 'gimnastes')} ${nGr === 1 ? 'era' : 'eren'} en un grup que ja no hi és`);
       out.push(`<div class="note warn">${who.join(', i ')}: ${one ? (boys ? 'l’he posat' : 'l’he posada') : boys ? 'els he posat' : 'les he posades'} amb el seu equip o la seva entitat, o al grup amb menys gimnastes (${one ? (boys ? 'surt marcat' : 'surt marcada') : boys ? 'surten marcats' : 'surten marcades'} <span class="badge warn">NOU</span>).
       <div class="toolbar" style="margin:6px 0 0"><button class="btn sm primary" data-act="rotAccept" ${dis}>D’acord, ${one ? (boys ? 'deixa’l' : 'deixa-la') : boys ? 'deixa’ls' : 'deixa-les'} així</button>${i.units.length ? `<button class="btn sm" data-act="rotBalance" data-s="${h(v.subs.find(s => s.units.includes(i.units[0])).id)}" ${dis}>↻ Reequilibra…</button>` : ''}</div></div>`);
     }
@@ -9997,10 +10048,26 @@ const rotAwardsAlone = sv => !!sv && sv.N > 0 && !sv.awardKeys.length && Number.
 // a quina hora comença cada subdivisió (id → la fila «Competició» de l'horari)
 const rotWhenMap = (c, v) => { const m = new Map(); for (const b of Engine.rotSchedule(v, c.rot).blocks) for (const r of b.rows) if (r.kind === 'comp') m.set(r.subId, r); return m; };
 // «Gina Jové Gil ha passat de la 2a subdivisió (9:25) a la 3a (10:25)» (wa / wb: les hores d'abans i les d'ara; sense wa,
-// sense l'hora de la d'abans)
-function rotMovedTxt(name, a, b, wa, wb) {
-  const at = (sv, w) => { const r = w && w.get(sv.id); return r ? ` (${Engine.rotHM(r.from)})` : ''; };
-  return `${name} ha passat de la ${a.idx}a subdivisió${at(a, wa)} a la ${b.idx}a${at(b, wb)}`;
+// sense l'hora de la d'abans). Si la d'on ve ja no hi és, o ja no hi competeix ningú, només a on: «Aina Mas Puig ha passat a la
+// 6a subdivisió (13:35)» (pl: name és més d'una, «han passat»)
+function rotMovedTxt(name, a, b, wa, wb, pl = false) {
+  const at = (sv, w) => { const r = w && w.get(sv.id); return r ? ` (${Engine.rotHM(r.from)})` : ''; }, verb = pl ? 'han passat' : 'ha passat';
+  if (!a || !a.idx) return `${name} ${verb} a la ${rotSubNm(b)}${at(b, wb)}`;
+  return `${name} ${verb} de la ${a.idx}a subdivisió${at(a, wa)} a la ${b.idx ? b.idx + 'a' : rotSubNm(b)}${at(b, wb)}`;
+}
+// per al rètol de la pestanya, les que han canviat de subdivisió (mv: [{ e, a (la d'on venen, si encara hi és), b }]), les que
+// han fet el mateix camí juntes: «Gina Jové Gil, Laia Puig Mas i 27 més han passat a la 2a subdivisió (9:25)» (com a molt 3
+// camins; la resta, «i 4 més han canviat de subdivisió»)
+function rotMovedList(mv, when) {
+  const by = new Map();
+  for (const m of mv) { const k = (m.a && m.a.idx ? m.a.id : '') + '>' + m.b.id; if (!by.has(k)) by.set(k, []); by.get(k).push(m); }
+  const G = [...by.values()], rest = G.slice(3).reduce((t, l) => t + l.length, 0);
+  const out = G.slice(0, 3).map(l => {
+    const names = l.map(m => entryName(m.e)), nm = rotJoin(names.length > 5 ? names.slice(0, 5).concat(`${names.length - 5} més`) : names);
+    return rotMovedTxt(nm, l[0].a, l[0].b, null, when, l.length > 1);
+  });
+  if (rest) out.push(`${rest} més ${rest === 1 ? 'ha' : 'han'} canviat de subdivisió`);
+  return out;
 }
 // a quina subdivisió competeix una gimnasta (amb les hores de l'horari), si hi ha rotacions fetes
 function rotWhereOf(c, e) {
@@ -10075,7 +10142,7 @@ function rotGrupsTab(c, v) {
       ${menu((phone ? `<button class="btn" data-act="rotCoachDlg" ${dis}>Entrenadores…</button>` : '') + more)}</div>
     ${rotBanners(c, v)}
     <p class="small muted">${plural(v.subs.filter(s => s.N).length, 'subdivisió', 'subdivisions')} · ${plural(N, 'gimnasta', 'gimnastes')}${NP ? ` (+${NP} NP)` : ''}${sched.start !== null ? ` · ${deN(Engine.rotHM(sched.start))} a ${Engine.rotHM(sched.end)}` : ''}</p>
-    ${phone && v.subs.length > 1 ? groupPicker({ groups: v.subs.map(s => ({ key: s.id, label: `${s.idx ? s.idx + 'a' : 'Sense gimnastes'} · ${s.compLabel || s.label}` })), cur: ui.rotSub, act: 'rotSubPick', label: g => g.label }) : ''}
+    ${phone && v.subs.length > 1 ? groupPicker({ groups: v.subs.map(s => ({ key: s.id, label: `${s.idx ? s.idx + 'a' : 'Sense gimnastes'} · ${s.compLabel || s.label}` })), cur: ui.rotSub, act: 'rotSubPick', label: g => g.label, wrap: true }) : ''}
     ${subs.map(sv => rotSubCard(c, v, sv, when, gw)).join('')}
     <details class="card small"><summary><b>Com es fan les subdivisions i els grups?</b></summary>
       <p>Cada categoria va a la seva subdivisió: només van juntes les que ajuntes tu a «Quines categories van juntes…» (i els nois, tots junts, si no ho treus). Una categoria massa gran es parteix per nivells. Cada subdivisió competeix sola: el seu escalfament, les seves rotacions i els seus premis.</p><ol class="steps">
@@ -10433,14 +10500,23 @@ async function rotPrintPrep(c, what) {
   // les que encara no s'han revisat, cada una un sol cop: les posades per les regles (com al rètol de les noves) i les
   // de les categories que no eren a cap subdivisió
   const orphan = new Set(v.issues.filter(i => i.t === 'orphanNew' || i.t === 'orphanJoined').map(i => i.key));
-  // (i les que no són noves però han canviat de subdivisió, p. ex. perquè se n'ha corregit el nivell)
-  const mv = new Set(((v.issues.find(i => i.t === 'derived') || {}).moved || []).map(x => x.e));
-  let fresh = 0, moved = 0, boys = 0;
-  for (const [e, p] of v.place) if (p.derived || (orphan.has(groupKeyOf(e)) && e.status !== 'np')) { fresh++; if (mv.has(e)) moved++; if (genderOf(e) === 'M') boys++; }
+  // (i les que no són noves però han canviat de subdivisió, p. ex. perquè se n'ha corregit el nivell, o la d'on eren ja no
+  // hi és. Només són noves les que no tenien cap lloc desat; les altres que tenien lloc: en un grup que ja no hi és, o d'una
+  // categoria o un nivell que no era a cap subdivisió)
+  const mv = new Set(((v.issues.find(i => i.t === 'derived') || {}).moved || []).map(x => x.e)), at = c.rot.at || {};
+  let fresh = 0, nNew = 0, moved = 0, nGr = 0, nCat = 0, boys = 0;
+  for (const [e, p] of v.place) if (p.derived || (orphan.has(groupKeyOf(e)) && e.status !== 'np')) {
+    fresh++; if (genderOf(e) === 'M') boys++;
+    if (mv.has(e)) moved++; else if (!rotHas(at, e.id)) nNew++; else if (p.derived) nGr++; else nCat++;
+  }
   // (si tots són nois: «l’has revisat», «els he posat»…)
-  const one = fresh === 1, nw = fresh - moved, boy = boys === fresh, M = (m, f) => (boy ? m : f);
-  const who = !moved ? plural(fresh, M('gimnasta nou', 'gimnasta nova') + ' que encara no has revisat', M('gimnastes nous', 'gimnastes noves') + ' que encara no has revisat')
-    : `${nw ? `${plural(nw, M('gimnasta nou', 'gimnasta nova'), M('gimnastes nous', 'gimnastes noves'))} i ${moved === 1 ? '1 que ha canviat' : moved + ' que han canviat'}` : plural(moved, 'gimnasta que ha canviat', 'gimnastes que han canviat')} de subdivisió, i encara no ${one ? M('l’has revisat', 'l’has revisada') : M('els has revisat', 'les has revisades')}`;
+  const one = fresh === 1, boy = boys === fresh, M = (m, f) => (boy ? m : f), P = [];
+  const that = (n, txt) => `${P.length ? n : plural(n, 'gimnasta', 'gimnastes')} que ${n === 1 ? 'ha' : 'han'} ${txt}`;
+  if (nNew) P.push(plural(nNew, M('gimnasta nou', 'gimnasta nova'), M('gimnastes nous', 'gimnastes noves')));
+  if (moved) P.push(that(moved, 'canviat de subdivisió'));
+  if (nGr) P.push(that(nGr, 'canviat de grup'));
+  if (nCat) P.push(`${P.length ? nCat : plural(nCat, 'gimnasta', 'gimnastes')} d’una categoria o un nivell que no era a cap subdivisió`);
+  const who = P.length === 1 && nNew ? `${P[0]} que encara no has revisat` : `${rotJoin(P)}, i encara no ${one ? M('l’has revisat', 'l’has revisada') : M('els has revisat', 'les has revisades')}`;
   if (fresh && !(await confirmBox(`Hi ha ${who} (${one ? M('surt on l’he posat', 'surt on l’he posada') : M('surten on els he posat', 'surten on les he posades')}). Imprimeixo així les rotacions?`, { ok: 'Imprimeix' }))) return null;
   const w = [];
   for (const sv of v.subs) for (const x of sv.warnings) {
@@ -10534,19 +10610,30 @@ const rotMvStay = (u, es, sv, to) => (to === sv.id ? u.entries.filter(e => !es.i
 // no en té, i les de després canvien); sense les entrenadores ni els grups massa grans, que ja surten a la targeta
 function rotMvSays(c, v0, v1, u, es, sv, to, done = false) {
   const V = done ? v1 : v0, out = [], one = es.length === 1, nm = (id, short) => rotSubNm(V.subs.find(s => s.id === id), short);
-  if (to !== sv.id) {
+  // (les que es mouen poden venir de més d'una subdivisió —«Ajunta-les aquí» d'un equip repartit en tres—: l'hora d'abans i
+  // si s'hi queda sense gimnastes, de cadascuna; per ordre del dia)
+  const srcOf = e => { const p = v0.place.get(e); return p ? p.subId : sv.id; };
+  const srcs = v0.subs.filter(s => s.id !== to && es.some(e => srcOf(e) === s.id));
+  if (srcs.length) {
     if (u.guest && to === u.home) out.push(`${done ? (one ? 'Ha tornat' : 'Han tornat') : one ? 'Torna' : 'Tornen'} a la seva subdivisió.`);
     // (a l'hora d'arribada, la subdivisió on va pot començar abans o després que ara —p. ex. si la d'on surt es queda
     // sense gimnastes—: al diàleg, es diu, perquè a la llista hi surt l'hora d'ara)
-    const w0 = rotWhenMap(c, v0).get(sv.id), w1 = rotWhenMap(c, v1).get(to), wn = rotWhenMap(c, v0).get(to);
+    const W0 = rotWhenMap(c, v0), w1 = rotWhenMap(c, v1).get(to), wn = W0.get(to);
     const moves = wn && w1 && wn.from !== w1.from ? `, que ara comença a ${rotAtHM(wn.from)}` : '';
-    // (si totes les que es mouen són NP, no competeixen enlloc: no es diu cap hora)
+    // (l'hora d'ara de cada subdivisió d'on en surt alguna que competeix: si totes les que es mouen són NP, no competeixen
+    // enlloc, i no es diu cap hora)
+    const w0 = srcs.filter(s => es.some(e => e.status !== 'np' && srcOf(e) === s.id)).map(s => ({ id: s.id, r: W0.get(s.id) })).filter(x => x.r);
     if (es.every(e => e.status === 'np')) out.push(one ? 'És NP: no competeix.' : 'Són NP: no competeixen.');
-    else if (w0 && w1) out.push(done ? (w0.from === w1.from ? `${one ? 'Continua' : 'Continuen'} competint a ${rotAtHM(w1.from)}.` : `${one ? 'Competeix' : 'Competeixen'} a ${rotAtHM(w1.from)} (abans, a ${rotAtHM(w0.from)}).`)
-      : w0.from === w1.from ? `${one ? 'Continuarà' : 'Continuaran'} competint a ${rotAtHM(w1.from)} (${nm(to)}${moves}).`
-      : `${one ? 'Passa' : 'Passen'} de ${rotAtHM(w0.from)} (${nm(sv.id)}) a ${rotAtHM(w1.from)} (${nm(to, true)}${moves}).`);
-    const s1 = v1.subs.find(s => s.id === sv.id);
-    if (sv.N > 0 && (!s1 || !s1.N)) out.push(done ? `La subdivisió ${deN(sv.label)} s’ha quedat sense gimnastes.` : `La ${nm(sv.id)} es quedarà sense gimnastes.`);
+    else if (w0.length && w1) {
+      const same = w0.every(x => x.r.from === w1.from), ts = [...new Set(w0.map(x => x.r.from))].sort((a, b) => a - b);
+      out.push(done ? (same ? `${one ? 'Continua' : 'Continuen'} competint a ${rotAtHM(w1.from)}.` : `${one ? 'Competeix' : 'Competeixen'} a ${rotAtHM(w1.from)} (abans, ${rotJoin(ts.map(t => 'a ' + rotAtHM(t)))}).`)
+        : same ? `${one ? 'Continuarà' : 'Continuaran'} competint a ${rotAtHM(w1.from)} (${nm(to)}${moves}).`
+        : `${one ? 'Passa' : 'Passen'} ${rotJoin(w0.map((x, i) => `de ${rotAtHM(x.r.from)} (${nm(x.id, i > 0)})`))} a ${rotAtHM(w1.from)} (${nm(to, true)}${moves}).`);
+    }
+    const empty = srcs.filter(s => s.N > 0 && !(v1.subs.find(x => x.id === s.id) || { N: 0 }).N);
+    if (empty.length === 1) out.push(done ? `La subdivisió ${deN(empty[0].label)} s’ha quedat sense gimnastes.` : `La ${nm(empty[0].id)} es quedarà sense gimnastes.`);
+    else if (empty.length) out.push(done ? `Les subdivisions ${rotJoin(empty.map(s => deN(s.label)))} s’han quedat sense gimnastes.`
+      : `${rotJoin(empty.map((s, i) => `${i ? 'la' : 'La'} ${nm(s.id)}`))} es quedaran sense gimnastes.`);
   }
   // l'equip (o les individuals d'una entitat): repartit en més d'un grup o subdivisió, o tornarà a estar junt
   const parts = v => { const m = new Map(); v.subs.forEach((s2, i) => { for (const x of s2.units) if (x.id === u.id) for (const e of x.entries) { const g = v.place.get(e).g, k = i * 100 + g; if (!m.has(k)) m.set(k, { id: s2.id, g, n: 0, es: [] }); m.get(k).n++; m.get(k).es.push(e); } });
@@ -10575,6 +10662,32 @@ function rotMvSays(c, v0, v1, u, es, sv, to, done = false) {
   // (i una subdivisió que es queda sense premis però on ella hi ha posat minuts de premis: a l'horari hi sortiria «PREMIS» sol)
   for (const s2 of v1.subs) { const s0 = v0.subs.find(x => x.id === s2.id);
     if (s0 && s0.awardKeys.length && rotAwardsAlone(s2)) out.push(`La ${nm(s2.id)} ja no ${done ? 'dona' : 'donarà'} cap premi, però hi has posat ${s2.awards}′ de premis: si no calen, esborra’n els minuts a Horari.`); }
+  return out;
+}
+// com quedarien les rotacions si s'apliqués a la subdivisió sv el repartiment assign (tros → grup; pieces: rotPieces) de
+// «Reequilibra» (no es desa res)
+function rotBalSim(c, sv, assign, pieces) {
+  const r = JSON.parse(JSON.stringify(c.rot)), cc = Object.assign({}, c, { rot: r });
+  rotSave(r, Engine.rotView(c, S(), rotCtx()), id => id);
+  rotWrite(cc, sv, assign, pieces);
+  return Engine.rotView(cc, S(), rotCtx());
+}
+// el que costa el que proposa «Reequilibra» (r: rotBalance) a la subdivisió sv (v: les rotacions d'ara): els grups que passaran
+// del màxim (o en tindran més que ara), per què si és pel límit d'entrenadores d'una entitat, i quant durarà la subdivisió i
+// a quina hora s'acabarà el dia, si canvia. Frases curtes
+function rotBalSays(c, v, sv, r) {
+  const v1 = rotBalSim(c, sv, r.assign, r.inp.pieces), s1 = v1.subs.find(s => s.id === sv.id), out = [];
+  if (!s1) return out;
+  const over = s1.warnings.filter(w => w.t === 'over' && !sv.warnings.some(x => x.t === 'over' && x.g === w.g && x.n >= w.n));
+  const cb = over.length ? rotCoachBind(c, s1, r.inp) : [];
+  over.forEach((w, i) => out.push(`El Grup ${w.g + 1} tindrà ${w.n} gimnastes (el màxim és ${w.max})${i === 0 && cb.length ? `, perquè ${rotCoachTxt(cb)}` : ''}.`));
+  const w0 = rotWhenMap(c, v).get(sv.id), w1 = rotWhenMap(c, v1).get(sv.id), HM = Engine.rotHM;
+  if (w0 && w1 && w1.to - w1.from !== w0.to - w0.from) {
+    const d = (w1.to - w1.from) - (w0.to - w0.from), e0 = Engine.rotSchedule(v, c.rot).end, e1 = Engine.rotSchedule(v1, c.rot).end;
+    out.push(`La ${sv.idx}a subdivisió durarà ${Math.abs(d)}′ ${d > 0 ? 'més' : 'menys'} (${HM(w1.from)} – ${HM(w1.to)}; ara, ${HM(w0.from)} – ${HM(w0.to)})${e0 !== null && e1 !== null && e0 !== e1 ? `, i el dia s’acabarà a ${rotAtHM(e1)} (ara, a ${rotAtHM(e0)})` : ''}.`);
+  }
+  const mt = cb.length ? rotCoachMoveTxt(v, sv, cb) : '';
+  if (mt) out.push(mt);
   return out;
 }
 // el diàleg «Mou…». ui.rotMv: { compId, s (la subdivisió), e (la unitat: una de les seves inscripcions), ids (les
@@ -10707,12 +10820,17 @@ Object.assign(actions, {
   },
   rotRename: async el => {
     const c = curComp(); if (!rotGuard(c)) return;
-    const s0 = c.rot.subs.find(s => s.id === el.dataset.s), sv0 = rotViewOf(c).subs.find(s => s.id === el.dataset.s);
+    const s0 = c.rot.subs.find(s => s.id === el.dataset.s);
     const v = await promptBox('Nom que surt als fulls (deixa-ho buit perquè es posi sol):', s0 ? s0.name : '');
     if (v === null) return;
-    withUndo(v ? `Ara es diu «${v.slice(0, 120)}».` : `Ara es diu «${sv0 ? sv0.autoLabel : ''}».`, () => {
+    // (l'avís diu el nom tal com surt a la pantalla, als fulls i a l'horari —amb les que ella hi ha portat d'una altra
+    // subdivisió, i sense les categories que ja no hi competeixen—)
+    let said = '';
+    withUndo(() => `Ara es diu «${said}».`, () => {
       const cc = compById(c.id), { sv } = rotFresh(cc, el.dataset.s);
-      if (sv) sv.sub.name = v.slice(0, 120);
+      if (sv) sv.sub.name = v.trim().slice(0, 120);
+      const s1 = sv && rotViewOf(cc).subs.find(s => s.id === sv.id);
+      said = s1 ? s1.compLabel || s1.label : v.trim().slice(0, 120);
     });
   },
   rotSetK: async el => {
@@ -10812,7 +10930,7 @@ Object.assign(actions, {
     const c = curComp(); if (!rotGuard(c) || !rotStill(c, el)) return;
     const v = rotViewOf(c), sv = v.subs.find(s => s.id === el.dataset.s), u = sv.units.find(x => x.entries.some(e => e.id === el.dataset.e));
     if (!u || !u.xs) return;
-    // (des de la primera de les altres: el que es diu de l'hora i de «torna a la seva», d'aquella)
+    // (from: la primera de les altres; el que es diu de l'hora d'abans i de les que es queden sense gimnastes, de cadascuna: rotMvSays)
     // (l'avís diu qui es mou —les de les altres subdivisions—, no les que ja hi eren: tot l'equip, o una o unes gimnastes)
     const from = v.subs.find(s => s.id === u.xs[0].subId), uf = from.units.find(x => x.id === u.id), es = u.xs.flatMap(x => x.entries);
     rotFocusUnit(el, sv.id, u.handle);
@@ -10845,14 +10963,18 @@ Object.assign(actions, {
     // ha fixat a mà)
     const cw = sv.warnings.find(w => w.t === 'coach');
     if (!r.useful && cw) { toast(`No es pot complir el límit d’entrenadores ${deN(clubName(cw.clubId))} sense moure el que has fixat a mà (📌): treu-ne el 📌 o mou-ho tu.`, 'bad'); return; }
-    if (!r.useful) { const lim = rotBalLimit(c, sv); toast(lim === 'pins' ? 'Ja està tan equilibrada com es pot sense moure el que has fixat a mà (📌).' : lim === 'cat' ? 'Ja està tan equilibrada com es pot amb cada categoria i nivell al seu grup.' : 'Ja està tan equilibrada com es pot sense separar equips o les gimnastes d’una entitat.'); return; }
+    if (!r.useful) { const lim = rotBalLimit(c, sv); toast(lim === 'pins' ? 'Ja està tan equilibrada com es pot sense moure el que has fixat a mà (📌).' : lim === 'coach' ? `Ja està tan equilibrada com es pot: ${rotCoachTxt(rotCoachBind(c, sv, rotBalanceInput(c, sv)))}.` : lim === 'cat' ? 'Ja està tan equilibrada com es pot amb cada categoria i nivell al seu grup.' : 'Ja està tan equilibrada com es pot sense separar equips o les gimnastes d’una entitat.'); return; }
     // (amb la categoria i el nivell, si n'hi ha més d'un: «C.G. Lleida 2 · Benjamí B (4)»)
     const lines = r.moves.map(({ p, to }) => { const nm = h(rotUnitName(p.u) + rotKeyLabel(p.u, sv)); return p.split ? `${nm} (${p.n}): s’ajunta al Grup ${to + 1}` : p.u.fresh ? `${nm} (${p.n}, nou): al Grup ${to + 1}` : `${nm} (${p.n}): del Grup ${p.g + 1} al Grup ${to + 1}`; });
     const bad = r.cost.coach > 0 ? sv.clubs.filter(x => x.limit).map(x => clubName(x.clubId)) : [];
+    // (el que costa, com a «Mou…»: els grups que passaran del màxim —i, si és pel límit d'entrenadores, per què i què pot fer—
+    // i quant durarà la subdivisió, i a quina hora s'acabarà el dia)
+    const says = rotBalSays(c, v, sv, r);
     ui.rotBal = { compId: c.id, subId: sv.id, sig: v.sig, assign: r.assign };
     openDialog(`<form data-form="rotBalance"><h2>Reequilibra la ${sv.idx}a subdivisió</h2>
       <p>Es mouran:</p><ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>
       <p>Abans: <b>${sv.sizes.join(' · ')}</b> → Després: <b>${after.join(' · ')}</b></p>
+      ${says.length ? `<div class="note${says.some(x => x.startsWith('El Grup ')) ? ' warn' : ''}" id="rotBalWhat">${says.map(x => `<div>${h(x)}</div>`).join('')}</div>` : ''}
       ${bad.length ? `<div class="note bad">No es pot complir el límit d’entrenadores ${deN(h(rotJoin(bad)))} sense moure equips fixats (📌): treu-ne el 📌 o mou-los tu.</div>` : ''}
       <p class="small muted">Els equips que has mogut a mà (📌) no es mouen.</p>
       <div class="dlg-actions"><button type="button" class="btn" data-act="closeDlg">Cancel·la</button><button class="btn primary">Aplica</button></div></form>`);
@@ -11042,8 +11164,12 @@ Object.assign(forms, {
     withUndo(() => {
       const bad = []; for (const sv of rotViewOf(compById(c.id)).subs) for (const w of sv.warnings) if (w.t === 'coach') bad.push({ sv, w });
       if (!bad.length) return 'Entrenadores desades.';
-      const b = bad[0];
-      return { msg: `${clubName(b.w.clubId)} surt en ${b.w.q} grups a la ${b.sv.idx}a subdivisió.`, type: 'bad', actions: [{ label: rotJoinLbl(b.sv, b.w.clubId), fn: () => actions.rotBalance({ dataset: { s: b.sv.id } }) }] };
+      // (el botó, per a la primera; i si passa del límit en més subdivisions, també es diu: «També passa del seu límit
+      // d’entrenadores a la 5a i a la 6a.», i d'una altra entitat, amb el seu nom)
+      const b = bad[0], by = new Map();
+      for (const x of bad.slice(1)) { if (!by.has(x.w.clubId)) by.set(x.w.clubId, []); by.get(x.w.clubId).push(x.sv.idx); }
+      const more = [...by].map(([id, l]) => ` ${id === b.w.clubId ? 'També passa' : `${clubName(id)} també passa`} del seu límit d’entrenadores ${rotJoin([...new Set(l)].map(i => `a la ${i}a`))}.`).join('');
+      return { msg: `${clubName(b.w.clubId)} surt en ${b.w.q} grups a la ${b.sv.idx}a subdivisió.${more}`, type: 'bad', actions: [{ label: rotJoinLbl(b.sv, b.w.clubId), fn: () => actions.rotBalance({ dataset: { s: b.sv.id } }) }] };
     }, () => { compById(c.id).rot.coaches = co; });
   },
   rotApps: f => {
@@ -11184,11 +11310,12 @@ Object.assign(forms, {
         // (sense desfer el que ella ha fixat a mà: vegeu rotKeepK)
         const kk = [];
         for (const sv of rotViewOf(cc).subs) if (changed.has(sv.id) && !sv.sub.kSet) { const r = rotKeepK(sv, Engine.rotDefaultK(sv.A, sv.U, sv.N, mg)); sv.sub.k = r.k; if (r.units.length) kk.push({ sv, r }); }
+        // (com «Torna a fer els grups d'aquesta subdivisió» —amb el que ella ha fixat a mà, on és—: els mateixos grups, amb els
+        // mateixos números, que «Fes les rotacions» amb aquestes categories juntes, i que tornar-los a fer sense canviar res)
         const redone = [];
         for (const sv of rotViewOf(cc).subs) {
           if (!changed.has(sv.id)) continue;
-          const ps = rotPieces(sv);
-          rotWrite(cc, sv, Engine.rotPartition(rotPieceIn(ps), rotOpts(cc, sv, rotPinsOf(ps, true))).assign, ps);
+          rotRedoSub(cc, sv, true);
           redone.push(sv.id);
         }
         rotMaterialize(cc);

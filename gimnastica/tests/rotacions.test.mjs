@@ -1164,3 +1164,65 @@ test('per què un grup és més gran: si és tota una categoria i nivell però �
     assert.equal(x.unit, us.length === 1 ? us[0] : null);
   }
 });
+
+// ─── moure-ho tot, cinquena revisió
+test('una gimnasta que ja tenia lloc no és mai «nova» (fresh): l’única de Juvenil passa a Cadet (la seva subdivisió ja no hi és, o hi queda una NP), o s’ajunten dos nivells', () => {
+  // (a) Juvenil, sola en la seva subdivisió: se li corregeix la categoria a Cadet
+  const c = fixture(); make(c, RULES({ joins: [] }));
+  let v = E.rotView(c, settings, CTX);
+  const e = c.entries.find(x => x.category === 'Juvenil'), from = v.place.get(e).subId;
+  assert.equal(v.subs.find(s => s.id === from).label, 'JUVENIL');
+  e.category = 'Cadet';
+  v = E.rotView(c, settings, CTX);
+  let d = v.issues.find(i => i.t === 'derived');
+  assert.ok(!v.subs.some(s => s.id === from), 'la de Juvenil ja no surt');
+  assert.deepEqual(plain([d.n, d.fresh, d.moved.map(m => [m.e.id, m.from, m.to, m.back])]), [1, 0, [[e.id, from, v.place.get(e).subId, false]]]);
+  assert.equal(v.subs.find(s => s.id === v.place.get(e).subId).label, 'CADET A i B');
+  // (b) si a Juvenil hi queda una NP, la subdivisió hi és però sense ningú que hi competeixi: tampoc no és nova
+  c.entries.push({ ...e, id: 'enp', gymnastId: 'gnp', category: 'Juvenil', status: 'np', bib: 990 });
+  c.rot.at.enp = { s: from, g: 0 };
+  v = E.rotView(c, settings, CTX); d = v.issues.find(i => i.t === 'derived');
+  assert.equal(v.subs.find(s => s.id === from).idx, 0);
+  assert.deepEqual(plain([d.n, d.fresh, d.moved.map(m => [m.e.id, m.from])]), [1, 0, [[e.id, from]]]);
+  // (c) una de nova de debò sí que ho és
+  c.entries.push({ ...e, id: 'enova', gymnastId: 'gnova', category: 'Cadet', status: '', bib: 991 });
+  d = E.rotView(c, settings, CTX).issues.find(i => i.t === 'derived');
+  assert.deepEqual(plain([d.n, d.fresh, d.moved.map(m => m.e.id)]), [2, 1, [e.id]]);
+  // (d) s'ajunten els nivells A i B de Benjamí (a l'app, «B» → «A» a Configuració → Nivells: la subdivisió de BENJAMÍ B ja no
+  // hi és): les 29 de B han canviat de subdivisió, cap no és nova
+  const c2 = fixture(); make(c2, RULES({ joins: [] }));
+  const v0 = E.rotView(c2, settings, CTX), sA = v0.subs.find(s => s.label === 'BENJAMÍ A').id, sB = v0.subs.find(s => s.label === 'BENJAMÍ B').id;
+  const bs = c2.entries.filter(x => x.category === 'Benjamí' && x.level === 'B' && x.gender === 'F');
+  for (const x of bs) x.level = 'A';
+  for (const t of c2.teams) if (t.category === 'Benjamí' && t.level === 'B') t.level = 'A';
+  c2.rot.subs = c2.rot.subs.filter(s => s.id !== sB);
+  v = E.rotView(c2, settings, CTX); d = v.issues.find(i => i.t === 'derived');
+  assert.deepEqual(plain([bs.length, d.n, d.fresh, d.moved.length]), [29, 29, 0, 29]);
+  assert.ok(d.moved.every(m => m.from === sB && m.to === sA && !m.back));
+});
+
+test('una subdivisió on només hi competeixen les que ella hi ha portat d’una altra es diu com les altres: les seves categories i nivells, i qui són, entre parèntesis', () => {
+  // els nois, cada categoria en la seva: els 2 de Prebenjamí van a la d'Aleví i 1 d'Aleví (FEDAC LLEIDA), a la de Prebenjamí
+  const c = fixture(); make(c, RULES({ joins: [], allM: false }));
+  let v = E.rotView(c, settings, CTX);
+  const pre = v.subs.find(s => s.label === 'MASCULINA – PREBENJAMÍ'), ale = v.subs.find(s => s.label === 'MASCULINA – ALEVÍ');
+  for (const e of c.entries.filter(x => x.gender === 'M' && x.category === 'Prebenjamí')) X(c, e, ale.id, 0);
+  X(c, c.entries.find(x => x.gender === 'M' && x.category === 'Aleví' && x.clubId === 'FEDAC'), pre.id, 0);
+  v = E.rotView(c, settings, CTX);
+  assert.equal(v.subs.find(s => s.id === pre.id).compLabel, 'MASCULINA – ALEVÍ (FEDAC LLEIDA)');
+  assert.equal(v.subs.find(s => s.id === pre.id).label, 'MASCULINA – PREBENJAMÍ', 'el seu nom (on tornen) no canvia');
+  assert.equal(v.subs.find(s => s.id === ale.id).compLabel, 'MASCULINA – ALEVÍ (i C.G. LLEIDA · Prebenjamí A)');
+  const rows = E.rotSchedule(v, c.rot).blocks.flatMap(b => b.rows).filter(r => r.kind === 'comp').map(r => r.text);
+  assert.ok(rows.some(r => r.includes('subdivisió MASCULINA – ALEVÍ (FEDAC LLEIDA) - ')), rows.join(' | '));
+  // les noies: a la de Juvenil hi va l'equip de Cadet B de C.G. LLEIDA, i la de Juvenil, a la de Cadet
+  const c2 = fixture(); make(c2, RULES({ joins: [] }));
+  v = E.rotView(c2, settings, CTX);
+  const sJ = v.subs.find(s => s.label === 'JUVENIL').id, sC = v.subs.find(s => s.label === 'CADET A i B').id;
+  X(c2, c2.entries.find(x => x.category === 'Juvenil'), sC, 0);
+  for (const e of c2.entries.filter(x => x.teamId === teamOf(c2, 'C.G. LLEIDA', 'Cadet', 'B').id)) X(c2, e, sJ, 0);
+  v = E.rotView(c2, settings, CTX);
+  assert.deepEqual(plain([v.subs.find(s => s.id === sJ).compLabel, v.subs.find(s => s.id === sC).compLabel]), ['CADET B (C.G. LLEIDA)', 'CADET A i B (i C.G. LLEIDA · Juvenil A)']);
+  // (el nom que ella hi ha posat es queda, amb les que hi ha portat)
+  c2.rot.subs.find(s => s.id === sJ).name = 'LES GRANS';
+  assert.equal(E.rotView(c2, settings, CTX).subs.find(s => s.id === sJ).compLabel, 'LES GRANS (i C.G. LLEIDA · Cadet B)');
+});

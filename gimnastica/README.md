@@ -55,7 +55,15 @@ internet.
    de 3): a la competició triada cada gimnasta queda a l'equip del full encara que ja hi fos inscrita
    amb un altre equip, i l'app no hi posa ni n'hi treu ningú pel seu compte ni en fa d'«igualats». Les
    altres competicions no es toquen (cada competició té els seus equips; si n'hi ha alguna amb uns altres
-   equips, l'avís ho diu). Si una gimnasta ja hi és, se n'actualitzen el grup, l'any i l'equip. També les pots entrar una a una o *Enganxa des
+   equips, l'avís ho diu). Si una gimnasta ja hi és, se n'actualitzen el grup, l'any i l'equip. Si ja hi és amb el
+   mateix nom i cognoms però d'una altra entitat o amb un altre any (ha canviat de club, o l'any estava malament), surt
+   «ja hi és (abans a INEF Lleida · any 2013)»: per defecte és la mateixa (la fitxa passa a l'entitat i l'any del full,
+   i a la competició no s'inscriu mai dues vegades); si és una altra persona amb el mateix nom, tria «és una altra». El nom
+   de l'entitat es posa com el diu el full, amb les sigles en majúscules (INEF, CEIP, AMPA, UE…), i el d'una entitat
+   nova es pot canviar abans d'importar; si el full l'escriu d'una altra manera («CLUB GIMNÀSTIC LLEIDA») però gairebé
+   totes les gimnastes ja són d'una entitat, es tria aquella i s'avisa. En una **competició que ja ha passat** (p. ex.
+   feta en paper i entrada després), les fitxes que ja hi eren no es canvien, però les noves (i les que encara no
+   tenien equip) es queden amb l'equip del full, i «Jornada següent» proposa els equips que van dir les entitats. També les pots entrar una a una o *Enganxa des
    d'Excel* qualsevol llista (amb la fila de títols: Nom, Cognoms, Entitat, Gènere, Any de naixement,
    Nivell, i si vols Categoria i Equip). Amb l'any de naixement la **categoria es posa sola**. Es
    queden guardades per a totes les competicions.
@@ -63,7 +71,11 @@ internet.
    defecte és *Automàtic*: en inscriure-les, les d'una mateixa entitat i grup formen equip si n'hi ha
    3 o més (7 o més → dos equips), i l'equip queda a la fitxa per a les jornades següents. També pots
    triar un equip, crear-ne un de nou o posar *Només individual*. *Gimnastes → Equips* els mostra
-   tots.
+   tots. Un canvi d'equip a la fitxa, a la llista de gimnastes o a la d'equips també val per a les competicions que
+   vénen (encara que tinguin els equips del full de l'entitat: ho has decidit tu); les passades no es toquen, i l'avís
+   diu on ha canviat i on no (i per què). Si l'equip ja és ple, abans de desar es diu; des d'una competició (una
+   gimnasta nova que en substitueix una altra) es pot triar *Només en aquesta competició*, i la fitxa de l'equip es
+   queda com era.
 3. **Competicions → Nova competició**: nom, data i lloc. De la segona jornada en endavant proposa
    copiar les gimnastes de l'anterior (amb la categoria i l'equip de la fitxa d'ara). El nom que proposa
    (també amb **Jornada següent**) és el de l'anterior amb el número de la fase o de la jornada un més
@@ -105,7 +117,10 @@ Tot es pot editar o esborrar: fitxes, entitats, equips, competicions, inscripcio
 categories, nivells i aparells. A cada llista (Gimnastes, Equips, Entitats, Competicions i les
 Inscripcions d'una competició) hi ha una casella a cada fila: marca les que vulguis, o
 **Marca-les totes** (només les que es veuen amb la cerca i els filtres), i **Esborra les marcades**
-les esborra d'un cop. Per començar de nou: *Configuració → Dades → 🗑 Esborra-ho tot…* (tries què:
+les esborra d'un cop. A *Entitats*, si canvies el nom d'una entitat, proposa canviar també el dels seus equips que
+es diuen com ella; **Fusiona amb…** ajunta dues entitats que són la mateixa i, si vols, també les fitxes repetides
+d'una mateixa gimnasta (amb les seves inscripcions: si en una competició totes dues tenen notes, es queden totes dues
+i l'avís ho diu; no es perd cap nota). Per començar de nou: *Configuració → Dades → 🗑 Esborra-ho tot…* (tries què:
 competicions, gimnastes i equips, entitats i, si vols, la configuració). Abans se'n fa una còpia, i
 amb **Desfés** tot torna.
 
@@ -270,7 +285,8 @@ Les dades es desen soles al navegador a cada canvi. A *Configuració → Dades*:
 - `tests/fixtures/` — fulls d'inscripció d'exemple (model del Consell, nivell A i B, i un de buit).
 - `tests/e2e-revisio.mjs` — casos concrets que havien fallat: fitxa sense nivell, «Nivell A» a
   l'Excel, ajuntar nivells, equips amb el mateix nom, canvis d'equip del mateix dia, D + E, «Grup
-  següent» i la mida de pantalla de les tauletes.
+  següent», la mida de pantalla de les tauletes i una temporada sencera (la mateixa gimnasta en una altra
+  entitat o amb un altre any, fusionar entitats, sigles, un equip ple i una competició passada entrada després).
 - `tests/e2e-pwa.mjs` — l'app instal·lable com a GitHub Pages (https): sense internet, posar-se al
   dia sola i que el joc NUS del mateix lloc no li desi versions velles (cal openssl).
 - `servidor/` — el programa per a l'ordinador i les tutores (Go, sense dependències). `go test` dins

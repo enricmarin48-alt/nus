@@ -506,7 +506,7 @@ try {
     // (i un sol noi nou, en masculí)
     await page.evaluate(() => { const c = curComp(), g = { id: 'gm1', name: 'Nou', surname: 'Un', clubId: 'CGL', gender: 'M', category: 'Aleví', level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); commit(); render(); });
     const m1 = await page.locator('.note.warn', { hasText: 'gimnasta nou' }).innerText();
-    assert.ok(m1.includes('1 gimnasta nou ') && m1.includes('l’he posat ') && m1.includes('surt marcat ') && m1.includes('deixa-lo així'), m1);
+    assert.ok(m1.includes('1 gimnasta nou ') && m1.includes('l’he posat ') && m1.includes('surt marcat ') && m1.includes('deixa’l així'), m1);
     await page.click('.note button[data-act=rotAccept]'); await toastHas('Desades on eren');
     // 4 de Sènior (una categoria sense subdivisió): «nova» al final
     await page.evaluate(() => { const c = curComp(); for (let i = 0; i < 4; i++) { const g = { id: 'gs' + i, name: 'Sèn' + i, surname: 'Nova', clubId: 'CGL', gender: 'F', category: 'Sènior', level: 'A', birthYear: '', notes: '', archived: false }; db.gymnasts.push(g); c.entries.push(newEntry(c, g)); } commit(); render(); });
@@ -1235,13 +1235,13 @@ try {
     await page.evaluate(() => { window.print = () => {}; actions.rotPrintDlg({ dataset: {} }); }); await page.waitForSelector('#dlg[open] form[data-form=rotPrint]');
     await page.click('#dlg button.primary'); await page.waitForSelector('#confirm[open]');
     const q = await page.locator('#confirm').textContent();
-    assert.ok(q.includes('Hi ha 1 gimnasta nou que encara no has revisat (surt on l’he posat). L’imprimeixo així?'), q);
+    assert.ok(q.includes('Hi ha 1 gimnasta nou que encara no has revisat (surt on l’he posat). Imprimeixo així les rotacions?'), q);
     await page.click('#confirm button[value=no]'); await page.evaluate(() => { if ($('#dlg').open) closeDialog(); });
     // sis noies de Benjamí A passen a Benjamí B: se'n diuen 5, «i 1 més ha canviat de subdivisió»
     await page.evaluate(() => { const c = curComp(); c.entries = c.entries.filter(e => e.id !== 'nou1');
       c.entries.filter(e => e.category === 'Benjamí' && e.level === 'A' && e.gender === 'F').slice(0, 6).forEach(e => { e.level = 'B'; e.teamId = null; }); commit(); render(); });
     n = (await notes7()).find(x => x.includes('ha passat de la'));
-    assert.ok(n && n.includes(' i 1 més ha canviat de subdivisió: les he posat amb') && n.includes('(surten marcades NOU)') && n.includes('deixa-les així'), n);
+    assert.ok(n && n.includes(' i 1 més ha canviat de subdivisió: les he posades amb') && n.includes('(surten marcades NOU)') && n.includes('deixa-les així'), n);
   });
 
   await step('setena revisió: corregir el nivell a la fitxa (Gimnastes) també diu d’on a on ha passat a les rotacions, com a la inscripció', async () => {

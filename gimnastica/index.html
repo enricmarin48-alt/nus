@@ -7859,8 +7859,8 @@ const actions = {
     const n = moves.length;
     let pick = 'years';
     if (n) {
-      pick = await choiceBox(`${lead}Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : mf(moves.map(m => m.g), 'Els actualitzo', 'Les actualitzo')} ara?<br><span class="small muted">${moves.slice(0, 8).map(m => `${h(gymName(m.g))}: ${h(m.g.category || '—')} → ${h(m.to)}`).join('<br>')}${n > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi ${n === 1 ? 'té' : 'tenen'} notes).${catPlanHtml(catPlan(moves, cats))}`,
-        [{ value: 'ok', label: n === 1 ? mf(moves[0].g, 'Actualitza’l', 'Actualitza-la') : mf(moves.map(m => m.g), 'Actualitza’ls', 'Actualitza-les'), cls: 'primary' }, { value: 'years', label: 'Només els anys de les categories' }]);
+      pick = await choiceBox(`${lead}Amb els anys nous, ${plural(n, 'gimnasta canvia', 'gimnastes canvien')} de categoria. ${n === 1 ? 'L’actualitzo' : 'Les actualitzo'} ara?<br><span class="small muted">${moves.slice(0, 8).map(m => `${h(gymName(m.g))}: ${h(m.g.category || '—')} → ${h(m.to)}`).join('<br>')}${n > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; les que vénen, sí (si encara no hi ${n === 1 ? 'té' : 'tenen'} notes).${catPlanHtml(catPlan(moves, cats))}`,
+        [{ value: 'ok', label: n === 1 ? 'Actualitza-la' : 'Actualitza-les', cls: 'primary' }, { value: 'years', label: 'Només els anys de les categories' }]);
       if (!pick) return;
     }
     const pre = JSON.stringify(db), season = d > 0 ? shiftTarget() : '';
@@ -7886,7 +7886,7 @@ const actions = {
     const plan = catPlan(list.map(g => ({ g, to: catMismatch(g) })));
     // (d'una sola, el seu nom: «d’Emma Serra», i no «d’una gimnasta» si és un noi)
     const one = list.length === 1;
-    if (!(await confirmBox(`Canviar la categoria ${one ? deN(h(gymName(list[0]))) : deQ(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; a les que vénen, també es canvien (si encara no hi ${one ? 'té' : 'tenen'} notes). Qui canvia de categoria surt del seu equip.${catPlanHtml(plan)}`, { ok: one ? mf(list[0], 'Canvia’l', 'Canvia-la') : mf(list, 'Canvia’ls', 'Canvia-les') }))) return;
+    if (!(await confirmBox(`Canviar la categoria ${one ? deN(h(gymName(list[0]))) : deQ(list.length, 'gimnasta', 'gimnastes')} segons l’any de naixement?<br><span class="small muted">${list.slice(0, 8).map(g => `${h(gymName(g))}: ${h(g.category || '—')} → ${h(catMismatch(g))}`).join('<br>')}${list.length > 8 ? '<br>…' : ''}</span><br><br>Les competicions ja fetes no canvien; a les que vénen, també es canvien (si encara no hi ${one ? 'té' : 'tenen'} notes). Qui canvia de categoria surt del seu equip.${catPlanHtml(plan)}`, { ok: one ? 'Canvia-la' : 'Canvia-les' }))) return;
     // (mentre la confirmació era oberta pot haver canviat alguna cosa: es torna a mirar qui no té la categoria que li toca)
     const now = db.gymnasts.filter(g => !g.archived && catMismatch(g));
     if (!now.length) return;
